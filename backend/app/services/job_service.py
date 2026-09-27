@@ -14,9 +14,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.exceptions import JobNotFoundError, ValidationError, WorkspaceNotFoundError
+from app.models.content_chunk import ContentChunk
 from app.models.index_job import IndexJob
 from app.models.note import Note
-from app.models.note_chunk import NoteChunk
 from app.models.note_version import NoteVersion
 from app.models.workspace import Workspace
 from app.services import (
@@ -355,19 +355,20 @@ def process_index_job(db: Session, job_id: uuid.UUID) -> None:
                 logger.warning("Failed deleting old vectors for note %s: %s", note.id, e)
 
             existing_chunks = list(
-                db.scalars(select(NoteChunk).where(NoteChunk.note_id == note.id)).all()
+                db.scalars(select(ContentChunk).where(ContentChunk.note_id == note.id)).all()
             )
             for ec in existing_chunks:
                 db.delete(ec)
             db.flush()
 
-            # Create NoteChunk records
-            created_chunks: list[NoteChunk] = []
+            # Create ContentChunk records
+            created_chunks: list[ContentChunk] = []
             texts_to_embed: list[str] = []
             for rc in raw_chunks:
-                nc = NoteChunk(
+                nc = ContentChunk(
                     note_id=note.id,
                     version_id=latest_version.id,
+                    source_id=None,
                     workspace_id=note.workspace_id,
                     chunk_index=rc["chunk_index"],
                     content=rc["content"],

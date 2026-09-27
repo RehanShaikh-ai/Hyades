@@ -18,10 +18,10 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ExtractionFailedError
+from app.models.content_chunk import ContentChunk
 from app.models.graph_entity import GraphEntity
 from app.models.graph_relationship import GraphRelationship
 from app.models.note import Note
-from app.models.note_chunk import NoteChunk
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.schemas.rag import RAGRequest
@@ -89,7 +89,7 @@ def mixed_dataset_workspace(db_session: Session):
 
     from app.models.note_version import NoteVersion
 
-    # Create dummy NoteVersion and NoteChunk for each note
+    # Create dummy NoteVersion and ContentChunk for each note
     for n in notes:
         ver = NoteVersion(
             id=uuid.uuid4(),
@@ -103,10 +103,11 @@ def mixed_dataset_workspace(db_session: Session):
         db_session.add(ver)
         db_session.flush()
 
-        nc = NoteChunk(
+        nc = ContentChunk(
             id=uuid.uuid4(),
             note_id=n.id,
             version_id=ver.id,
+            source_id=None,
             workspace_id=ws.id,
             chunk_index=0,
             content=n.content,
@@ -212,8 +213,8 @@ def test_unified_assistant_with_graph_expansion(db_session: Session, mixed_datas
         SearchResultItem(
             note_id=note_ml.id,
             chunk_id=db_session.scalars(
-                entity_extraction_service.select(NoteChunk.id).where(
-                    NoteChunk.note_id == note_ml.id
+                entity_extraction_service.select(ContentChunk.id).where(
+                    ContentChunk.note_id == note_ml.id
                 )
             ).first(),
             title=note_ml.title,
@@ -254,8 +255,8 @@ def test_unified_assistant_ai_unavailable_behavior(
         SearchResultItem(
             note_id=note_os.id,
             chunk_id=db_session.scalars(
-                entity_extraction_service.select(NoteChunk.id).where(
-                    NoteChunk.note_id == note_os.id
+                entity_extraction_service.select(ContentChunk.id).where(
+                    ContentChunk.note_id == note_os.id
                 )
             ).first(),
             title=note_os.title,

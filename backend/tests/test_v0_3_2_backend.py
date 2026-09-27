@@ -12,11 +12,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.content_chunk import ContentChunk
 from app.models.entity_chunk import EntityChunk
 from app.models.graph_entity import GraphEntity
 from app.models.graph_relationship import GraphRelationship
 from app.models.note import Note
-from app.models.note_chunk import NoteChunk
 from app.models.note_link import NoteLink
 from app.models.user import User
 from app.models.workspace import Workspace
@@ -90,11 +90,12 @@ def v032_test_data(db_session: Session):
     db_session.add_all([ver_a, ver_b])
     db_session.flush()
 
-    # Create dummy NoteChunks for note_a and note_b
-    chunk_a = NoteChunk(
+    # Create dummy ContentChunks for note_a and note_b
+    chunk_a = ContentChunk(
         id=uuid.uuid4(),
         note_id=note_a.id,
         version_id=ver_a.id,
+        source_id=None,
         workspace_id=ws1.id,
         chunk_index=0,
         content=note_a.content,
@@ -104,10 +105,11 @@ def v032_test_data(db_session: Session):
         embedding_dimension=384,
         created_at=datetime.now(UTC),
     )
-    chunk_b = NoteChunk(
+    chunk_b = ContentChunk(
         id=uuid.uuid4(),
         note_id=note_b.id,
         version_id=ver_b.id,
+        source_id=None,
         workspace_id=ws1.id,
         chunk_index=0,
         content=note_b.content,

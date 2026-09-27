@@ -1,6 +1,6 @@
 """Domain exception classes.
 
-Canonical exceptions per contract §13.
+Canonical exceptions per contract §13 (v0.1.1-v0.3.2) and CONTRACT v0.4.1 §11.
 """
 
 from fastapi import HTTPException, status
@@ -226,3 +226,41 @@ class GraphIndexError(AppException):
 
     def __init__(self, message: str = "Graph indexing error.") -> None:
         super().__init__(status.HTTP_500_INTERNAL_SERVER_ERROR, "GRAPH_INDEX_ERROR", message)
+
+
+# ── v0.4.1 Exceptions (CONTRACT §11) ──────────────────────────────────────────
+
+
+class ConversationNotFoundError(AppException):
+    """Raised when a conversation is not found (404, CONVERSATION_NOT_FOUND)."""
+
+    def __init__(self, message: str = "Conversation not found.") -> None:
+        super().__init__(status.HTTP_404_NOT_FOUND, "CONVERSATION_NOT_FOUND", message)
+
+
+class MessageNotFoundError(AppException):
+    """Raised when a message is not found (404, MESSAGE_NOT_FOUND)."""
+
+    def __init__(self, message: str = "Message not found.") -> None:
+        super().__init__(status.HTTP_404_NOT_FOUND, "MESSAGE_NOT_FOUND", message)
+
+
+class SourceNotRetryableError(AppException):
+    """Raised when retry is attempted on a non-failed source (422, SOURCE_NOT_RETRYABLE)."""
+
+    def __init__(self, message: str = "Only failed sources can be retried.") -> None:
+        super().__init__(status.HTTP_422_UNPROCESSABLE_CONTENT, "SOURCE_NOT_RETRYABLE", message)
+
+
+class UnsupportedSourceTypeError(AppException):
+    """Raised when an uploaded file type is unsupported (422, UNSUPPORTED_SOURCE_TYPE)."""
+
+    def __init__(self, message: str = "Unsupported source file type.") -> None:
+        super().__init__(status.HTTP_422_UNPROCESSABLE_CONTENT, "UNSUPPORTED_SOURCE_TYPE", message)
+
+
+class SourceProcessingFailedError(AppException):
+    """Raised when source processing fails after retries (500, SOURCE_PROCESSING_FAILED)."""
+
+    def __init__(self, message: str = "Source processing failed.") -> None:
+        super().__init__(status.HTTP_500_INTERNAL_SERVER_ERROR, "SOURCE_PROCESSING_FAILED", message)

@@ -1,6 +1,6 @@
 """RAG schemas for retrieval-augmented generation.
 
-Canonical schemas per CONTRACT v0.3.1 §5.2, §10.2, §10.3.
+Canonical schemas per CONTRACT v0.3.1 §5.2, §10.2, §10.3 and CONTRACT v0.4.1 §8.
 """
 
 import uuid
@@ -25,10 +25,11 @@ class RAGRequest(BaseModel):
 
 
 class CitedSource(BaseModel):
-    """Cited source item linking answer to note chunk per CONTRACT §10.3."""
+    """Cited source item linking answer to note or source chunk per CONTRACT §10.3 & v0.4.1 §8."""
 
     chunk_id: uuid.UUID
-    note_id: uuid.UUID
+    note_id: uuid.UUID | None = None
+    source_id: uuid.UUID | None = None
     title: str
     excerpt: str
     score: float

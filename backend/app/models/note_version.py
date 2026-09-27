@@ -1,6 +1,6 @@
 """NoteVersion SQLAlchemy model.
 
-Canonical model per CONTRACT v0.3.1 §5.1, §6.1.
+Canonical model per CONTRACT v0.3.1 §5.1, §6.1, and CONTRACT v0.4.1 §6.2.
 
 Each row represents a single Git snapshot of a note's content.
 The commit_hash links this record to the Git object in the repository.
@@ -17,8 +17,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.content_chunk import ContentChunk
     from app.models.note import Note
-    from app.models.note_chunk import NoteChunk
     from app.models.user import User
     from app.models.workspace import Workspace
 
@@ -92,8 +92,8 @@ class NoteVersion(Base):
     note: Mapped["Note"] = relationship("Note")
     workspace: Mapped["Workspace"] = relationship("Workspace")
     author: Mapped["User"] = relationship("User")
-    chunks: Mapped[list["NoteChunk"]] = relationship(
-        "NoteChunk",
+    chunks: Mapped[list["ContentChunk"]] = relationship(
+        "ContentChunk",
         back_populates="version",
         passive_deletes=True,
     )

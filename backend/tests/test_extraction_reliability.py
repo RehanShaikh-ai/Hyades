@@ -26,9 +26,9 @@ from app.core.exceptions import (
     LLMProviderUnavailableError,
     LLMTimeoutError,
 )
+from app.models.content_chunk import ContentChunk
 from app.models.graph_entity import GraphEntity
 from app.models.note import Note
-from app.models.note_chunk import NoteChunk
 from app.models.note_cluster import NoteCluster
 from app.models.note_cluster_member import NoteClusterMember
 from app.models.note_version import NoteVersion
@@ -81,10 +81,11 @@ def test_env(db_session: Session):
         db_session.add(ver)
         db_session.flush()
 
-        nc = NoteChunk(
+        nc = ContentChunk(
             id=uuid.uuid4(),
             note_id=n.id,
             version_id=ver.id,
+            source_id=None,
             workspace_id=ws.id,
             chunk_index=0,
             content=n.content,
@@ -378,7 +379,9 @@ def test_rag_source_relevance_threshold_unrelated_query(db_session: Session, tes
     low_score_candidate = SearchResultItem(
         note_id=note_os.id,
         chunk_id=db_session.scalars(
-            entity_extraction_service.select(NoteChunk.id).where(NoteChunk.note_id == note_os.id)
+            entity_extraction_service.select(ContentChunk.id).where(
+                ContentChunk.note_id == note_os.id
+            )
         ).first(),
         title=note_os.title,
         excerpt=note_os.content,
@@ -413,7 +416,9 @@ def test_rag_source_relevance_threshold_relevant_query(db_session: Session, test
     high_score_candidate = SearchResultItem(
         note_id=note_bread.id,
         chunk_id=db_session.scalars(
-            entity_extraction_service.select(NoteChunk.id).where(NoteChunk.note_id == note_bread.id)
+            entity_extraction_service.select(ContentChunk.id).where(
+                ContentChunk.note_id == note_bread.id
+            )
         ).first(),
         title=note_bread.title,
         excerpt=note_bread.content,

@@ -1,6 +1,6 @@
 """Source Pydantic schemas.
 
-Canonical schemas per contract §4.2, §5.1, and §7.
+Canonical schemas per CONTRACT §4.2, §5.1, §6.1, and CONTRACT v0.4.1 §4.2.
 """
 
 import uuid
@@ -67,6 +67,12 @@ class SourceResponse(BaseModel):
     error_message: str | None = None
     imported_at: datetime
     last_synced_at: datetime | None = None
+    processing_stage: str = "upload"
+    processing_status: str = "PENDING"
+    file_size_bytes: int | None = None
+    page_count: int | None = None
+    chunk_count: int | None = None
+    error_stage: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -78,3 +84,33 @@ class SourceListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class SourceProcessingStatusResponse(BaseModel):
+    """Response schema for source processing status."""
+
+    id: uuid.UUID
+    processing_stage: str
+    processing_status: str
+    chunk_count: int | None = None
+    page_count: int | None = None
+    error_stage: str | None = None
+    error_message: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SourceLinkRequest(BaseModel):
+    """Request schema for linking a source to a note."""
+
+    note_id: uuid.UUID
+
+
+class SourceNoteLink(BaseModel):
+    """Response schema for a source-note association."""
+
+    source_id: uuid.UUID
+    note_id: uuid.UUID
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

@@ -12,11 +12,11 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import NoteNotFoundError, WorkspaceNotFoundError
+from app.models.content_chunk import ContentChunk
 from app.models.entity_chunk import EntityChunk
 from app.models.graph_entity import GraphEntity
 from app.models.graph_relationship import GraphRelationship
 from app.models.note import Note
-from app.models.note_chunk import NoteChunk
 from app.models.note_cluster_member import NoteClusterMember
 from app.models.workspace import Workspace
 from app.services import (
@@ -68,7 +68,7 @@ def index_note_graph(db: Session, note_id: uuid.UUID) -> dict[str, Any]:
         )
 
     # Step 4: Update Qdrant chunk payloads with entity_ids and cluster_id (§7)
-    chunks = db.scalars(select(NoteChunk).where(NoteChunk.note_id == note_id)).all()
+    chunks = db.scalars(select(ContentChunk).where(ContentChunk.note_id == note_id)).all()
     if chunks:
         cluster_member = db.scalars(
             select(NoteClusterMember).where(NoteClusterMember.note_id == note_id)
@@ -226,7 +226,7 @@ def reindex_workspace_graph(
         failed_notes,
     )
     for note in notes:
-        chunks = db.scalars(select(NoteChunk).where(NoteChunk.note_id == note.id)).all()
+        chunks = db.scalars(select(ContentChunk).where(ContentChunk.note_id == note.id)).all()
         if chunks:
             cluster_member = db.scalars(
                 select(NoteClusterMember).where(NoteClusterMember.note_id == note.id)
