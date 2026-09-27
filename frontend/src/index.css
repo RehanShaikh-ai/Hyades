@@ -1501,28 +1501,33 @@ svg[aria-hidden="true"] {
 /* ==========================================================================
    Markdown Content Styling (Assistant / Notes / Previews)
    ========================================================================== */
-.markdown-content {
+.markdown-content,
+.markdown-body {
   color: #e2e8f0;
   line-height: 1.68;
   font-size: 0.875rem;
   word-break: break-word;
 }
 
-.markdown-content > *:first-child {
+.markdown-content > *:first-child,
+.markdown-body > *:first-child {
   margin-top: 0;
 }
 
-.markdown-content > *:last-child {
+.markdown-content > *:last-child,
+.markdown-body > *:last-child {
   margin-bottom: 0;
 }
 
-.markdown-content p {
+.markdown-content p,
+.markdown-body p {
   margin-top: 0.5rem;
   margin-bottom: 0.75rem;
   line-height: 1.68;
 }
 
-.markdown-content h1 {
+.markdown-content h1,
+.markdown-body h1 {
   font-size: 1.35rem;
   font-weight: 700;
   color: #f8fafc;
@@ -1533,7 +1538,8 @@ svg[aria-hidden="true"] {
   letter-spacing: -0.015em;
 }
 
-.markdown-content h2 {
+.markdown-content h2,
+.markdown-body h2 {
   font-size: 1.2rem;
   font-weight: 700;
   color: #f1f5f9;
@@ -1544,7 +1550,8 @@ svg[aria-hidden="true"] {
   letter-spacing: -0.01em;
 }
 
-.markdown-content h3 {
+.markdown-content h3,
+.markdown-body h3 {
   font-size: 1.05rem;
   font-weight: 600;
   color: #e2e8f0;
@@ -1554,7 +1561,10 @@ svg[aria-hidden="true"] {
 
 .markdown-content h4,
 .markdown-content h5,
-.markdown-content h6 {
+.markdown-content h6,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
   font-size: 0.925rem;
   font-weight: 600;
   color: #cbd5e1;
@@ -1562,54 +1572,64 @@ svg[aria-hidden="true"] {
   margin-bottom: 0.35rem;
 }
 
-.markdown-content strong {
+.markdown-content strong,
+.markdown-body strong {
   font-weight: 600;
   color: #ffffff;
 }
 
-.markdown-content em {
+.markdown-content em,
+.markdown-body em {
   font-style: italic;
   color: #cbd5e1;
 }
 
-.markdown-content del {
+.markdown-content del,
+.markdown-body del {
   text-decoration: line-through;
   color: #94a3b8;
 }
 
-.markdown-content ul {
+.markdown-content ul,
+.markdown-body ul {
   list-style-type: disc;
   padding-left: 1.4rem;
   margin-top: 0.5rem;
   margin-bottom: 0.75rem;
 }
 
-.markdown-content ol {
+.markdown-content ol,
+.markdown-body ol {
   list-style-type: decimal;
   padding-left: 1.4rem;
   margin-top: 0.5rem;
   margin-bottom: 0.75rem;
 }
 
-.markdown-content li {
+.markdown-content li,
+.markdown-body li {
   margin-top: 0.25rem;
   margin-bottom: 0.25rem;
   line-height: 1.55;
   color: #e2e8f0;
 }
 
-.markdown-content li > p {
+.markdown-content li > p,
+.markdown-body li > p {
   margin: 0;
   display: inline;
 }
 
 .markdown-content li > ul,
-.markdown-content li > ol {
+.markdown-content li > ol,
+.markdown-body li > ul,
+.markdown-body li > ol {
   margin-top: 0.25rem;
   margin-bottom: 0.25rem;
 }
 
-.markdown-content code:not(pre code) {
+.markdown-content code:not(pre code),
+.markdown-body code:not(pre code) {
   font-family: 'Space Mono', monospace;
   font-size: 0.8125rem;
   background: rgba(30, 41, 59, 0.85);
@@ -1619,7 +1639,8 @@ svg[aria-hidden="true"] {
   border: 1px solid rgba(148, 163, 184, 0.15);
 }
 
-.markdown-content pre {
+.markdown-content pre,
+.markdown-body pre {
   background: #090d14;
   border: 1px solid rgba(51, 65, 85, 0.6);
   padding: 0.75rem 1rem;
@@ -1629,7 +1650,8 @@ svg[aria-hidden="true"] {
   margin-bottom: 0.75rem;
 }
 
-.markdown-content pre code {
+.markdown-content pre code,
+.markdown-body pre code {
   font-family: 'Space Mono', monospace;
   font-size: 0.8125rem;
   background: transparent;
@@ -1640,7 +1662,8 @@ svg[aria-hidden="true"] {
   line-height: 1.5;
 }
 
-.markdown-content blockquote {
+.markdown-content blockquote,
+.markdown-body blockquote {
   border-left: 3px solid rgba(56, 189, 248, 0.6);
   padding: 0.35rem 0.875rem;
   margin-top: 0.75rem;
@@ -1651,28 +1674,33 @@ svg[aria-hidden="true"] {
   border-radius: 0 0.375rem 0.375rem 0;
 }
 
-.markdown-content blockquote p {
+.markdown-content blockquote p,
+.markdown-body blockquote p {
   margin: 0;
 }
 
-.markdown-content a {
+.markdown-content a,
+.markdown-body a {
   color: #38bdf8;
   text-decoration: underline;
   text-underline-offset: 2px;
   transition: color 0.15s ease;
 }
 
-.markdown-content a:hover {
+.markdown-content a:hover,
+.markdown-body a:hover {
   color: #7dd3fc;
 }
 
-.markdown-content hr {
+.markdown-content hr,
+.markdown-body hr {
   border: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   margin: 1.25rem 0;
 }
 
-.markdown-content table {
+.markdown-content table,
+.markdown-body table {
   width: 100%;
   border-collapse: collapse;
   margin: 0.75rem 0;
@@ -1680,13 +1708,16 @@ svg[aria-hidden="true"] {
 }
 
 .markdown-content th,
-.markdown-content td {
+.markdown-content td,
+.markdown-body th,
+.markdown-body td {
   border: 1px solid rgba(148, 163, 184, 0.2);
   padding: 0.45rem 0.75rem;
   text-align: left;
 }
 
-.markdown-content th {
+.markdown-content th,
+.markdown-body th {
   background: rgba(30, 41, 59, 0.6);
   font-weight: 600;
   color: #f8fafc;

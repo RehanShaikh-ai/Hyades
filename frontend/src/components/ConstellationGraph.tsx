@@ -430,11 +430,18 @@ export const ConstellationGraph: React.FC<ConstellationGraphProps> = ({
           graphData={formattedData}
           nodeCanvasObject={renderNode}
           nodeRelSize={6}
-          linkColor={() => 'rgba(148, 163, 184, 0.18)'}
+          linkColor={(link: unknown) => {
+            const l = link as InternalGraphLink;
+            return l.is_manual ? 'rgba(251, 191, 36, 0.65)' : 'rgba(56, 189, 248, 0.55)';
+          }}
           linkWidth={(link: unknown) => {
             const l = link as InternalGraphLink;
-            return Math.max(0.7, (l.confidence || 0.5) * 1.8);
+            return Math.max(1.2, (l.confidence || 0.5) * 2.2);
           }}
+          linkDirectionalParticles={1}
+          linkDirectionalParticleSpeed={0.004}
+          linkDirectionalParticleWidth={2}
+          linkDirectionalParticleColor={() => '#38bdf8'}
           linkLabel={(link: unknown) => {
             const l = link as InternalGraphLink;
             return `${l.relationship_type} (${Math.round((l.confidence || 1) * 100)}%)`;

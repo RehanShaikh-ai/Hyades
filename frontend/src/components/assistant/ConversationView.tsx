@@ -67,7 +67,8 @@ export const ConversationView: React.FC<ConversationViewProps> = ({
 
     try {
       const res = await listMessages(conversationId, { page: 1, page_size: 100 });
-      setMessages(res.items || []);
+      const messageList = Array.isArray(res) ? res : (res?.items || []);
+      setMessages(messageList);
     } catch (err: unknown) {
       const apiErr = err as { error?: { message?: string } } | Error;
       const msg =

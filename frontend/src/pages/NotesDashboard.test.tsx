@@ -134,18 +134,15 @@ describe('NotesDashboard', () => {
     expect(await screen.findByTestId('graph-search-bar')).toBeInTheDocument();
   });
 
-  it('opens GraphRAG modal when clicking GraphRAG button on graph tab', async () => {
+  it('navigates to Assistant tab when clicking Assistant button', async () => {
     vi.mocked(notesApi.listNotes).mockResolvedValue({ items: [], total: 0, page: 1, page_size: 100 });
 
     render(<NotesDashboard workspaceId="ws-1" />);
 
-    const graphTabBtn = screen.getByRole('button', { name: /^Graph$/i });
-    fireEvent.click(graphTabBtn);
+    const assistantTabBtn = screen.getByRole('button', { name: /Assistant/i });
+    fireEvent.click(assistantTabBtn);
 
-    const ragTriggerBtn = await screen.findByTestId('graph-rag-trigger-btn');
-    fireEvent.click(ragTriggerBtn);
-
-    expect(await screen.findByTestId('graph-rag-panel')).toBeInTheDocument();
+    expect(await screen.findByTestId('assistant-panel')).toBeInTheDocument();
   });
 
   it('toggles filters panel from graph toolbar', async () => {

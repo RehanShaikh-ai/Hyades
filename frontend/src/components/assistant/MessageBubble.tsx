@@ -46,7 +46,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       {/* Message Card */}
       <div
         className={cn(
-          'message-bubble rounded-2xl p-4.5 max-w-[88%] sm:max-w-[80%] md:max-w-[75%] space-y-2 text-xs leading-relaxed shadow-lg',
+          'message-bubble rounded-2xl p-4 sm:p-5 max-w-[92%] sm:max-w-[85%] md:max-w-[80%] space-y-2 text-[13.5px] leading-relaxed shadow-lg',
           isUser
             ? 'bg-gradient-to-br from-indigo-600/90 to-sky-600/90 text-white rounded-tr-none border border-sky-400/30'
             : 'bg-slate-900/90 text-slate-200 rounded-tl-none border border-slate-800 backdrop-blur-xl'

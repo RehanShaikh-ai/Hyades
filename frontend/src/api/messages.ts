@@ -28,14 +28,14 @@ export async function sendMessage(
 export async function listMessages(
   conversationId: string,
   params?: ListMessagesParams
-): Promise<MessageListResponse> {
+): Promise<Message[] | MessageListResponse> {
   const query = new URLSearchParams();
   if (params?.page !== undefined) query.append('page', params.page.toString());
   if (params?.page_size !== undefined) {
     query.append('page_size', params.page_size.toString());
   }
   const queryString = query.toString() ? `?${query.toString()}` : '';
-  return apiClient.get<MessageListResponse>(
+  return apiClient.get<Message[] | MessageListResponse>(
     `/conversations/${conversationId}/messages${queryString}`
   );
 }
