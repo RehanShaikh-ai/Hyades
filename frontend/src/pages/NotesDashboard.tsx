@@ -475,16 +475,6 @@ export const NotesDashboard: React.FC<NotesDashboardProps> = ({
                 </button>
                 <button
                   type="button"
-                  data-testid="graph-rag-trigger-btn"
-                  onClick={() => setIsRagModalOpen(true)}
-                  className="btn-ghost-dark flex items-center gap-2 text-blue-400 hover:text-blue-300"
-                  title="Knowledge Assistant (Mod+J)"
-                >
-                  <Sparkles size={15} />
-                  <span className="hidden sm:inline">Assistant</span>
-                </button>
-                <button
-                  type="button"
                   onClick={() => setIsArchivedView(!isArchivedView)}
                   className={`btn-ghost-dark${isArchivedView ? ' active' : ''}`}
                   aria-pressed={isArchivedView}
@@ -493,40 +483,25 @@ export const NotesDashboard: React.FC<NotesDashboardProps> = ({
                   <Archive size={14} aria-hidden="true" />
                   <span className="hidden xl:inline">Archived</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="btn-ghost-dark flex items-center gap-2 text-sky-400 hover:text-sky-300"
+                  title="Import Markdown & Obsidian notes"
+                >
+                  <UploadCloud size={15} />
+                  <span className="hidden lg:inline">Import Notes</span>
+                </button>
+                <FlowHoverButton
+                  type="button"
+                  onClick={handleNewNote}
+                  icon={<Plus size={15} strokeWidth={2.5} aria-hidden="true" />}
+                  className="px-3.5 py-1.5 text-xs font-semibold"
+                  title="New Note (Mod+N)"
+                >
+                  New Note
+                </FlowHoverButton>
               </>
-            )}
-
-            {currentTab === 'graph' && (
-              <button
-                type="button"
-                data-testid="graph-rag-trigger-btn"
-                onClick={() => setIsRagModalOpen(true)}
-                className="btn-ghost-dark flex items-center gap-2 text-violet-400 hover:text-violet-300"
-                title="Knowledge Assistant (Mod+J)"
-              >
-                <Sparkles size={15} />
-                <span className="hidden sm:inline">Assistant</span>
-              </button>
-            )}
-
-            <button
-              onClick={() => setIsImportModalOpen(true)}
-              className="btn-ghost-dark flex items-center gap-2 text-sky-400 hover:text-sky-300"
-            >
-              <UploadCloud size={15} />
-              <span className="hidden lg:inline">Import</span>
-            </button>
-
-            {currentTab === 'notes' && (
-              <FlowHoverButton
-                type="button"
-                onClick={handleNewNote}
-                icon={<Plus size={15} strokeWidth={2.5} aria-hidden="true" />}
-                className="px-3.5 py-1.5 text-xs font-semibold"
-                title="New Note (Mod+N)"
-              >
-                New Note
-              </FlowHoverButton>
             )}
           </div>
         </header>

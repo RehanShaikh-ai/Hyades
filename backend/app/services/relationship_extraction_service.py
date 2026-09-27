@@ -61,6 +61,38 @@ def _clean_json_text(text: str) -> str:
     return text.strip()
 
 
+def _match_entity_name(raw: str, entity_names: list[str]) -> str | None:
+    """Resiliently match an LLM-generated entity string to an existing entity name.
+
+    Handles exact matches, case differences, leading articles ('the ', 'a '), and substrings.
+    """
+    if not raw:
+        return None
+    raw_clean = raw.strip().lower()
+
+    # 1. Exact case-insensitive match
+    for name in entity_names:
+        if name.lower() == raw_clean:
+            return name
+
+    # 2. Match without leading articles
+    raw_stripped = re.sub(r"^(the|a|an)\s+", "", raw_clean)
+    for name in entity_names:
+        name_clean = re.sub(r"^(the|a|an)\s+", "", name.lower())
+        if name_clean == raw_stripped:
+            return name
+
+    # 3. Substring matching (e.g. 'Transformers' vs 'Transformer architecture')
+    for name in entity_names:
+        name_lower = name.lower()
+        if (len(raw_clean) >= 3 and raw_clean in name_lower) or (
+            len(name_lower) >= 3 and name_lower in raw_clean
+        ):
+            return name
+
+    return None
+
+
 def extract_relationships(
     text: str,
     entities: list[str],
@@ -151,14 +183,13 @@ def extract_relationships(
             # Pydantic schema validation
             validated_payload = ExtractedRelationshipsPayload.model_validate(raw_data)
 
-            entity_map = {e.lower(): e for e in entities}
             sanitized_relationships = []
 
             for item in validated_payload.relationships:
                 source_raw = item.source.strip()
                 target_raw = item.target.strip()
-                source_canon = entity_map.get(source_raw.lower())
-                target_canon = entity_map.get(target_raw.lower())
+                source_canon = _match_entity_name(source_raw, entities)
+                target_canon = _match_entity_name(target_raw, entities)
 
                 if not source_canon or not target_canon:
                     continue
@@ -233,8 +264,8 @@ def extract_relationships_for_note(
 
     entities = db.scalars(select(GraphEntity).where(GraphEntity.id.in_(entity_ids))).all()
 
-    entity_name_to_id = {e.name.lower(): e.id for e in entities}
     entity_names = [e.name for e in entities]
+    entity_id_map = {e.name: e.id for e in entities}
 
     # Process by chunk or full text
     chunks = db.scalars(
@@ -246,9 +277,9 @@ def extract_relationships_for_note(
     extraction_model = model or getattr(settings, "LLM_MODEL", "local-llm")
     extracted_rels: list[dict[str, Any]] = []
 
+    # 1. Chunk-level extraction where multiple entities co-occur
     if chunks:
         for chunk in chunks:
-            # Entities present in this chunk
             chunk_eids = {ec.entity_id for ec in entity_chunks if ec.chunk_id == chunk.id}
             chunk_entities = [e.name for e in entities if e.id in chunk_eids]
             if len(chunk_entities) >= 2:
@@ -257,25 +288,32 @@ def extract_relationships_for_note(
                     r["_chunk_id"] = chunk.id
                 extracted_rels.extend(rels)
 
-        # Fallback to note-level relationship extraction if chunk-level yielded no relationships
-        if not extracted_rels and len(entity_names) >= 2:
-            rels = extract_relationships(
-                note.content or note.title, entity_names, model=extraction_model
+    # 2. Always extract across note-level entities if chunk-level yielded no or few relationships
+    if len(entity_names) >= 2:
+        note_text = note.content or note.title
+        note_rels = extract_relationships(note_text, entity_names, model=extraction_model)
+        for nr in note_rels:
+            # Avoid duplicate (source, target, type)
+            existing_match = any(
+                er["source"] == nr["source"]
+                and er["target"] == nr["target"]
+                and er["type"] == nr["type"]
+                for er in extracted_rels
             )
-            extracted_rels.extend(rels)
-    else:
-        rels = extract_relationships(
-            note.content or note.title, entity_names, model=extraction_model
-        )
-        extracted_rels.extend(rels)
+            if not existing_match:
+                extracted_rels.append(nr)
 
     saved_relationships: list[GraphRelationship] = []
 
     for rel_data in extracted_rels:
-        src_name = rel_data["source"]
-        tgt_name = rel_data["target"]
-        src_id = entity_name_to_id.get(src_name.lower())
-        tgt_id = entity_name_to_id.get(tgt_name.lower())
+        src_canon = _match_entity_name(rel_data["source"], entity_names)
+        tgt_canon = _match_entity_name(rel_data["target"], entity_names)
+
+        if not src_canon or not tgt_canon or src_canon.lower() == tgt_canon.lower():
+            continue
+
+        src_id = entity_id_map.get(src_canon)
+        tgt_id = entity_id_map.get(tgt_canon)
 
         if not src_id or not tgt_id or src_id == tgt_id:
             continue
@@ -283,6 +321,7 @@ def extract_relationships_for_note(
         rel_type = rel_data["type"]
         desc = rel_data["description"]
         conf = rel_data["confidence"]
+
 
         # Check existing relationship
         existing = db.scalars(

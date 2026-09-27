@@ -151,31 +151,11 @@ def reindex_workspace_graph(
     # Stage: Preparing
     _update_job_progress("Preparing", 0, None, 0, 0, [])
 
-    # 1. Delete all provenance rows for workspace
-    db.execute(delete(EntityChunk).where(EntityChunk.workspace_id == workspace_id))
-
-    # 2. Delete all AI-extracted relationships (is_manual == False)
-    db.execute(
-        delete(GraphRelationship).where(
-            GraphRelationship.workspace_id == workspace_id,
-            GraphRelationship.is_manual.is_(False),
-        )
-    )
-
-    # 3. Delete all AI-extracted entities (is_manual == False)
-    db.execute(
-        delete(GraphEntity).where(
-            GraphEntity.workspace_id == workspace_id,
-            GraphEntity.is_manual.is_(False),
-        )
-    )
-    db.commit()
-
     total_entities_count = 0
     total_relationships_count = 0
     failed_notes: list[dict[str, str]] = []
 
-    # Stage: Extracting
+    # Stage: Extracting / Refreshing
     for idx, note in enumerate(notes, start=1):
         _update_job_progress(
             "Extracting entities & relationships",
@@ -194,35 +174,75 @@ def reindex_workspace_graph(
             logger.warning("Extraction failed for note %s (%s): %s", note.id, note.title, e)
             failed_notes.append({"note_id": str(note.id), "title": note.title, "error": str(e)})
 
+    # If extraction succeeded on at least one note (or no notes existed), clean up stale AI entities not referenced in EntityChunk
+    if len(failed_notes) < total_notes or total_notes == 0:
+        active_entity_ids = select(EntityChunk.entity_id).where(EntityChunk.workspace_id == workspace_id).distinct()
+        db.execute(
+            delete(GraphEntity).where(
+                GraphEntity.workspace_id == workspace_id,
+                GraphEntity.is_manual.is_(False),
+                GraphEntity.id.not_in(active_entity_ids),
+            )
+        )
+        existing_eids = select(GraphEntity.id).where(GraphEntity.workspace_id == workspace_id)
+        db.execute(
+            delete(GraphRelationship).where(
+                GraphRelationship.workspace_id == workspace_id,
+                GraphRelationship.is_manual.is_(False),
+                (
+                    GraphRelationship.source_entity_id.not_in(existing_eids)
+                    | GraphRelationship.target_entity_id.not_in(existing_eids)
+                ),
+            )
+        )
+        db.commit()
+
+    # Count all persisted entities and relationships for workspace
+    workspace_entities = db.scalars(
+        select(GraphEntity).where(GraphEntity.workspace_id == workspace_id)
+    ).all()
+    workspace_relationships = db.scalars(
+        select(GraphRelationship).where(GraphRelationship.workspace_id == workspace_id)
+    ).all()
+
+    effective_entities_count = max(total_entities_count, len(workspace_entities))
+    effective_relationships_count = max(total_relationships_count, len(workspace_relationships))
+
     # Stage: Building graph
     _update_job_progress(
         "Building graph & suggestions",
         total_notes,
         None,
-        total_entities_count,
-        total_relationships_count,
+        effective_entities_count,
+        effective_relationships_count,
         failed_notes,
     )
-    link_suggestion_service.generate_link_suggestions(db, workspace_id)
+    try:
+        link_suggestion_service.generate_link_suggestions(db, workspace_id)
+    except Exception as e:
+        logger.warning("Link suggestion generation failed for workspace %s: %s", workspace_id, e)
 
     # Stage: Clustering
     _update_job_progress(
         "Clustering",
         total_notes,
         None,
-        total_entities_count,
-        total_relationships_count,
+        effective_entities_count,
+        effective_relationships_count,
         failed_notes,
     )
-    cluster_service.cluster_workspace(db, workspace_id)
+    try:
+        cluster_service.cluster_workspace(db, workspace_id)
+    except Exception as e:
+        logger.warning("Clustering failed for workspace %s: %s", workspace_id, e)
 
     # Stage: Updating indexes
     _update_job_progress(
         "Updating indexes",
         total_notes,
         None,
-        total_entities_count,
-        total_relationships_count,
+        effective_entities_count,
+        effective_relationships_count,
         failed_notes,
     )
     for note in notes:
@@ -247,21 +267,24 @@ def reindex_workspace_graph(
                     "entity_ids": chunk_entities.get(chunk.id, []),
                     "cluster_id": cluster_id_str,
                 }
-            vector_service.update_chunk_payloads(workspace_id, payload_updates)
+            try:
+                vector_service.update_chunk_payloads(workspace_id, payload_updates)
+            except Exception as e:
+                logger.warning("Vector payload update failed for note %s: %s", note.id, e)
 
     # Stage: Finalizing
     _update_job_progress(
         "Finalizing",
         total_notes,
         None,
-        total_entities_count,
-        total_relationships_count,
+        effective_entities_count,
+        effective_relationships_count,
         failed_notes,
     )
 
     summary = {
-        "extracted_entities": total_entities_count,
-        "extracted_relationships": total_relationships_count,
+        "extracted_entities": effective_entities_count,
+        "extracted_relationships": effective_relationships_count,
         "notes_processed": len(notes) - len(failed_notes),
         "total_notes": len(notes),
         "failed_notes": failed_notes,

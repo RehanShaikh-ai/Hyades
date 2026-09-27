@@ -18,6 +18,7 @@ from app.core.exceptions import (
 )
 from app.models.conversation import Conversation
 from app.models.message import Message
+from app.models.message_citation import MessageCitation
 
 logger = logging.getLogger("app.services.message_service")
 
@@ -92,7 +93,11 @@ def list_messages(db: Session, conversation_id: uuid.UUID) -> list[Message]:
     stmt = (
         select(Message)
         .where(Message.conversation_id == conversation_id)
-        .options(selectinload(Message.citations))
+        .options(
+            selectinload(Message.citations).selectinload(MessageCitation.chunk),
+            selectinload(Message.citations).selectinload(MessageCitation.note),
+            selectinload(Message.citations).selectinload(MessageCitation.source),
+        )
         .order_by(Message.created_at.asc())
     )
     messages = list(db.scalars(stmt).all())
@@ -101,8 +106,17 @@ def list_messages(db: Session, conversation_id: uuid.UUID) -> list[Message]:
 
 def get_message(db: Session, message_id: uuid.UUID) -> Message:
     """Retrieve a single message with citations per CONTRACT §9.1, §11."""
-    stmt = select(Message).where(Message.id == message_id).options(selectinload(Message.citations))
+    stmt = (
+        select(Message)
+        .where(Message.id == message_id)
+        .options(
+            selectinload(Message.citations).selectinload(MessageCitation.chunk),
+            selectinload(Message.citations).selectinload(MessageCitation.note),
+            selectinload(Message.citations).selectinload(MessageCitation.source),
+        )
+    )
     msg = db.scalars(stmt).first()
     if not msg:
         raise MessageNotFoundError("Message not found.")
     return msg
+
