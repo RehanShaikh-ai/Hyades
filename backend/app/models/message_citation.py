@@ -80,3 +80,25 @@ class MessageCitation(Base):
     chunk: Mapped["ContentChunk"] = relationship("ContentChunk")
     note: Mapped["Note | None"] = relationship("Note")
     source: Mapped["Source | None"] = relationship("Source")
+
+    @property
+    def source_title(self) -> str | None:
+        """Derived source title or filename."""
+        if self.source:
+            return self.source.original_path or self.source.source_identifier
+        return None
+
+    @property
+    def note_title(self) -> str | None:
+        """Derived note title."""
+        if self.note:
+            return self.note.title
+        return None
+
+    @property
+    def excerpt(self) -> str | None:
+        """Derived excerpt from chunk content."""
+        if self.chunk and self.chunk.content:
+            return self.chunk.content[:200]
+        return None
+

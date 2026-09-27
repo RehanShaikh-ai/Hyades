@@ -222,15 +222,20 @@ def process_index_job(db: Session, job_id: uuid.UUID) -> None:
 
         if job.job_type == "reindex_graph":
             summary = graph_index_service.reindex_workspace_graph(db, job.workspace_id, job=job)
-            job.status = "completed"
-            job.completed_at = datetime.now(UTC)
-            job.error_message = (
-                f"Extracted {summary['extracted_entities']} entities, "
-                f"{summary['extracted_relationships']} relationships from "
-                f"{summary['notes_processed']} notes"
-            )
+            if summary.get("total_notes", 0) > 0 and len(summary.get("failed_notes", [])) == summary.get("total_notes", 0) and summary.get("extracted_entities", 0) == 0:
+                job.status = "failed"
+                job.completed_at = datetime.now(UTC)
+                first_err = summary["failed_notes"][0].get("error", "Extraction failed")
+                job.error_message = f"Reindex failed: {first_err}"
+            else:
+                job.status = "completed"
+                job.completed_at = datetime.now(UTC)
+                job.error_message = (
+                    f"Processed {summary['notes_processed']}/{summary['total_notes']} notes, "
+                    f"{summary['extracted_entities']} entities, {summary['extracted_relationships']} relationships"
+                )
             job.progress = {
-                "stage": "completed",
+                "stage": "completed" if job.status == "completed" else "failed",
                 "processed_notes": summary["notes_processed"],
                 "total_notes": summary["total_notes"],
                 "current_note_title": None,
@@ -242,7 +247,7 @@ def process_index_job(db: Session, job_id: uuid.UUID) -> None:
                     f"{summary['extracted_relationships']} relationships across "
                     f"{summary['notes_processed']}/{summary['total_notes']} notes "
                     f"({len(summary['failed_notes'])} failures)"
-                ),
+                ) if job.status == "completed" else f"Reindexing failed: {job.error_message}",
             }
             db.commit()
             return
@@ -283,15 +288,24 @@ def process_index_job(db: Session, job_id: uuid.UUID) -> None:
                     res = graph_index_service.index_note_graph(db, nid)
                     total_entities += res.get("entities_extracted", 0)
                     total_relationships += res.get("relationships_extracted", 0)
+                    if res.get("failed_steps"):
+                        failed_notes.append({"note_id": str(nid), "title": note_title, "error": "; ".join(res["failed_steps"])})
                 except Exception as e:
                     logger.warning("Extraction failed for note %s (%s): %s", nid, note_title, e)
                     failed_notes.append({"note_id": str(nid), "title": note_title, "error": str(e)})
 
-            job.status = "completed"
-            job.completed_at = datetime.now(UTC)
-            job.error_message = None
+            if total_notes > 0 and len(failed_notes) == total_notes and total_entities == 0 and total_relationships == 0:
+                job.status = "failed"
+                job.completed_at = datetime.now(UTC)
+                first_err = failed_notes[0].get("error", "Extraction failed")
+                job.error_message = f"Extraction failed: {first_err}"
+            else:
+                job.status = "completed"
+                job.completed_at = datetime.now(UTC)
+                job.error_message = None
+
             job.progress = {
-                "stage": "completed",
+                "stage": "completed" if job.status == "completed" else "failed",
                 "processed_notes": total_notes - len(failed_notes),
                 "total_notes": total_notes,
                 "current_note_title": None,
@@ -302,7 +316,7 @@ def process_index_job(db: Session, job_id: uuid.UUID) -> None:
                     f"Completed: {total_entities} entities, {total_relationships} relationships "
                     f"across {total_notes - len(failed_notes)}/{total_notes} notes "
                     f"({len(failed_notes)} failures)"
-                ),
+                ) if job.status == "completed" else f"Extraction failed: {job.error_message}",
             }
             db.commit()
             return
