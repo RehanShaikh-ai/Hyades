@@ -101,4 +101,3 @@ class MessageCitation(Base):
         if self.chunk and self.chunk.content:
             return self.chunk.content[:200]
         return None
-

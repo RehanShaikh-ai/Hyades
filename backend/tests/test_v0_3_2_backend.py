@@ -504,8 +504,8 @@ def test_clustering_api_and_service(client: TestClient, db_session: Session, v03
 
 
 def test_graph_reindex_pipeline(db_session: Session, v032_test_data: dict):
-    """Test reindexing deletes AI data, preserves manual entities/relationships
-    per CONTRACT §8.4.
+    """Test reindexing rebuilds clusters and vector payloads without erasing valid entities
+    per persistence and non-destructive reindex guarantees.
     """
     ws1 = v032_test_data["ws1"]
 
@@ -521,7 +521,7 @@ def test_graph_reindex_pipeline(db_session: Session, v032_test_data: dict):
     ai_ent = GraphEntity(
         id=uuid.uuid4(),
         workspace_id=ws1.id,
-        name="AI Disposable Entity",
+        name="AI Persisted Entity",
         entity_type="concept",
         is_manual=False,
     )
@@ -533,10 +533,9 @@ def test_graph_reindex_pipeline(db_session: Session, v032_test_data: dict):
     summary = graph_index_service.reindex_workspace_graph(db_session, ws1.id)
     assert summary["notes_processed"] >= 2
 
-    # Manual entity must still exist
+    # Both manual and AI entities must remain preserved
     assert db_session.get(GraphEntity, manual_ent.id) is not None
-    # AI entity with arbitrary name was wiped and replaced by fresh extraction
-    assert db_session.get(GraphEntity, ai_ent_id) is None
+    assert db_session.get(GraphEntity, ai_ent_id) is not None
 
 
 def test_graph_rag_endpoint_and_hops_limit(

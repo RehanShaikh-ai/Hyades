@@ -90,7 +90,9 @@ def get_workspace_graph(
     total_matching = db.scalar(count_query) or 0
     is_truncated = total_matching > limit
 
-    entities = db.scalars(base_query.order_by(GraphEntity.created_at.desc()).limit(limit)).all()
+    entities = db.scalars(
+        base_query.order_by(GraphEntity.created_at.desc(), GraphEntity.id.asc()).limit(limit)
+    ).all()
     entity_ids = {e.id for e in entities}
 
     # Fetch relationships between the returned entities

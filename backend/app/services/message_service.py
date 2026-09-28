@@ -119,4 +119,3 @@ def get_message(db: Session, message_id: uuid.UUID) -> Message:
     if not msg:
         raise MessageNotFoundError("Message not found.")
     return msg
-

@@ -276,7 +276,7 @@ def test_extraction_retry_exhaustion_raises_cleanly(test_env: dict):
 
 
 def test_one_failed_note_does_not_stop_reindex(db_session: Session, test_env: dict):
-    """A single note failing extraction must not abort the entire reindex."""
+    """A single note failing extraction must not abort the entire extraction."""
     ws = test_env["ws"]
     notes = test_env["notes"]
     failing_id = notes[0].id
@@ -291,7 +291,7 @@ def test_one_failed_note_does_not_stop_reindex(db_session: Session, test_env: di
     with patch.object(
         entity_extraction_service, "extract_entities_for_note", side_effect=side_effect_extract
     ):
-        summary = graph_index_service.reindex_workspace_graph(db_session, ws.id)
+        summary = graph_index_service.extract_workspace_graph(db_session, ws.id)
 
         assert summary["total_notes"] == 2
         assert summary["notes_processed"] == 1
@@ -328,8 +328,8 @@ def test_cluster_replacement_and_deduplication(db_session: Session, test_env: di
     """Running clustering multiple times should replace previous clusters."""
     ws = test_env["ws"]
 
-    # Reindex first so notes have chunks & entities
-    graph_index_service.reindex_workspace_graph(db_session, ws.id)
+    # Extract first so notes have chunks & entities
+    graph_index_service.extract_workspace_graph(db_session, ws.id)
 
     # First clustering run
     res1 = cluster_service.cluster_workspace(db_session, ws.id)
