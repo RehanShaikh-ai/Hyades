@@ -8,7 +8,9 @@ import { SearchPanel } from '@/components/search/SearchPanel';
 import { RAGPanel } from '@/components/rag/RAGPanel';
 import { TagFilter } from '@/components/TagFilter';
 import { FlowHoverButton } from '@/components/ui/flow-hover-button';
-import { Plus, Archive, ChevronLeft, AlertTriangle, UploadCloud, LayoutDashboard, Share2, FileText, Search, Sparkles } from 'lucide-react';
+import { SourceList } from '@/components/SourceList';
+import { AssistantPanel } from '@/components/assistant/AssistantPanel';
+import { Plus, Archive, ChevronLeft, AlertTriangle, UploadCloud, LayoutDashboard, Share2, FileText, Search, Sparkles, Layers } from 'lucide-react';
 import { DashboardView } from './DashboardView';
 import { ImportWizard } from '@/components/ImportWizard';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -46,7 +48,7 @@ interface NotesDashboardProps {
   onBack?: () => void;
 }
 
-type TabType = 'notes' | 'graph' | 'dashboard';
+export type TabType = 'notes' | 'sources' | 'search' | 'graph' | 'assistant' | 'dashboard';
 
 const TabButton = ({ tab, label, icon: Icon, currentTab, setCurrentTab }: { tab: TabType, label: string, icon: React.ElementType, currentTab: TabType, setCurrentTab: (t: TabType) => void }) => (
   <button
@@ -449,9 +451,12 @@ export const NotesDashboard: React.FC<NotesDashboardProps> = ({
               </span>
             </nav>
             
-            <div className="flex items-center gap-1 ml-2">
+            <div className="flex items-center gap-1 ml-2 overflow-x-auto">
               <TabButton tab="notes" label="Notes" icon={FileText} currentTab={currentTab} setCurrentTab={setCurrentTab} />
+              <TabButton tab="sources" label="Sources" icon={Layers} currentTab={currentTab} setCurrentTab={setCurrentTab} />
+              <TabButton tab="search" label="Search" icon={Search} currentTab={currentTab} setCurrentTab={setCurrentTab} />
               <TabButton tab="graph" label="Graph" icon={Share2} currentTab={currentTab} setCurrentTab={setCurrentTab} />
+              <TabButton tab="assistant" label="Assistant" icon={Sparkles} currentTab={currentTab} setCurrentTab={setCurrentTab} />
               <TabButton tab="dashboard" label="Dashboard" icon={LayoutDashboard} currentTab={currentTab} setCurrentTab={setCurrentTab} />
             </div>
           </div>
@@ -470,16 +475,6 @@ export const NotesDashboard: React.FC<NotesDashboardProps> = ({
                 </button>
                 <button
                   type="button"
-                  data-testid="graph-rag-trigger-btn"
-                  onClick={() => setIsRagModalOpen(true)}
-                  className="btn-ghost-dark flex items-center gap-2 text-blue-400 hover:text-blue-300"
-                  title="Knowledge Assistant (Mod+J)"
-                >
-                  <Sparkles size={15} />
-                  <span className="hidden sm:inline">Assistant</span>
-                </button>
-                <button
-                  type="button"
                   onClick={() => setIsArchivedView(!isArchivedView)}
                   className={`btn-ghost-dark${isArchivedView ? ' active' : ''}`}
                   aria-pressed={isArchivedView}
@@ -488,40 +483,25 @@ export const NotesDashboard: React.FC<NotesDashboardProps> = ({
                   <Archive size={14} aria-hidden="true" />
                   <span className="hidden xl:inline">Archived</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="btn-ghost-dark flex items-center gap-2 text-sky-400 hover:text-sky-300"
+                  title="Import Markdown & Obsidian notes"
+                >
+                  <UploadCloud size={15} />
+                  <span className="hidden lg:inline">Import Notes</span>
+                </button>
+                <FlowHoverButton
+                  type="button"
+                  onClick={handleNewNote}
+                  icon={<Plus size={15} strokeWidth={2.5} aria-hidden="true" />}
+                  className="px-3.5 py-1.5 text-xs font-semibold"
+                  title="New Note (Mod+N)"
+                >
+                  New Note
+                </FlowHoverButton>
               </>
-            )}
-
-            {currentTab === 'graph' && (
-              <button
-                type="button"
-                data-testid="graph-rag-trigger-btn"
-                onClick={() => setIsRagModalOpen(true)}
-                className="btn-ghost-dark flex items-center gap-2 text-violet-400 hover:text-violet-300"
-                title="Knowledge Assistant (Mod+J)"
-              >
-                <Sparkles size={15} />
-                <span className="hidden sm:inline">Assistant</span>
-              </button>
-            )}
-
-            <button
-              onClick={() => setIsImportModalOpen(true)}
-              className="btn-ghost-dark flex items-center gap-2 text-sky-400 hover:text-sky-300"
-            >
-              <UploadCloud size={15} />
-              <span className="hidden lg:inline">Import</span>
-            </button>
-
-            {currentTab === 'notes' && (
-              <FlowHoverButton
-                type="button"
-                onClick={handleNewNote}
-                icon={<Plus size={15} strokeWidth={2.5} aria-hidden="true" />}
-                className="px-3.5 py-1.5 text-xs font-semibold"
-                title="New Note (Mod+N)"
-              >
-                New Note
-              </FlowHoverButton>
             )}
           </div>
         </header>
@@ -792,6 +772,36 @@ export const NotesDashboard: React.FC<NotesDashboardProps> = ({
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {currentTab === 'sources' && (
+          <div className="flex-1 flex flex-col h-full overflow-hidden">
+            <SourceList workspaceId={workspaceId} />
+          </div>
+        )}
+
+        {currentTab === 'search' && (
+          <div className="flex-1 p-4 sm:p-6 overflow-y-auto max-w-5xl mx-auto w-full">
+            <SearchPanel
+              workspaceId={workspaceId}
+              onNoteSelect={(noteId) => {
+                handleNavigateToNote(noteId);
+                setCurrentTab('notes');
+              }}
+            />
+          </div>
+        )}
+
+        {currentTab === 'assistant' && (
+          <div className="flex-1 flex flex-col h-full overflow-hidden">
+            <AssistantPanel
+              workspaceId={workspaceId}
+              onNavigateToNote={(noteId) => {
+                handleNavigateToNote(noteId);
+                setCurrentTab('notes');
+              }}
+            />
           </div>
         )}
 

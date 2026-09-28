@@ -154,20 +154,39 @@ export const StarField: React.FC = () => {
       gridCtx.restore();
     };
 
+    let isAnimating = false;
+    let lastInteractionTime = performance.now();
+
+    const startAnimation = () => {
+      lastInteractionTime = performance.now();
+      if (!isAnimating && !document.hidden) {
+        isAnimating = true;
+        lastDrawTime = performance.now();
+        animFrame = requestAnimationFrame(draw);
+      }
+    };
+
     const draw = (now: number) => {
-      if (document.hidden) return;
-      animFrame = requestAnimationFrame(draw);
+      if (document.hidden) {
+        isAnimating = false;
+        return;
+      }
 
       const elapsed = now - lastDrawTime;
-      if (elapsed < fpsInterval) return;
+      if (elapsed < fpsInterval) {
+        animFrame = requestAnimationFrame(draw);
+        return;
+      }
       lastDrawTime = now - (elapsed % fpsInterval);
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       time += 1;
 
       // Smooth dampening for the fisheye optical focal center
-      focalX += (targetFocalX - focalX) * 0.04;
-      focalY += (targetFocalY - focalY) * 0.04;
+      const diffX = targetFocalX - focalX;
+      const diffY = targetFocalY - focalY;
+      focalX += diffX * 0.04;
+      focalY += diffY * 0.04;
 
       // Re-render cached grid only when focal center shifts noticeably
       if (Math.hypot(focalX - cachedFocalX, focalY - cachedFocalY) > 0.8) {
@@ -217,10 +236,21 @@ export const StarField: React.FC = () => {
           ctx.fill();
         }
       }
+
+      // If idle for > 1.5s and focal center has settled, sleep the RAF loop to save 100% CPU
+      const isIdle = now - lastInteractionTime > 1500;
+      const isSettled = Math.hypot(diffX, diffY) < 0.2;
+      if (isIdle && isSettled) {
+        isAnimating = false;
+        return;
+      }
+
+      animFrame = requestAnimationFrame(draw);
     };
 
     let mouseMoveTicking = false;
     const handleMouseMove = (e: MouseEvent) => {
+      startAnimation();
       if (!mouseMoveTicking) {
         requestAnimationFrame(() => {
           mouseX = e.clientX;
@@ -236,16 +266,19 @@ export const StarField: React.FC = () => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
         cancelAnimationFrame(animFrame);
+        isAnimating = false;
       } else {
-        lastDrawTime = performance.now();
-        animFrame = requestAnimationFrame(draw);
+        startAnimation();
       }
     };
 
     resize();
-    animFrame = requestAnimationFrame(draw);
+    startAnimation();
 
-    window.addEventListener('resize', resize);
+    window.addEventListener('resize', () => {
+      resize();
+      startAnimation();
+    });
     window.addEventListener('mousemove', handleMouseMove, { passive: true });
     document.addEventListener('visibilitychange', handleVisibilityChange);
 

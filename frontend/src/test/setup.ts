@@ -7,12 +7,17 @@ afterEach(() => {
   cleanup();
 });
 
-if (typeof window !== 'undefined' && !window.ResizeObserver) {
-  window.ResizeObserver = class ResizeObserver {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  };
+if (typeof window !== 'undefined') {
+  if (!window.ResizeObserver) {
+    window.ResizeObserver = class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
+  }
+  if (!window.HTMLElement.prototype.scrollIntoView) {
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+  }
 }
 
 // Global mock for react-force-graph-2d to prevent Canvas rendering crashes in jsdom
