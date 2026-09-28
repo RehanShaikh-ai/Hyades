@@ -12,6 +12,7 @@ import {
   ZoomOut,
   Compass,
   RefreshCw,
+  LayoutGrid,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -31,6 +32,8 @@ export interface ConstellationGraphProps {
 interface InternalGraphNode extends GraphNodeResponse {
   x?: number;
   y?: number;
+  fx?: number;
+  fy?: number;
   vx?: number;
   vy?: number;
 }
@@ -43,6 +46,8 @@ interface InternalGraphLink {
   confidence: number;
   is_manual: boolean;
 }
+
+import { computeHierarchicalGraphLayout } from '@/lib/graph_layout';
 
 export const ConstellationGraph: React.FC<ConstellationGraphProps> = ({
   workspaceId,
@@ -74,19 +79,23 @@ export const ConstellationGraph: React.FC<ConstellationGraphProps> = ({
   const isLoading = externalLoading !== undefined ? Boolean(externalLoading) : internalLoading;
   const error = externalError !== undefined ? externalError : internalError;
 
+  // Stabilize filterParams value so object reference changes don't trigger refetch
+  const filterParamsKey = useMemo(() => JSON.stringify(filterParams || {}), [filterParams]);
+
   const fetchGraph = useCallback(async () => {
     if (isControlled) return;
     setInternalLoading(true);
     setInternalError(null);
     try {
-      const data = await getWorkspaceGraph(workspaceId, filterParams);
+      const parsedFilters = filterParamsKey ? JSON.parse(filterParamsKey) : undefined;
+      const data = await getWorkspaceGraph(workspaceId, parsedFilters);
       setInternalData(data);
     } catch (err) {
       setInternalError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       setInternalLoading(false);
     }
-  }, [workspaceId, filterParams, isControlled]);
+  }, [workspaceId, filterParamsKey, isControlled]);
 
   useEffect(() => {
     if (!isControlled) {
@@ -123,7 +132,6 @@ export const ConstellationGraph: React.FC<ConstellationGraphProps> = ({
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
 
-
   const handleNodeClick = useCallback(
     (node: unknown) => {
       const typedNode = node as { id?: string };
@@ -139,30 +147,58 @@ export const ConstellationGraph: React.FC<ConstellationGraphProps> = ({
   const handleZoomIn = () => {
     if (graphRef.current) {
       const zoom = graphRef.current.zoom();
-      graphRef.current.zoom(zoom * 1.3, 400);
+      graphRef.current.zoom(zoom * 1.3, 300);
     }
   };
 
   const handleZoomOut = () => {
     if (graphRef.current) {
       const zoom = graphRef.current.zoom();
-      graphRef.current.zoom(zoom / 1.3, 400);
+      graphRef.current.zoom(zoom / 1.3, 300);
     }
   };
 
   const handleResetZoom = () => {
     if (graphRef.current) {
-      graphRef.current.zoomToFit(500, 40);
+      graphRef.current.zoomToFit(400, 40);
     }
   };
 
-  // Convert to ForceGraph2D payload
+  // Deterministic hierarchical layout computed once on data arrival (Zero continuous physics)
+  const deterministicPositions = useMemo(() => {
+    if (!graphData || !graphData.nodes) return {};
+    return computeHierarchicalGraphLayout(graphData.nodes, graphData.edges, graphData.clusters);
+  }, [graphData]);
+
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const labelOccupancyRef = useRef<Array<[number, number, number, number]>>([]);
+
+  // Set of 1-hop connected neighbors for the selected or hovered entity
+  const activeFocusId = selectedEntityId || hoveredNodeId;
+  const activeNeighbors = useMemo(() => {
+    if (!activeFocusId || !graphData?.edges) return new Set<string>();
+    const neighbors = new Set<string>();
+    for (const edge of graphData.edges) {
+      if (edge.source_entity_id === activeFocusId) neighbors.add(edge.target_entity_id);
+      if (edge.target_entity_id === activeFocusId) neighbors.add(edge.source_entity_id);
+    }
+    return neighbors;
+  }, [activeFocusId, graphData]);
+
+  // Convert to ForceGraph2D payload with fixed coordinates
   const formattedData = useMemo(() => {
     if (!graphData) return { nodes: [], links: [] };
 
-    const nodes: InternalGraphNode[] = graphData.nodes.map((node) => ({
-      ...node,
-    }));
+    const nodes: InternalGraphNode[] = graphData.nodes.map((node) => {
+      const pos = deterministicPositions[node.id] || { x: 0, y: 0 };
+      return {
+        ...node,
+        x: pos.x,
+        y: pos.y,
+        fx: pos.x, // Lock fixed coordinates
+        fy: pos.y,
+      };
+    });
 
     const links: InternalGraphLink[] = graphData.edges.map((edge) => ({
       id: edge.id,
@@ -174,70 +210,125 @@ export const ConstellationGraph: React.FC<ConstellationGraphProps> = ({
     }));
 
     return { nodes, links };
-  }, [graphData]);
+  }, [graphData, deterministicPositions]);
 
-  // Constellation star rendering
+  // Immediately center and halt animation loop once rendered
+  const handleEngineStop = useCallback(() => {
+    if (graphRef.current) {
+      graphRef.current.zoomToFit(400, 40);
+      graphRef.current.pauseAnimation?.();
+    }
+  }, []);
+
+  // Frame pre-render hook to reset screen-space label collision occupancy buffer
+  const handleRenderFramePre = useCallback(() => {
+    labelOccupancyRef.current = [];
+  }, []);
+
+  // One-shot explicit "Arrange Graph" action
+  const handleArrangeGraph = () => {
+    if (graphRef.current) {
+      graphRef.current.resumeAnimation?.();
+      graphRef.current.d3ReheatSimulation?.();
+    }
+  };
+
+  // Fast, lightweight node renderer with screen-space label collision prevention
   const renderNode = useCallback(
     (node: unknown, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const n = node as InternalGraphNode;
       if (n.x === undefined || n.y === undefined) return;
 
       const isSelected = selectedEntityId === n.id;
+      const isHovered = hoveredNodeId === n.id;
+      const isNeighbor = activeNeighbors.has(n.id);
       const isHighlighted = highlightEntityIds.includes(n.id);
+      const hasActiveFocus = Boolean(activeFocusId);
+
       const degree = n.degree || 1;
-      const baseRadius = Math.max(3, Math.min(10, 3 + Math.log2(degree + 1) * 2));
+      const baseRadius = Math.max(3.5, Math.min(10, 3 + Math.log2(degree + 1) * 1.5));
       const color = getEntityTypeColor(n.entity_type);
 
-      // Celestial halo / glow
-      const glowRadius = isSelected ? baseRadius * 3 : isHighlighted ? baseRadius * 2.4 : baseRadius * 1.5;
-      const gradient = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, glowRadius);
-      gradient.addColorStop(0, color);
-      gradient.addColorStop(0.4, isSelected ? 'rgba(56, 189, 248, 0.4)' : `${color}44`);
-      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      // Node body opacity dimmed if an unrelated node is focused
+      const isDimmed = hasActiveFocus && !isSelected && !isHovered && !isNeighbor && !isHighlighted;
 
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, glowRadius, 0, 2 * Math.PI);
-      ctx.fillStyle = gradient;
-      ctx.fill();
-
-      // Core star body
       ctx.beginPath();
       ctx.arc(n.x, n.y, baseRadius, 0, 2 * Math.PI);
-      ctx.fillStyle = isSelected ? '#ffffff' : color;
+      ctx.fillStyle = isSelected || isHovered ? '#ffffff' : isDimmed ? `${color}44` : color;
       ctx.fill();
 
-      // Outer ring for selected or manual nodes
-      if (isSelected) {
+      // Outer ring for selected, hovered, neighbor, or manual nodes
+      if (isSelected || isHovered) {
         ctx.beginPath();
-        ctx.arc(n.x, n.y, baseRadius + 3, 0, 2 * Math.PI);
+        ctx.arc(n.x, n.y, baseRadius + 3.5, 0, 2 * Math.PI);
         ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 1.8 / globalScale;
+        ctx.lineWidth = 2.5 / globalScale;
+        ctx.stroke();
+      } else if (isNeighbor) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, baseRadius + 2, 0, 2 * Math.PI);
+        ctx.strokeStyle = '#7dd3fc';
+        ctx.lineWidth = 1.5 / globalScale;
         ctx.stroke();
       } else if (n.is_manual) {
         ctx.beginPath();
         ctx.arc(n.x, n.y, baseRadius + 1.5, 0, 2 * Math.PI);
         ctx.strokeStyle = '#fbbf24';
-        ctx.lineWidth = 1 / globalScale;
+        ctx.lineWidth = 1.2 / globalScale;
         ctx.stroke();
       }
 
-      // Label rendering at readable zoom levels
-      if (globalScale > 0.8 || isSelected || isHighlighted) {
-        const label = n.name || n.title || 'Entity';
-        const fontSize = Math.max(10 / globalScale, 11);
-        ctx.font = `${isSelected ? '600' : '400'} ${fontSize}px Inter, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
+      // Priority-based Level-of-Detail with Screen-Space Collision Culling
+      const isHighPriority = isSelected || isHovered || isNeighbor || isHighlighted;
+      const shouldAttemptLabel =
+        isHighPriority ||
+        globalScale > 1.3 ||
+        (globalScale > 0.75 && degree >= 3) ||
+        degree >= 8;
 
-        // Background shadow for readability
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-        ctx.shadowBlur = 4;
-        ctx.fillStyle = isSelected ? '#ffffff' : isHighlighted ? '#7dd3fc' : '#cbd5e1';
-        ctx.fillText(label, n.x, n.y + baseRadius + 4);
-        ctx.shadowBlur = 0;
+      if (shouldAttemptLabel && !isDimmed) {
+        const label = n.name || n.title || 'Entity';
+        const fontSize = Math.max(9 / globalScale, 11);
+        const textWidth = Math.min(label.length * fontSize * 0.58, 140);
+        const textHeight = fontSize + 2;
+        const pad = 3;
+
+        const box: [number, number, number, number] = [
+          n.x - textWidth / 2 - pad,
+          n.y + baseRadius + 2 - pad,
+          n.x + textWidth / 2 + pad,
+          n.y + baseRadius + 2 + textHeight + pad,
+        ];
+
+        // Check screen-space collision against higher priority labels
+        let hasCollision = false;
+        if (!isHighPriority) {
+          for (const occ of labelOccupancyRef.current) {
+            if (
+              box[0] < occ[2] &&
+              box[2] > occ[0] &&
+              box[1] < occ[3] &&
+              box[3] > occ[1]
+            ) {
+              hasCollision = true;
+              break;
+            }
+          }
+        }
+
+        if (!hasCollision || isHighPriority) {
+          if (!isHighPriority) {
+            labelOccupancyRef.current.push(box);
+          }
+          ctx.font = `${isHighPriority ? '600' : '400'} ${fontSize}px Inter, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.fillStyle = isSelected || isHovered ? '#ffffff' : isNeighbor ? '#e0f2fe' : isHighlighted ? '#7dd3fc' : '#cbd5e1';
+          ctx.fillText(label, n.x, n.y + baseRadius + 3);
+        }
       }
     },
-    [selectedEntityId, highlightEntityIds]
+    [selectedEntityId, hoveredNodeId, activeFocusId, activeNeighbors, highlightEntityIds]
   );
 
   return (
@@ -265,6 +356,14 @@ export const ConstellationGraph: React.FC<ConstellationGraphProps> = ({
 
       {/* ── Control Action Buttons ── */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-1 bg-slate-950/70 border border-white/[0.08] p-1 rounded-xl backdrop-blur-xl shadow-xl shadow-black/40">
+        <button
+          onClick={handleArrangeGraph}
+          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/[0.06] transition-colors"
+          title="Arrange Graph"
+          aria-label="Arrange graph"
+        >
+          <LayoutGrid size={16} />
+        </button>
         <button
           onClick={handleZoomIn}
           className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/[0.06] transition-colors"
@@ -421,8 +520,8 @@ export const ConstellationGraph: React.FC<ConstellationGraphProps> = ({
         </div>
       )}
 
-      {/* ── ForceGraph2D Canvas ── */}
-      <div className="flex-1 overflow-hidden" style={{ width: '100%', height: '100%' }}>
+      {/* ── ForceGraph2D Canvas (Zero Physics / Static Map Mode) ── */}
+      <div className="flex-1 overflow-hidden relative" style={{ width: '100%', height: '100%' }}>
         <ForceGraph2D
           ref={graphRef}
           width={dimensions.width}
@@ -432,31 +531,47 @@ export const ConstellationGraph: React.FC<ConstellationGraphProps> = ({
           nodeRelSize={6}
           linkColor={(link: unknown) => {
             const l = link as InternalGraphLink;
-            return l.is_manual ? 'rgba(251, 191, 36, 0.65)' : 'rgba(56, 189, 248, 0.55)';
+            const srcId = typeof l.source === 'object' ? (l.source as InternalGraphNode).id : l.source;
+            const tgtId = typeof l.target === 'object' ? (l.target as InternalGraphNode).id : l.target;
+            const isConnected = activeFocusId && (srcId === activeFocusId || tgtId === activeFocusId);
+
+            if (activeFocusId) {
+              if (isConnected) {
+                return l.is_manual ? 'rgba(251, 191, 36, 0.95)' : 'rgba(56, 189, 248, 0.95)';
+              }
+              return 'rgba(148, 163, 184, 0.05)';
+            }
+            return l.is_manual ? 'rgba(251, 191, 36, 0.50)' : 'rgba(56, 189, 248, 0.30)';
           }}
           linkWidth={(link: unknown) => {
             const l = link as InternalGraphLink;
-            return Math.max(1.2, (l.confidence || 0.5) * 2.2);
+            const srcId = typeof l.source === 'object' ? (l.source as InternalGraphNode).id : l.source;
+            const tgtId = typeof l.target === 'object' ? (l.target as InternalGraphNode).id : l.target;
+            const isConnected = activeFocusId && (srcId === activeFocusId || tgtId === activeFocusId);
+
+            if (isConnected) return 2.2;
+            if (activeFocusId) return 0.7;
+            return Math.max(1, (l.confidence || 0.5) * 1.4);
           }}
-          linkDirectionalParticles={1}
-          linkDirectionalParticleSpeed={0.004}
-          linkDirectionalParticleWidth={2}
-          linkDirectionalParticleColor={() => '#38bdf8'}
+          linkCurvature={0.06}
+          linkDirectionalParticles={0}
           linkLabel={(link: unknown) => {
             const l = link as InternalGraphLink;
             return `${l.relationship_type} (${Math.round((l.confidence || 1) * 100)}%)`;
           }}
           onNodeClick={handleNodeClick}
-          cooldownTicks={80}
-          cooldownTime={2000}
-          onNodeDrag={() => graphRef.current?.resumeAnimation?.()}
-          onNodeDragEnd={() => graphRef.current?.pauseAnimation?.()}
-          onEngineStop={() => {
-            graphRef.current?.zoomToFit(400, 40);
-            graphRef.current?.pauseAnimation?.();
+          onNodeHover={(node: unknown) => {
+            const typedNode = node as { id?: string };
+            setHoveredNodeId(typedNode?.id || null);
           }}
+          onRenderFramePre={handleRenderFramePre}
+          cooldownTicks={0}
+          cooldownTime={0}
+          warmupTicks={0}
+          enableNodeDrag={false}
+          autoPauseRedraw={true}
+          onEngineStop={handleEngineStop}
           backgroundColor="rgba(3, 7, 18, 0)"
-
         />
       </div>
     </div>
