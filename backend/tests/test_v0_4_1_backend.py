@@ -377,9 +377,7 @@ def test_conversation_crud_lifecycle(db_session: Session, v041_setup: dict):
         conversation_service.get_conversation(db_session, conv.id)
 
 
-def test_conversation_title_auto_generated_on_first_message(
-    db_session: Session, v041_setup: dict
-):
+def test_conversation_title_auto_generated_on_first_message(db_session: Session, v041_setup: dict):
     """Verify conversation title is auto-generated from first message at word boundary (§6.3)."""
     ws = v041_setup["ws_a"]
     conv = conversation_service.create_conversation(db_session, workspace_id=ws.id)
@@ -401,9 +399,7 @@ def test_conversation_title_auto_generated_on_first_message(
 # ── 6. AI Assistant Query, Citations, & Scoping Tests ──────────────────────────
 
 
-def test_assistant_run_with_citations_and_similarity_score(
-    db_session: Session, v041_setup: dict
-):
+def test_assistant_run_with_citations_and_similarity_score(db_session: Session, v041_setup: dict):
     """Verify assistant generates response, persists citations with similarity_score."""
     ws = v041_setup["ws_a"]
     conv = conversation_service.create_conversation(db_session, workspace_id=ws.id)

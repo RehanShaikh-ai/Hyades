@@ -129,7 +129,7 @@ def test_entities_extracted_across_unrelated_notes(
     """Verify entities are extracted across ML, OS, Networks, Finance, Cooking notes."""
     ws = mixed_dataset_workspace["ws"]
 
-    summary = graph_index_service.reindex_workspace_graph(db_session, ws.id)
+    summary = graph_index_service.extract_workspace_graph(db_session, ws.id)
     assert summary["notes_processed"] == 5
     assert summary["extracted_entities"] > 0
 
@@ -166,7 +166,7 @@ def test_graph_reindex_surfaces_extraction_failures(
     with patch.object(
         entity_extraction_service, "extract_entities_for_note", side_effect=mock_extract
     ):
-        summary = graph_index_service.reindex_workspace_graph(db_session, ws.id)
+        summary = graph_index_service.extract_workspace_graph(db_session, ws.id)
 
         assert summary["total_notes"] == 5
         assert summary["notes_processed"] == 4
@@ -181,7 +181,7 @@ def test_multiple_connected_components_and_relationships(
     """Verify extracted relationships link concepts and form multiple distinct graph components."""
     ws = mixed_dataset_workspace["ws"]
 
-    graph_index_service.reindex_workspace_graph(db_session, ws.id)
+    graph_index_service.extract_workspace_graph(db_session, ws.id)
 
     relationships = db_session.scalars(
         entity_extraction_service.select(GraphRelationship).where(
@@ -204,8 +204,8 @@ def test_unified_assistant_with_graph_expansion(db_session: Session, mixed_datas
     ws = mixed_dataset_workspace["ws"]
     note_ml = mixed_dataset_workspace["notes"][0]
 
-    # Run reindex to populate entities & relationships
-    graph_index_service.reindex_workspace_graph(db_session, ws.id)
+    # Run extraction to populate entities & relationships
+    graph_index_service.extract_workspace_graph(db_session, ws.id)
 
     from app.schemas.search import SearchResultItem
 

@@ -18,6 +18,7 @@ class GraphNodeResponse(BaseModel):
     id: uuid.UUID
     name: str
     entity_type: str
+    description: str | None = None
     cluster_id: uuid.UUID | None = None
     is_manual: bool = False
     degree: int = 0

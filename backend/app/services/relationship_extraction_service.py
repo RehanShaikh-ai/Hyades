@@ -254,18 +254,27 @@ def extract_relationships_for_note(
 
     # Find entities linked to this note via EntityChunk
     entity_chunks = db.scalars(select(EntityChunk).where(EntityChunk.note_id == note_id)).all()
+    entity_ids = {ec.entity_id for ec in entity_chunks}
 
-    if not entity_chunks:
-        return []
+    # Also include any workspace entities whose name appears in the note text or title
+    all_ws_entities = db.scalars(
+        select(GraphEntity).where(GraphEntity.workspace_id == note.workspace_id)
+    ).all()
+    note_text_full = f"{note.title or ''} {note.content or ''}".lower()
+    for ent in all_ws_entities:
+        if ent.name.lower() in note_text_full:
+            entity_ids.add(ent.id)
 
-    entity_ids = list({ec.entity_id for ec in entity_chunks})
     if len(entity_ids) < 2:
         return []
 
     entities = db.scalars(select(GraphEntity).where(GraphEntity.id.in_(entity_ids))).all()
+    if len(entities) < 2:
+        return []
 
     entity_names = [e.name for e in entities]
-    entity_id_map = {e.name: e.id for e in entities}
+    # Build case-insensitive lookup map
+    entity_id_map = {e.name.lower(): e.id for e in entities}
 
     # Process by chunk or full text
     chunks = db.scalars(
@@ -281,23 +290,27 @@ def extract_relationships_for_note(
     if chunks:
         for chunk in chunks:
             chunk_eids = {ec.entity_id for ec in entity_chunks if ec.chunk_id == chunk.id}
-            chunk_entities = [e.name for e in entities if e.id in chunk_eids]
+            chunk_entities = [
+                e.name
+                for e in entities
+                if e.id in chunk_eids or e.name.lower() in chunk.content.lower()
+            ]
             if len(chunk_entities) >= 2:
                 rels = extract_relationships(chunk.content, chunk_entities, model=extraction_model)
                 for r in rels:
                     r["_chunk_id"] = chunk.id
                 extracted_rels.extend(rels)
 
-    # 2. Always extract across note-level entities if chunk-level yielded no or few relationships
+    # 2. Extract across note-level entities if chunk-level yielded few or no relationships
     if len(entity_names) >= 2:
-        note_text = note.content or note.title
+        note_text = note.content or note.title or ""
         note_rels = extract_relationships(note_text, entity_names, model=extraction_model)
         for nr in note_rels:
             # Avoid duplicate (source, target, type)
             existing_match = any(
-                er["source"] == nr["source"]
-                and er["target"] == nr["target"]
-                and er["type"] == nr["type"]
+                er["source"].lower() == nr["source"].lower()
+                and er["target"].lower() == nr["target"].lower()
+                and er["type"].lower() == nr["type"].lower()
                 for er in extracted_rels
             )
             if not existing_match:
@@ -312,16 +325,15 @@ def extract_relationships_for_note(
         if not src_canon or not tgt_canon or src_canon.lower() == tgt_canon.lower():
             continue
 
-        src_id = entity_id_map.get(src_canon)
-        tgt_id = entity_id_map.get(tgt_canon)
+        src_id = entity_id_map.get(src_canon.lower())
+        tgt_id = entity_id_map.get(tgt_canon.lower())
 
         if not src_id or not tgt_id or src_id == tgt_id:
             continue
 
-        rel_type = rel_data["type"]
+        rel_type = rel_data["type"].strip().lower().replace(" ", "_")
         desc = rel_data["description"]
-        conf = rel_data["confidence"]
-
+        conf = float(rel_data["confidence"])
 
         # Check existing relationship
         existing = db.scalars(
@@ -357,7 +369,6 @@ def extract_relationships_for_note(
         # Attach provenance if chunk is known
         chunk_id = rel_data.get("_chunk_id")
         if chunk_id:
-            # Check if there is an EntityChunk provenance to link
             ec = db.scalars(
                 select(EntityChunk).where(
                     EntityChunk.entity_id == src_id,
