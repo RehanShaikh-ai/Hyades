@@ -1,14 +1,24 @@
 """Source SQLAlchemy model.
 
-Canonical model per contract §5.1.
-Tracks import provenance and deduplication.
+Canonical model per contract §5.1 (v0.2.2) and CONTRACT v0.4.1 §6.1.
+Tracks import provenance, deduplication, and file-upload processing lifecycle.
 """
 
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.dialects.sqlite import JSON as SQLITE_JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -23,7 +33,7 @@ if TYPE_CHECKING:
 class Source(Base):
     """Source database model.
 
-    Contract §5.1:
+    Contract §6.1:
         id: UUID primary key, SQLAlchemy-generated
         workspace_id: UUID foreign key -> workspaces.id with ON DELETE CASCADE
         note_id: UUID foreign key -> notes.id with ON DELETE SET NULL (nullable)
@@ -37,6 +47,15 @@ class Source(Base):
         error_message: Text, nullable
         imported_at: DateTime(UTC), required
         last_synced_at: DateTime(UTC), nullable
+
+    v0.4.1 extensions (§6.1):
+        processing_stage: String(50), required
+            (upload, extract, normalize, chunk, embed, index, complete)
+        processing_status: String(20), required (PENDING, PROCESSING, READY, FAILED)
+        file_size_bytes: BigInteger, nullable
+        page_count: Integer, nullable
+        chunk_count: Integer, nullable
+        error_stage: String(50), nullable
     """
 
     __tablename__ = "sources"
@@ -47,6 +66,7 @@ class Source(Base):
         Index("idx_sources_workspace_identifier", "workspace_id", "source_identifier", unique=True),
         Index("idx_sources_workspace_batch", "workspace_id", "import_batch_id"),
         Index("idx_sources_note_id", "note_id"),
+        Index("idx_source_extensions", "workspace_id", "processing_status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -86,6 +106,7 @@ class Source(Base):
     )
     import_status: Mapped[str] = mapped_column(
         String(20),
+        default="pending",
         nullable=False,
     )
     raw_metadata: Mapped[dict[str, Any] | None] = mapped_column(
@@ -104,6 +125,34 @@ class Source(Base):
     )
     last_synced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
+        nullable=True,
+    )
+
+    # v0.4.1 extensions (§6.1)
+    processing_stage: Mapped[str] = mapped_column(
+        String(50),
+        default="upload",
+        nullable=False,
+    )
+    processing_status: Mapped[str] = mapped_column(
+        String(20),
+        default="PENDING",
+        nullable=False,
+    )
+    file_size_bytes: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+    )
+    page_count: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    chunk_count: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    error_stage: Mapped[str | None] = mapped_column(
+        String(50),
         nullable=True,
     )
 

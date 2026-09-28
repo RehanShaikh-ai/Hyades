@@ -1,7 +1,7 @@
 """EntityChunk SQLAlchemy model (Provenance).
 
-Canonical model per CONTRACT v0.3.2 §5.1, §6.3.
-Maps extracted entities and relationships back to the specific note chunks that originated them.
+Canonical model per CONTRACT v0.3.2 §5.1, §6.3, and CONTRACT v0.4.1 §6.2.
+Maps extracted entities and relationships back to the specific content chunks that originated them.
 """
 
 import uuid
@@ -16,10 +16,10 @@ from sqlalchemy.orm import relationship as sa_relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.content_chunk import ContentChunk
     from app.models.graph_entity import GraphEntity
     from app.models.graph_relationship import GraphRelationship
     from app.models.note import Note
-    from app.models.note_chunk import NoteChunk
     from app.models.workspace import Workspace
 
 
@@ -46,7 +46,7 @@ class EntityChunk(Base):
     )
     chunk_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("note_chunks.id", ondelete="CASCADE"),
+        ForeignKey("content_chunks.id", ondelete="CASCADE"),
         nullable=False,
     )
     relationship_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -82,7 +82,7 @@ class EntityChunk(Base):
 
     # Relationships
     entity: Mapped["GraphEntity"] = sa_relationship("GraphEntity", back_populates="chunks")
-    chunk: Mapped["NoteChunk"] = sa_relationship("NoteChunk")
+    chunk: Mapped["ContentChunk"] = sa_relationship("ContentChunk")
     relationship: Mapped["GraphRelationship | None"] = sa_relationship(
         "GraphRelationship", back_populates="provenance_chunks"
     )

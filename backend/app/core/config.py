@@ -14,7 +14,7 @@ logger = logging.getLogger("app.core.config")
 class Settings(BaseSettings):
     """Application settings loaded from environment variables.
 
-    All canonical environment variable names are defined in contract §5.1.
+    All canonical environment variable names are defined in contract §5.1, §15.
     """
 
     model_config = SettingsConfigDict(
@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     PROVIDER_TIMEOUT_SECONDS: int = 30
     CONTEXT_TOKEN_LIMIT: int = 4096
     RAG_MIN_RELEVANCE_SCORE: float = 0.45
+
+    # v0.4.1 — Usability, Sources & Persistent Assistant (Contract §15)
+    CONVERSATION_HISTORY_LIMIT: int = 10
+    SOURCE_MAX_FILE_SIZE_MB: int = 25
+    SOURCE_PROCESSING_TIMEOUT_SECONDS: int = 120
 
     @property
     def database_url(self) -> str:

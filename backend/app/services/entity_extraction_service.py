@@ -15,10 +15,10 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.exceptions import ExtractionFailedError
+from app.models.content_chunk import ContentChunk
 from app.models.entity_chunk import EntityChunk
 from app.models.graph_entity import VALID_ENTITY_TYPES, GraphEntity
 from app.models.note import Note
-from app.models.note_chunk import NoteChunk
 from app.services import llm_service
 
 logger = logging.getLogger("app.services.entity_extraction_service")
@@ -195,11 +195,13 @@ def extract_entities_for_note(
 
     # Get note chunks
     chunks = db.scalars(
-        select(NoteChunk).where(NoteChunk.note_id == note_id).order_by(NoteChunk.chunk_index.asc())
+        select(ContentChunk)
+        .where(ContentChunk.note_id == note_id)
+        .order_by(ContentChunk.chunk_index.asc())
     ).all()
 
     extraction_model = model or getattr(settings, "LLM_MODEL", "local-llm")
-    extracted_entities_by_chunk: list[tuple[NoteChunk | None, list[dict[str, Any]]]] = []
+    extracted_entities_by_chunk: list[tuple[ContentChunk | None, list[dict[str, Any]]]] = []
 
     if chunks:
         for chunk in chunks:

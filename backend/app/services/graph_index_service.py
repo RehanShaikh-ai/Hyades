@@ -1,22 +1,24 @@
-"""Graph indexing service.
+"""Graph indexing and extraction service.
 
-Canonical service per CONTRACT v0.3.2 §5.3, §7, §8.1-§8.4, §12.2.
-Coordinates entity/relationship extraction pipeline, vector payload synchronization, and reindexing.
+Canonical service per CONTRACT v0.3.2 §5.3, §7, §8.1-§8.4, §12.2 and CONTRACT v0.4.1.
+Coordinates entity/relationship extraction, vector payload synchronization, and reindexing.
+Explicitly separates Extraction (LLM-based entity/relationship discovery)
+from Reindexing (rebuilding clusters, suggestions, and vector payloads from persisted knowledge).
 """
 
 import logging
 import uuid
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import NoteNotFoundError, WorkspaceNotFoundError
+from app.models.content_chunk import ContentChunk
 from app.models.entity_chunk import EntityChunk
 from app.models.graph_entity import GraphEntity
 from app.models.graph_relationship import GraphRelationship
 from app.models.note import Note
-from app.models.note_chunk import NoteChunk
 from app.models.note_cluster_member import NoteClusterMember
 from app.models.workspace import Workspace
 from app.services import (
@@ -31,9 +33,11 @@ logger = logging.getLogger("app.services.graph_index_service")
 
 
 def index_note_graph(db: Session, note_id: uuid.UUID) -> dict[str, Any]:
-    """Run full graph extraction and indexing pipeline for a note per CONTRACT §8.1.
+    """Run entity and relationship extraction for a single note.
 
-    Processes note extraction with bounded failure tolerance.
+    Persists extracted entities, relationships, and provenance in PostgreSQL,
+    then updates link suggestions and vector chunk payloads.
+    Never wipes out previously persisted entities/relationships on failure.
     """
     note = db.get(Note, note_id)
     if not note:
@@ -67,8 +71,8 @@ def index_note_graph(db: Session, note_id: uuid.UUID) -> dict[str, Any]:
             "Link suggestion generation failed for workspace %s: %s", note.workspace_id, e
         )
 
-    # Step 4: Update Qdrant chunk payloads with entity_ids and cluster_id (§7)
-    chunks = db.scalars(select(NoteChunk).where(NoteChunk.note_id == note_id)).all()
+    # Step 4: Update Qdrant chunk payloads with entity_ids and cluster_id
+    chunks = db.scalars(select(ContentChunk).where(ContentChunk.note_id == note_id)).all()
     if chunks:
         cluster_member = db.scalars(
             select(NoteClusterMember).where(NoteClusterMember.note_id == note_id)
@@ -107,24 +111,31 @@ def index_note_graph(db: Session, note_id: uuid.UUID) -> dict[str, Any]:
     }
 
 
-def reindex_workspace_graph(
+def extract_workspace_graph(
     db: Session,
     workspace_id: uuid.UUID,
     job: Any | None = None,
+    note_ids: list[str] | list[uuid.UUID] | None = None,
 ) -> dict[str, Any]:
-    """Reindex knowledge graph for an entire workspace per CONTRACT §8.4, §12.2.
+    """Perform LLM-based entity and relationship extraction for workspace notes.
 
-    Deletes only AI-extracted entities and relationships, preserves manual ones,
-    re-extracts all notes, re-generates link suggestions, and runs clustering.
-    Reports progress through stages to the attached job if present.
+    Iterates note-by-note, updates progress, and preserves all previously
+    persisted knowledge without destructive deletion.
     """
     ws = db.get(Workspace, workspace_id)
     if not ws:
         raise WorkspaceNotFoundError("Workspace not found.")
 
-    notes = db.scalars(
-        select(Note).where(Note.workspace_id == workspace_id, Note.is_archived.is_(False))
-    ).all()
+    if note_ids:
+        target_ids = [uuid.UUID(str(nid)) for nid in note_ids]
+        notes = db.scalars(
+            select(Note).where(Note.workspace_id == workspace_id, Note.id.in_(target_ids))
+        ).all()
+    else:
+        notes = db.scalars(
+            select(Note).where(Note.workspace_id == workspace_id, Note.is_archived.is_(False))
+        ).all()
+
     total_notes = len(notes)
 
     def _update_job_progress(
@@ -148,34 +159,12 @@ def reindex_workspace_graph(
             }
             db.commit()
 
-    # Stage: Preparing
-    _update_job_progress("Preparing", 0, None, 0, 0, [])
-
-    # 1. Delete all provenance rows for workspace
-    db.execute(delete(EntityChunk).where(EntityChunk.workspace_id == workspace_id))
-
-    # 2. Delete all AI-extracted relationships (is_manual == False)
-    db.execute(
-        delete(GraphRelationship).where(
-            GraphRelationship.workspace_id == workspace_id,
-            GraphRelationship.is_manual.is_(False),
-        )
-    )
-
-    # 3. Delete all AI-extracted entities (is_manual == False)
-    db.execute(
-        delete(GraphEntity).where(
-            GraphEntity.workspace_id == workspace_id,
-            GraphEntity.is_manual.is_(False),
-        )
-    )
-    db.commit()
+    _update_job_progress("Extracting entities & relationships", 0, None, 0, 0, [])
 
     total_entities_count = 0
     total_relationships_count = 0
     failed_notes: list[dict[str, str]] = []
 
-    # Stage: Extracting
     for idx, note in enumerate(notes, start=1):
         _update_job_progress(
             "Extracting entities & relationships",
@@ -186,47 +175,143 @@ def reindex_workspace_graph(
             failed_notes,
         )
         try:
-            ents = entity_extraction_service.extract_entities_for_note(db, note.id)
-            rels = relationship_extraction_service.extract_relationships_for_note(db, note.id)
-            total_entities_count += len(ents)
-            total_relationships_count += len(rels)
+            res = index_note_graph(db, note.id)
+            total_entities_count += res.get("entities_extracted", 0)
+            total_relationships_count += res.get("relationships_extracted", 0)
+            if res.get("failed_steps"):
+                failed_notes.append(
+                    {
+                        "note_id": str(note.id),
+                        "title": note.title,
+                        "error": "; ".join(res["failed_steps"]),
+                    }
+                )
         except Exception as e:
             logger.warning("Extraction failed for note %s (%s): %s", note.id, note.title, e)
             failed_notes.append({"note_id": str(note.id), "title": note.title, "error": str(e)})
 
-    # Stage: Building graph
-    _update_job_progress(
-        "Building graph & suggestions",
-        total_notes,
-        None,
-        total_entities_count,
-        total_relationships_count,
-        failed_notes,
-    )
-    link_suggestion_service.generate_link_suggestions(db, workspace_id)
+    # Run clustering and link suggestions if at least some notes were processed
+    if total_notes > 0 and len(failed_notes) < total_notes:
+        try:
+            cluster_service.cluster_workspace(db, workspace_id)
+        except Exception as e:
+            logger.warning("Clustering failed for workspace %s: %s", workspace_id, e)
+        try:
+            link_suggestion_service.generate_link_suggestions(db, workspace_id)
+        except Exception as e:
+            logger.warning("Link suggestions failed for workspace %s: %s", workspace_id, e)
 
-    # Stage: Clustering
-    _update_job_progress(
-        "Clustering",
-        total_notes,
-        None,
-        total_entities_count,
-        total_relationships_count,
-        failed_notes,
+    # Persisted totals in workspace
+    persisted_entities_count = (
+        db.scalar(
+            select(func.count(GraphEntity.id)).where(GraphEntity.workspace_id == workspace_id)
+        )
+        or 0
     )
-    cluster_service.cluster_workspace(db, workspace_id)
+    persisted_relationships_count = (
+        db.scalar(
+            select(func.count(GraphRelationship.id)).where(
+                GraphRelationship.workspace_id == workspace_id
+            )
+        )
+        or 0
+    )
 
-    # Stage: Updating indexes
     _update_job_progress(
-        "Updating indexes",
+        "Finalizing",
         total_notes,
         None,
-        total_entities_count,
-        total_relationships_count,
+        persisted_entities_count,
+        persisted_relationships_count,
         failed_notes,
     )
-    for note in notes:
-        chunks = db.scalars(select(NoteChunk).where(NoteChunk.note_id == note.id)).all()
+
+    summary = {
+        "extracted_entities": total_entities_count or persisted_entities_count,
+        "extracted_relationships": total_relationships_count or persisted_relationships_count,
+        "notes_processed": total_notes - len(failed_notes),
+        "total_notes": total_notes,
+        "failed_notes": failed_notes,
+    }
+    logger.info("Extraction complete for workspace %s: %s", workspace_id, summary)
+    return summary
+
+
+def reindex_workspace_graph(
+    db: Session,
+    workspace_id: uuid.UUID,
+    job: Any | None = None,
+) -> dict[str, Any]:
+    """Rebuild search and index representations from ALREADY-PERSISTED knowledge.
+
+    Performs:
+    1. Workspace note clustering based on existing entities
+    2. Link suggestions generation based on shared entities
+    3. Qdrant vector chunk payload synchronization (entity_ids and cluster_id)
+
+    Explicitly:
+    - Does NOT invoke the LLM to re-extract notes
+    - Does NOT delete existing GraphEntity or GraphRelationship records
+    - Preserves all valid graph knowledge safely
+    """
+    ws = db.get(Workspace, workspace_id)
+    if not ws:
+        raise WorkspaceNotFoundError("Workspace not found.")
+
+    notes = db.scalars(
+        select(Note).where(Note.workspace_id == workspace_id, Note.is_archived.is_(False))
+    ).all()
+    total_notes = len(notes)
+
+    persisted_entities_count = (
+        db.scalar(
+            select(func.count(GraphEntity.id)).where(GraphEntity.workspace_id == workspace_id)
+        )
+        or 0
+    )
+    persisted_relationships_count = (
+        db.scalar(
+            select(func.count(GraphRelationship.id)).where(
+                GraphRelationship.workspace_id == workspace_id
+            )
+        )
+        or 0
+    )
+
+    def _update_job_progress(stage: str, processed: int):
+        if job is not None:
+            job.progress = {
+                "stage": stage,
+                "processed_notes": processed,
+                "total_notes": total_notes,
+                "current_note_title": None,
+                "extracted_entities": persisted_entities_count,
+                "extracted_relationships": persisted_relationships_count,
+                "failed_notes": [],
+                "summary": f"{stage}: {processed}/{total_notes} notes",
+            }
+            db.commit()
+
+    # Stage 1: Clustering
+    _update_job_progress("Clustering", 0)
+    try:
+        cluster_service.cluster_workspace(db, workspace_id)
+    except Exception as e:
+        logger.warning("Clustering failed during reindex for workspace %s: %s", workspace_id, e)
+
+    # Stage 2: Link Suggestions
+    _update_job_progress("Building suggestions", 0)
+    try:
+        link_suggestion_service.generate_link_suggestions(db, workspace_id)
+    except Exception as e:
+        logger.warning(
+            "Link suggestion generation failed during reindex for workspace %s: %s", workspace_id, e
+        )
+
+    # Stage 3: Updating Qdrant vector chunk payloads from persisted entity_chunks & cluster members
+    _update_job_progress("Updating indexes", 0)
+    for idx, note in enumerate(notes, start=1):
+        chunks = db.scalars(select(ContentChunk).where(ContentChunk.note_id == note.id)).all()
         if chunks:
             cluster_member = db.scalars(
                 select(NoteClusterMember).where(NoteClusterMember.note_id == note.id)
@@ -247,31 +332,29 @@ def reindex_workspace_graph(
                     "entity_ids": chunk_entities.get(chunk.id, []),
                     "cluster_id": cluster_id_str,
                 }
-            vector_service.update_chunk_payloads(workspace_id, payload_updates)
+            try:
+                vector_service.update_chunk_payloads(workspace_id, payload_updates)
+            except Exception as e:
+                logger.warning("Vector payload update failed for note %s: %s", note.id, e)
+        if idx % 10 == 0:
+            _update_job_progress("Updating indexes", idx)
 
-    # Stage: Finalizing
-    _update_job_progress(
-        "Finalizing",
-        total_notes,
-        None,
-        total_entities_count,
-        total_relationships_count,
-        failed_notes,
-    )
+    # Stage 4: Finalizing
+    _update_job_progress("Finalizing", total_notes)
 
     summary = {
-        "extracted_entities": total_entities_count,
-        "extracted_relationships": total_relationships_count,
-        "notes_processed": len(notes) - len(failed_notes),
-        "total_notes": len(notes),
-        "failed_notes": failed_notes,
+        "extracted_entities": persisted_entities_count,
+        "extracted_relationships": persisted_relationships_count,
+        "notes_processed": total_notes,
+        "total_notes": total_notes,
+        "failed_notes": [],
     }
-    logger.info("Reindexed graph for workspace %s: %s", workspace_id, summary)
+    logger.info("Reindex completed for workspace %s: %s", workspace_id, summary)
     return summary
 
 
 def delete_note_graph(db: Session, note_id: uuid.UUID) -> None:
-    """Remove provenance and update vector payload when a note is deleted per CONTRACT §14.1."""
+    """Remove provenance when a note is deleted per CONTRACT §14.1."""
     note = db.get(Note, note_id)
     if not note:
         return
@@ -279,5 +362,3 @@ def delete_note_graph(db: Session, note_id: uuid.UUID) -> None:
     # Delete entity_chunk provenance rows
     db.execute(delete(EntityChunk).where(EntityChunk.note_id == note_id))
     db.commit()
-
-    # Note vectors are deleted via vector_service.delete_note_vectors in note_service

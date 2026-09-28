@@ -37,7 +37,10 @@ def assemble_context(
     results: list[SearchResultItem],
     token_limit: int = 4096,
 ) -> tuple[str, list[CitedSource]]:
-    """Assemble context text and cited sources bounded by token limit per CONTRACT §10.1, §10.3."""
+    """Assemble context text and cited sources bounded by token limit.
+
+    Complies with CONTRACT §10.1, §10.3 and CONTRACT v0.4.1 §8.
+    """
     context_parts: list[str] = []
     citations: list[CitedSource] = []
     accumulated_chars = 0
@@ -52,17 +55,20 @@ def assemble_context(
         if accumulated_chars + item_chars > char_limit and context_parts:
             break
 
-        c_id = item.chunk_id or item.note_id
+        c_id = item.chunk_id or item.note_id or item.source_id or uuid.uuid4()
         citation = CitedSource(
             chunk_id=c_id,
             note_id=item.note_id,
+            source_id=item.source_id,
             title=item.title,
             excerpt=chunk_text,
             score=item.score,
         )
         citations.append(citation)
 
-        part = f"=== NOTE: {item.title} (ID: {item.note_id}) ===\n{chunk_text}\n"
+        source_type_label = "NOTE" if item.note_id else "SOURCE"
+        item_id_str = str(item.note_id or item.source_id)
+        part = f"=== {source_type_label}: {item.title} (ID: {item_id_str}) ===\n{chunk_text}\n"
         context_parts.append(part)
         accumulated_chars += item_chars
 
@@ -77,7 +83,7 @@ def ground_citations(
 ) -> list[CitedSource]:
     """Map citations strictly to the evidence actually cited or used in the answer.
 
-    Excludes retrieved candidate notes that were not referenced or used as evidence,
+    Excludes retrieved candidate items that were not referenced or used as evidence,
     and orders citations by their appearance in the generated answer.
     """
     if not candidate_citations:
@@ -90,11 +96,12 @@ def ground_citations(
         return []
 
     cited: list[tuple[int, CitedSource]] = []
-    seen_notes: set[uuid.UUID] = set()
+    seen_keys: set[str] = set()
     lower_answer = answer.lower()
 
     for item in eligible_citations:
-        if item.note_id in seen_notes:
+        item_key = f"note:{item.note_id}" if item.note_id else f"source:{item.source_id}"
+        if item_key in seen_keys:
             continue
         title_lower = item.title.strip().lower()
         if not title_lower:
@@ -103,21 +110,22 @@ def ground_citations(
         pos = lower_answer.find(title_lower)
         if pos != -1:
             cited.append((pos, item))
-            seen_notes.add(item.note_id)
+            seen_keys.add(item_key)
 
     if cited:
         # Sort by first appearance in the answer
         cited.sort(key=lambda x: x[0])
         return [c for _, c in cited]
 
-    # If the LLM did not explicitly name note titles,
+    # If the LLM did not explicitly name note/source titles,
     # keep deduplicated candidates that passed threshold
     deduped: list[CitedSource] = []
-    seen: set[uuid.UUID] = set()
+    seen: set[str] = set()
     for c in eligible_citations:
-        if c.note_id not in seen:
+        k = f"note:{c.note_id}" if c.note_id else f"source:{c.source_id}"
+        if k not in seen:
             deduped.append(c)
-            seen.add(c.note_id)
+            seen.add(k)
     return deduped
 
 

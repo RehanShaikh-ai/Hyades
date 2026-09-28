@@ -1,6 +1,6 @@
 """Search schemas for semantic, lexical, and hybrid search.
 
-Canonical schemas per CONTRACT v0.3.1 §5.2, §9.2, §9.3.
+Canonical schemas per CONTRACT v0.3.1 §5.2, §9.2, §9.3 and CONTRACT v0.4.1 §8.
 """
 
 import uuid
@@ -20,9 +20,10 @@ class SearchRequest(BaseModel):
 
 
 class SearchResultItem(BaseModel):
-    """Search result item per CONTRACT §9.2."""
+    """Search result item per CONTRACT §9.2 and CONTRACT v0.4.1 §8."""
 
-    note_id: uuid.UUID
+    note_id: uuid.UUID | None = None
+    source_id: uuid.UUID | None = None
     chunk_id: uuid.UUID | None = None
     title: str
     excerpt: str

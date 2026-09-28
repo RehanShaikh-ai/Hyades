@@ -90,7 +90,9 @@ def get_workspace_graph(
     total_matching = db.scalar(count_query) or 0
     is_truncated = total_matching > limit
 
-    entities = db.scalars(base_query.order_by(GraphEntity.created_at.desc()).limit(limit)).all()
+    entities = db.scalars(
+        base_query.order_by(GraphEntity.created_at.desc(), GraphEntity.id.asc()).limit(limit)
+    ).all()
     entity_ids = {e.id for e in entities}
 
     # Fetch relationships between the returned entities
@@ -140,6 +142,7 @@ def get_workspace_graph(
             id=e.id,
             name=e.name,
             entity_type=e.entity_type,
+            description=e.description,
             cluster_id=e.cluster_id,
             is_manual=e.is_manual,
             degree=degrees[e.id],
@@ -438,6 +441,7 @@ def get_entity_neighborhood(db: Session, entity_id: uuid.UUID) -> GraphResponse:
             id=e.id,
             name=e.name,
             entity_type=e.entity_type,
+            description=e.description,
             cluster_id=e.cluster_id,
             is_manual=e.is_manual,
             degree=degrees[e.id],
