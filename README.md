@@ -58,25 +58,23 @@ The goal isn't to replace thinking. It's to make thinking more reliable.
 
 Knowledge Atlas is in active development under strict engineering contracts.
 
-**What exists now (v0.3.2 Knowledge Graph & GraphRAG):**
+**What exists now (v0.4.1 Usability, Sources & Persistent Assistant):**
 
-- ✅ **Users and Workspaces** — Isolated knowledge contexts with ownership tracking
-- ✅ **Structured Notes** — Markdown editor, note linking (`NoteLink`), workspace tags, and full-text search (`tsvector`)
-- ✅ **Source Ingestion & Provenance** — Imports (Markdown, text, PDF) with fine-grained chunk provenance
+- ✅ **Unified AppShell & Navigation** — Coherent sidebar navigation across Notes, Sources, Semantic Search, Knowledge Graph, and AI Assistant
+- ✅ **Source Ingestion System** — Direct ingestion pipeline for PDF, Markdown, and plain text files with stage tracking, error inspection, idempotency, and retry
+- ✅ **Persistent AI Assistant** — Multi-turn conversation sessions persisted across page reloads with token-by-token SSE streaming
+- ✅ **Provenance & Grounded Citations** — Accurate chunk citations linking assistant responses directly to source documents and notes with verified Similarity scoring
+- ✅ **Knowledge Graph Modernization** — Benchmarked visualization performance with LOD label culling and zero continuous frame consumption at rest
 - ✅ **Semantic, Lexical & Hybrid Search** — Vector similarity (Qdrant), Reciprocal Rank Fusion (RRF), exact match highlighting, and saved searches
-- ✅ **Grounded RAG & GraphRAG Pipeline** — Multi-hop graph traversal combined with vector retrieval, token streaming, and cited source cards
-- ✅ **Interactive Constellation Graph** — Force-directed entity graph visualization with degree-proportional sizing, cluster coloring, and search highlighting
-- ✅ **Knowledge Explorer & Manual Graph Editing** — Entity inspection, typed relationships (`is_manual` protection), and AI link suggestions
-- ✅ **Git-Based Note Versioning** — Git-backed note history, side-by-side/unified visual diff viewer, and safe rollback restore flow
-- ✅ **Background Indexing Queue** — Non-blocking indexing via ARQ + Redis, with real-time job status tracking and retry support
-- ✅ **Activity Timeline & Keyboard Shortcuts** — Workspace event feed and global shortcuts (`Mod+Space`, `Mod+J`, `Mod+N`, `Escape`)
+- ✅ **Git-Based Note Versioning** — Git-backed note history, visual diff viewer, and safe rollback restore flow
+- ✅ **Background Queue & Real-time Progress** — Non-blocking processing via ARQ + Redis, with real-time job status tracking and retry support
+- ✅ **End-to-End Playwright Validation** — Automated E2E test suites covering ingestion, assistant citations, conversation persistence, retry, and fault tolerance
 
-**What's coming in v0.4.1:**
+**What's coming (v0.5.x+):**
 
-- **Source System** — First-class file ingestion pipeline (PDF, Markdown, text) feeding unified `ContentChunk` retrieval
-- **Persistent AI Assistant** — Multi-turn conversation persistence, message history, and citation tracking across page reloads
-- **Graph Renderer Modernization** — Benchmarked renderer evaluation with LOD label culling and zero idle-frame rendering
-- **Playwright E2E Testing** — Automated browser end-to-end testing integrated via Docker Compose (`--profile e2e`) and CI
+- Study tools, quizzes, and learning progress tracking
+- Personal Knowledge Twin and Contradiction Tracker
+- Multi-user collaboration and shared workspaces
 
 ### Keyboard Shortcuts
 
@@ -212,6 +210,22 @@ GET    /api/v1/workspaces/{workspace_id}/tags
 POST   /api/v1/notes/{note_id}/links
 DELETE /api/v1/notes/{note_id}/links/{target_note_id}
 GET    /api/v1/notes/{note_id}/links
+
+POST   /api/v1/workspaces/{workspace_id}/sources/upload
+GET    /api/v1/workspaces/{workspace_id}/sources
+GET    /api/v1/sources/{source_id}
+DELETE /api/v1/sources/{source_id}
+POST   /api/v1/sources/{source_id}/retry
+POST   /api/v1/sources/{source_id}/link-note
+DELETE /api/v1/sources/{source_id}/link-note/{note_id}
+
+POST   /api/v1/workspaces/{workspace_id}/conversations
+GET    /api/v1/workspaces/{workspace_id}/conversations
+GET    /api/v1/conversations/{conversation_id}
+PATCH  /api/v1/conversations/{conversation_id}
+DELETE /api/v1/conversations/{conversation_id}
+POST   /api/v1/conversations/{conversation_id}/messages
+GET    /api/v1/conversations/{conversation_id}/messages
 
 POST   /api/v1/workspaces/{workspace_id}/search
 GET    /api/v1/workspaces/{workspace_id}/saved-searches

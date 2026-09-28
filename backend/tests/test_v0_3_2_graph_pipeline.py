@@ -18,10 +18,10 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ExtractionFailedError
+from app.models.content_chunk import ContentChunk
 from app.models.graph_entity import GraphEntity
 from app.models.graph_relationship import GraphRelationship
 from app.models.note import Note
-from app.models.note_chunk import NoteChunk
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.schemas.rag import RAGRequest
@@ -89,7 +89,7 @@ def mixed_dataset_workspace(db_session: Session):
 
     from app.models.note_version import NoteVersion
 
-    # Create dummy NoteVersion and NoteChunk for each note
+    # Create dummy NoteVersion and ContentChunk for each note
     for n in notes:
         ver = NoteVersion(
             id=uuid.uuid4(),
@@ -103,10 +103,11 @@ def mixed_dataset_workspace(db_session: Session):
         db_session.add(ver)
         db_session.flush()
 
-        nc = NoteChunk(
+        nc = ContentChunk(
             id=uuid.uuid4(),
             note_id=n.id,
             version_id=ver.id,
+            source_id=None,
             workspace_id=ws.id,
             chunk_index=0,
             content=n.content,
@@ -128,7 +129,7 @@ def test_entities_extracted_across_unrelated_notes(
     """Verify entities are extracted across ML, OS, Networks, Finance, Cooking notes."""
     ws = mixed_dataset_workspace["ws"]
 
-    summary = graph_index_service.reindex_workspace_graph(db_session, ws.id)
+    summary = graph_index_service.extract_workspace_graph(db_session, ws.id)
     assert summary["notes_processed"] == 5
     assert summary["extracted_entities"] > 0
 
@@ -165,7 +166,7 @@ def test_graph_reindex_surfaces_extraction_failures(
     with patch.object(
         entity_extraction_service, "extract_entities_for_note", side_effect=mock_extract
     ):
-        summary = graph_index_service.reindex_workspace_graph(db_session, ws.id)
+        summary = graph_index_service.extract_workspace_graph(db_session, ws.id)
 
         assert summary["total_notes"] == 5
         assert summary["notes_processed"] == 4
@@ -180,7 +181,7 @@ def test_multiple_connected_components_and_relationships(
     """Verify extracted relationships link concepts and form multiple distinct graph components."""
     ws = mixed_dataset_workspace["ws"]
 
-    graph_index_service.reindex_workspace_graph(db_session, ws.id)
+    graph_index_service.extract_workspace_graph(db_session, ws.id)
 
     relationships = db_session.scalars(
         entity_extraction_service.select(GraphRelationship).where(
@@ -203,8 +204,8 @@ def test_unified_assistant_with_graph_expansion(db_session: Session, mixed_datas
     ws = mixed_dataset_workspace["ws"]
     note_ml = mixed_dataset_workspace["notes"][0]
 
-    # Run reindex to populate entities & relationships
-    graph_index_service.reindex_workspace_graph(db_session, ws.id)
+    # Run extraction to populate entities & relationships
+    graph_index_service.extract_workspace_graph(db_session, ws.id)
 
     from app.schemas.search import SearchResultItem
 
@@ -212,8 +213,8 @@ def test_unified_assistant_with_graph_expansion(db_session: Session, mixed_datas
         SearchResultItem(
             note_id=note_ml.id,
             chunk_id=db_session.scalars(
-                entity_extraction_service.select(NoteChunk.id).where(
-                    NoteChunk.note_id == note_ml.id
+                entity_extraction_service.select(ContentChunk.id).where(
+                    ContentChunk.note_id == note_ml.id
                 )
             ).first(),
             title=note_ml.title,
@@ -254,8 +255,8 @@ def test_unified_assistant_ai_unavailable_behavior(
         SearchResultItem(
             note_id=note_os.id,
             chunk_id=db_session.scalars(
-                entity_extraction_service.select(NoteChunk.id).where(
-                    NoteChunk.note_id == note_os.id
+                entity_extraction_service.select(ContentChunk.id).where(
+                    ContentChunk.note_id == note_os.id
                 )
             ).first(),
             title=note_os.title,

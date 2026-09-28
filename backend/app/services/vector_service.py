@@ -1,7 +1,9 @@
 """Qdrant vector store service.
 
-Canonical service per CONTRACT v0.3.1 §5.3, §7.1-§7.5 and CONTRACT v0.3.2 §4, §7.
-Provides collection_name, upsert_chunks, delete_note_vectors, search_vectors, update_chunk_payloads.
+Canonical service per CONTRACT v0.3.1 §5.3, §7.1-§7.5, CONTRACT v0.3.2 §4, §7,
+and CONTRACT v0.4.1 §6.2, §7.3.
+Provides collection_name, upsert_chunks, delete_note_vectors, delete_source_vectors,
+search_vectors, update_chunk_payloads.
 """
 
 import logging
@@ -17,7 +19,7 @@ from app.core.exceptions import (
     EmbeddingDimensionMismatchError,
     VectorStoreUnavailableError,
 )
-from app.models.note_chunk import NoteChunk
+from app.models.content_chunk import ContentChunk
 
 logger = logging.getLogger("app.services.vector_service")
 
@@ -62,10 +64,13 @@ def _ensure_collection(client: QdrantClient, c_name: str, dimension: int) -> Non
 
 def upsert_chunks(
     workspace_id: uuid.UUID,
-    chunks: list[NoteChunk],
+    chunks: list[ContentChunk],
     embeddings: list[list[float]],
 ) -> None:
-    """Upsert note chunks into workspace vector collection per CONTRACT §7.2, §7.4."""
+    """Upsert content chunks (notes/sources) into workspace vector collection.
+
+    Complies with CONTRACT §6.2, §7.2, §7.4.
+    """
     if not chunks:
         return
 
@@ -87,9 +92,10 @@ def upsert_chunks(
         for chunk, emb in zip(chunks, embeddings, strict=True):
             payload = {
                 "chunk_id": str(chunk.id),
-                "note_id": str(chunk.note_id),
+                "note_id": str(chunk.note_id) if chunk.note_id else None,
+                "source_id": str(chunk.source_id) if chunk.source_id else None,
                 "workspace_id": str(workspace_id),
-                "version_id": str(chunk.version_id),
+                "version_id": str(chunk.version_id) if chunk.version_id else None,
                 "chunk_index": chunk.chunk_index,
                 "content_hash": chunk.content_hash,
                 "embedding_model": chunk.embedding_model,
@@ -110,12 +116,13 @@ def upsert_chunks(
         _ensure_collection(client, c_name, expected_dim)
         points: list[qmodels.PointStruct] = []
         for chunk, emb in zip(chunks, embeddings, strict=True):
-            # Payload follows CONTRACT §7.2 & v0.3.2 §7
+            # Payload follows CONTRACT §6.2 & v0.3.2 §7
             payload = {
                 "chunk_id": str(chunk.id),
-                "note_id": str(chunk.note_id),
+                "note_id": str(chunk.note_id) if chunk.note_id else None,
+                "source_id": str(chunk.source_id) if chunk.source_id else None,
                 "workspace_id": str(workspace_id),
-                "version_id": str(chunk.version_id),
+                "version_id": str(chunk.version_id) if chunk.version_id else None,
                 "chunk_index": chunk.chunk_index,
                 "content_hash": chunk.content_hash,
                 "embedding_model": chunk.embedding_model,
@@ -200,13 +207,44 @@ def delete_note_vectors(note_id: uuid.UUID, workspace_id: uuid.UUID) -> None:
         logger.warning("Error deleting vectors for note %s: %s", note_id, e)
 
 
+def delete_source_vectors(source_id: uuid.UUID, workspace_id: uuid.UUID) -> None:
+    """Delete all vector points for source_id in workspace per CONTRACT v0.4.1 §7.3."""
+    c_name = collection_name(workspace_id)
+    client = _get_qdrant_client()
+    if client is None:
+        if c_name in _in_memory_collections:
+            _in_memory_collections[c_name] = [
+                p
+                for p in _in_memory_collections[c_name]
+                if p["payload"].get("source_id") != str(source_id)
+            ]
+        return
+
+    try:
+        client.delete(
+            collection_name=c_name,
+            points_selector=qmodels.FilterSelector(
+                filter=qmodels.Filter(
+                    must=[
+                        qmodels.FieldCondition(
+                            key="source_id",
+                            match=qmodels.MatchValue(value=str(source_id)),
+                        )
+                    ]
+                )
+            ),
+        )
+    except Exception as e:
+        logger.warning("Error deleting vectors for source %s: %s", source_id, e)
+
+
 def search_vectors(
     workspace_id: uuid.UUID,
     query_vector: list[float],
     limit: int = 10,
     excluded_note_ids: list[uuid.UUID] | None = None,
 ) -> list[dict[str, Any]]:
-    """Search Qdrant collection with server-side workspace filtering per CONTRACT §7.3."""
+    """Search Qdrant collection with server-side workspace filtering per CONTRACT §7.3, §6.2."""
     c_name = collection_name(workspace_id)
     client = _get_qdrant_client()
 
@@ -232,6 +270,8 @@ def search_vectors(
             payload = item["payload"]
             payload.setdefault("entity_ids", [])
             payload.setdefault("cluster_id", None)
+            payload.setdefault("source_id", None)
+            payload.setdefault("note_id", None)
 
             results.append(
                 {
@@ -285,6 +325,8 @@ def search_vectors(
                     pl = pt.get("payload") or {}
                     pl.setdefault("entity_ids", [])
                     pl.setdefault("cluster_id", None)
+                    pl.setdefault("source_id", None)
+                    pl.setdefault("note_id", None)
                     out.append(
                         {
                             "id": str(pt["id"]),
@@ -308,6 +350,8 @@ def search_vectors(
             pl = r.payload or {}
             pl.setdefault("entity_ids", [])
             pl.setdefault("cluster_id", None)
+            pl.setdefault("source_id", None)
+            pl.setdefault("note_id", None)
             out.append(
                 {
                     "id": str(r.id),

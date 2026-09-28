@@ -12,11 +12,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.content_chunk import ContentChunk
 from app.models.entity_chunk import EntityChunk
 from app.models.graph_entity import GraphEntity
 from app.models.graph_relationship import GraphRelationship
 from app.models.note import Note
-from app.models.note_chunk import NoteChunk
 from app.models.note_link import NoteLink
 from app.models.user import User
 from app.models.workspace import Workspace
@@ -90,11 +90,12 @@ def v032_test_data(db_session: Session):
     db_session.add_all([ver_a, ver_b])
     db_session.flush()
 
-    # Create dummy NoteChunks for note_a and note_b
-    chunk_a = NoteChunk(
+    # Create dummy ContentChunks for note_a and note_b
+    chunk_a = ContentChunk(
         id=uuid.uuid4(),
         note_id=note_a.id,
         version_id=ver_a.id,
+        source_id=None,
         workspace_id=ws1.id,
         chunk_index=0,
         content=note_a.content,
@@ -104,10 +105,11 @@ def v032_test_data(db_session: Session):
         embedding_dimension=384,
         created_at=datetime.now(UTC),
     )
-    chunk_b = NoteChunk(
+    chunk_b = ContentChunk(
         id=uuid.uuid4(),
         note_id=note_b.id,
         version_id=ver_b.id,
+        source_id=None,
         workspace_id=ws1.id,
         chunk_index=0,
         content=note_b.content,
@@ -502,8 +504,8 @@ def test_clustering_api_and_service(client: TestClient, db_session: Session, v03
 
 
 def test_graph_reindex_pipeline(db_session: Session, v032_test_data: dict):
-    """Test reindexing deletes AI data, preserves manual entities/relationships
-    per CONTRACT §8.4.
+    """Test reindexing rebuilds clusters and vector payloads without erasing valid entities
+    per persistence and non-destructive reindex guarantees.
     """
     ws1 = v032_test_data["ws1"]
 
@@ -519,7 +521,7 @@ def test_graph_reindex_pipeline(db_session: Session, v032_test_data: dict):
     ai_ent = GraphEntity(
         id=uuid.uuid4(),
         workspace_id=ws1.id,
-        name="AI Disposable Entity",
+        name="AI Persisted Entity",
         entity_type="concept",
         is_manual=False,
     )
@@ -531,10 +533,9 @@ def test_graph_reindex_pipeline(db_session: Session, v032_test_data: dict):
     summary = graph_index_service.reindex_workspace_graph(db_session, ws1.id)
     assert summary["notes_processed"] >= 2
 
-    # Manual entity must still exist
+    # Both manual and AI entities must remain preserved
     assert db_session.get(GraphEntity, manual_ent.id) is not None
-    # AI entity with arbitrary name was wiped and replaced by fresh extraction
-    assert db_session.get(GraphEntity, ai_ent_id) is None
+    assert db_session.get(GraphEntity, ai_ent_id) is not None
 
 
 def test_graph_rag_endpoint_and_hops_limit(

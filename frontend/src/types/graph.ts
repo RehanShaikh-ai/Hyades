@@ -3,6 +3,7 @@ export interface GraphNodeResponse {
   name: string;
   title?: string;
   entity_type: string;
+  description?: string | null;
   cluster_id?: string | null;
   is_manual: boolean;
   degree: number;

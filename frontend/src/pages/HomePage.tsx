@@ -95,7 +95,7 @@ const AppSidebar: React.FC<SidebarProps> = ({
         <div className="sidebar-ws-avatar" aria-hidden="true">{wsInitial}</div>
         <div className="sidebar-ws-info">
           <div className="sidebar-ws-name">{wsName}</div>
-          <div className="sidebar-ws-plan">Knowledge Atlas v0.3.2</div>
+          <div className="sidebar-ws-plan">Knowledge Atlas v0.4.1</div>
         </div>
         <ChevronDown size={14} className="sidebar-ws-chevron" aria-hidden="true" />
       </div>

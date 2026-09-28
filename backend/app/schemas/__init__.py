@@ -1,13 +1,25 @@
 """Schemas package.
 
-Exports canonical schemas per contract §5.2.
+Exports canonical schemas per contract §5.2 (v0.2.1/v0.3.1/v0.3.2) and CONTRACT v0.4.1 §4.2.
 """
 
 from app.schemas.activity import ActivityItem, ActivityResponse
+from app.schemas.assistant import (
+    AssistantQueryRequest,
+    AssistantResponse,
+    AssistantStreamEvent,
+)
 from app.schemas.cluster import (
     ClusterListResponse,
     ClusterMemberResponse,
     ClusterResponse,
+)
+from app.schemas.content_chunk import ContentChunkResponse
+from app.schemas.conversation import (
+    ConversationCreate,
+    ConversationListResponse,
+    ConversationRenameRequest,
+    ConversationResponse,
 )
 from app.schemas.dashboard import DashboardResponse
 from app.schemas.errors import ErrorDetail, ErrorResponse
@@ -56,6 +68,11 @@ from app.schemas.link_suggestion import (
     LinkSuggestionListResponse,
     LinkSuggestionResponse,
 )
+from app.schemas.message import (
+    MessageCitationResponse,
+    MessageCreate,
+    MessageResponse,
+)
 from app.schemas.note import (
     NoteCreate,
     NoteListResponse,
@@ -72,8 +89,11 @@ from app.schemas.source import (
     DetectedNote,
     SourceImportResponse,
     SourceImportResult,
+    SourceLinkRequest,
     SourceListResponse,
+    SourceNoteLink,
     SourcePreviewResponse,
+    SourceProcessingStatusResponse,
     SourceResponse,
 )
 from app.schemas.tag import TagCreate, TagListResponse, TagResponse
@@ -176,4 +196,19 @@ __all__ = [
     "LinkSuggestionListResponse",
     "LinkSuggestionResponse",
     "NoteGraphResponse",
+    # v0.4.1 (CONTRACT §4.2)
+    "AssistantQueryRequest",
+    "AssistantResponse",
+    "AssistantStreamEvent",
+    "ContentChunkResponse",
+    "ConversationCreate",
+    "ConversationListResponse",
+    "ConversationRenameRequest",
+    "ConversationResponse",
+    "MessageCitationResponse",
+    "MessageCreate",
+    "MessageResponse",
+    "SourceLinkRequest",
+    "SourceNoteLink",
+    "SourceProcessingStatusResponse",
 ]

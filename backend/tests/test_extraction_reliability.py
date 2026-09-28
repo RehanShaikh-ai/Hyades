@@ -26,9 +26,9 @@ from app.core.exceptions import (
     LLMProviderUnavailableError,
     LLMTimeoutError,
 )
+from app.models.content_chunk import ContentChunk
 from app.models.graph_entity import GraphEntity
 from app.models.note import Note
-from app.models.note_chunk import NoteChunk
 from app.models.note_cluster import NoteCluster
 from app.models.note_cluster_member import NoteClusterMember
 from app.models.note_version import NoteVersion
@@ -81,10 +81,11 @@ def test_env(db_session: Session):
         db_session.add(ver)
         db_session.flush()
 
-        nc = NoteChunk(
+        nc = ContentChunk(
             id=uuid.uuid4(),
             note_id=n.id,
             version_id=ver.id,
+            source_id=None,
             workspace_id=ws.id,
             chunk_index=0,
             content=n.content,
@@ -275,7 +276,7 @@ def test_extraction_retry_exhaustion_raises_cleanly(test_env: dict):
 
 
 def test_one_failed_note_does_not_stop_reindex(db_session: Session, test_env: dict):
-    """A single note failing extraction must not abort the entire reindex."""
+    """A single note failing extraction must not abort the entire extraction."""
     ws = test_env["ws"]
     notes = test_env["notes"]
     failing_id = notes[0].id
@@ -290,7 +291,7 @@ def test_one_failed_note_does_not_stop_reindex(db_session: Session, test_env: di
     with patch.object(
         entity_extraction_service, "extract_entities_for_note", side_effect=side_effect_extract
     ):
-        summary = graph_index_service.reindex_workspace_graph(db_session, ws.id)
+        summary = graph_index_service.extract_workspace_graph(db_session, ws.id)
 
         assert summary["total_notes"] == 2
         assert summary["notes_processed"] == 1
@@ -327,8 +328,8 @@ def test_cluster_replacement_and_deduplication(db_session: Session, test_env: di
     """Running clustering multiple times should replace previous clusters."""
     ws = test_env["ws"]
 
-    # Reindex first so notes have chunks & entities
-    graph_index_service.reindex_workspace_graph(db_session, ws.id)
+    # Extract first so notes have chunks & entities
+    graph_index_service.extract_workspace_graph(db_session, ws.id)
 
     # First clustering run
     res1 = cluster_service.cluster_workspace(db_session, ws.id)
@@ -378,7 +379,9 @@ def test_rag_source_relevance_threshold_unrelated_query(db_session: Session, tes
     low_score_candidate = SearchResultItem(
         note_id=note_os.id,
         chunk_id=db_session.scalars(
-            entity_extraction_service.select(NoteChunk.id).where(NoteChunk.note_id == note_os.id)
+            entity_extraction_service.select(ContentChunk.id).where(
+                ContentChunk.note_id == note_os.id
+            )
         ).first(),
         title=note_os.title,
         excerpt=note_os.content,
@@ -413,7 +416,9 @@ def test_rag_source_relevance_threshold_relevant_query(db_session: Session, test
     high_score_candidate = SearchResultItem(
         note_id=note_bread.id,
         chunk_id=db_session.scalars(
-            entity_extraction_service.select(NoteChunk.id).where(NoteChunk.note_id == note_bread.id)
+            entity_extraction_service.select(ContentChunk.id).where(
+                ContentChunk.note_id == note_bread.id
+            )
         ).first(),
         title=note_bread.title,
         excerpt=note_bread.content,
