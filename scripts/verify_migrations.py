@@ -4,7 +4,7 @@
 Verifies that:
 1. Alembic script directory is valid and reachable.
 2. Migration history is linear with no branching/multiple heads.
-3. Current head matches expected target revision (0004 for v0.3.1).
+3. Current head matches expected target revision.
 
 Usage:
     uv run python scripts/verify_migrations.py
@@ -45,14 +45,12 @@ def verify_alembic_heads() -> None:
         print(f"ERROR: Multiple heads detected! {heads}")
         sys.exit(1)
 
-    expected_head = "0005"
+    expected_head = "0007"
     if heads[0] != expected_head:
         print(f"ERROR: Current head {heads[0]} does not match expected {expected_head}")
         sys.exit(1)
 
-    print(
-        f"SUCCESS: Migration head verified at {expected_head} (v0.3.2 Knowledge Graph & GraphRAG)"
-    )
+    print(f"SUCCESS: Migration head verified at {expected_head} (v0.4.1 Sources & Persistent Assistant)")
 
     # Also verify the full chain is intact
     all_revisions = list(scr.walk_revisions())

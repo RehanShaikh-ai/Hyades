@@ -154,6 +154,25 @@ jobs:
           print('OK: backend depends_on migrate')
           "
 
+      - name: Validate Compose with e2e profile
+        run: docker compose --profile e2e config --quiet
+
+      - name: Verify playwright service is defined under e2e profile
+        run: |
+          python3 -c "
+          import yaml, sys
+          with open('docker-compose.yml') as f:
+              cfg = yaml.safe_load(f)
+          playwright = cfg.get('services', {}).get('playwright', {})
+          if not playwright or 'e2e' not in playwright.get('profiles', []):
+              sys.exit('ERROR: playwright service missing or e2e profile not set')
+          deps = playwright.get('depends_on', [])
+          deps_list = list(deps.keys()) if isinstance(deps, dict) else deps
+          if 'frontend' not in deps_list or 'backend' not in deps_list:
+              sys.exit('ERROR: playwright must depend on frontend and backend')
+          print('OK: playwright service verified under e2e profile')
+          "
+
   # ─────────────────────────────────────────────────────────────────
   # Frontend: lint + test + build
   # ─────────────────────────────────────────────────────────────────
@@ -216,3 +235,27 @@ jobs:
             echo "Checking pattern rule: $pattern"
           done
           echo "All .gitignore patterns checked."
+
+  # ─────────────────────────────────────────────────────────────────
+  # E2E: Playwright End-to-End tests (Contract v0.4.1 §16.2)
+  # ─────────────────────────────────────────────────────────────────
+  playwright-e2e-tests:
+    name: Playwright E2E Tests
+    runs-on: ubuntu-latest
+    needs: [docker-compose-validate, frontend-lint-test-build, backend-lint-and-test]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate Playwright service config
+        run: docker compose --profile e2e config --quiet
+
+      - name: Run Playwright E2E tests via Compose
+        run: |
+          if ls tests/e2e/*.spec.ts 1> /dev/null 2>&1 || ls tests/e2e/*.test.ts 1> /dev/null 2>&1; then
+            echo "Running Playwright E2E tests via Docker Compose e2e profile..."
+            docker compose --profile e2e run --rm playwright
+          else
+            echo "No E2E test suites found in tests/e2e yet. Skipping execution until Workstream A adds E2E tests."
+          fi
+
