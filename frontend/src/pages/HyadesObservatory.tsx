@@ -7,8 +7,8 @@ import { listClusters } from '@/api/clusters';
 import { EntityEditor } from '@/components/EntityEditor';
 import { RelationshipEditor } from '@/components/RelationshipEditor';
 import { LinkSuggestionPanel } from '@/components/LinkSuggestionPanel';
-import { GraphResponse, GraphNodeResponse, GraphEdgeResponse } from '@/types/graph';
-import { ClusterSummary } from '@/types/clusters';
+import { GraphResponse, GraphNodeResponse } from '@/types/graph';
+import { ClusterResponse } from '@/types/cluster';
 
 interface HyadesObservatoryProps {
   workspaceId: string;
@@ -78,7 +78,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
   // Real backend graph state
   const [graphData, setGraphData] = useState<GraphResponse | null>(null);
-  const [clusters, setClusters] = useState<ClusterSummary[]>([]);
+  const [clusters, setClusters] = useState<ClusterResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // UI state
@@ -982,7 +982,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                         <div className="flex items-center gap-2 truncate">
                           <span className="w-2 h-2 rounded-full bg-[var(--accent-midnight)]" />
                           <span className="text-xs font-medium text-[var(--ink-primary)] truncate">
-                            {cl.name}
+                            {cl.label}
                           </span>
                         </div>
                         <span className="text-[10px] mono text-[var(--ink-tertiary)]">

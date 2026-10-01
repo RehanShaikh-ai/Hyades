@@ -127,7 +127,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
     const tagCounts: Record<string, number> = {};
     notes.forEach((n) => {
       n.tags?.forEach((t) => {
-        tagCounts[t] = (tagCounts[t] || 0) + 1;
+        const tagName = typeof t === 'string' ? t : t.name;
+        tagCounts[tagName] = (tagCounts[tagName] || 0) + 1;
       });
     });
 
@@ -144,7 +145,11 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
         label: tag,
         count,
         color: colors[idx % colors.length],
-        memberNoteIds: new Set(notes.filter((n) => n.tags?.includes(tag)).map((n) => n.id)),
+        memberNoteIds: new Set(
+          notes
+            .filter((n) => n.tags?.some((t) => (typeof t === 'string' ? t : t.name) === tag))
+            .map((n) => n.id)
+        ),
       }));
     }
 
@@ -184,13 +189,19 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
     // Notes mapping
     notes.forEach((n) => {
-      const firstTag = n.tags && n.tags.length > 0 ? n.tags[0] : 'General';
+      const firstTag =
+        n.tags && n.tags.length > 0
+          ? typeof n.tags[0] === 'string'
+            ? n.tags[0]
+            : n.tags[0].name
+          : 'General';
+      const tagLabels = n.tags?.map((t) => (typeof t === 'string' ? t : t.name)).join(', ') || '';
       list.push({
         id: n.id,
         type: 'note',
         format: 'Note',
         title: n.title || 'Untitled Note',
-        authorOrMeta: (n.tags && n.tags.length > 0) ? `Tags: ${n.tags.join(', ')}` : 'Research Note',
+        authorOrMeta: tagLabels ? `Tags: ${tagLabels}` : 'Research Note',
         excerpt: n.content ? n.content.slice(0, 220).replace(/[#*`_]/g, '') : 'No content recorded.',
         topic: firstTag,
         topicColor: 'var(--accent-midnight)',
@@ -282,8 +293,9 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
           setIsReindexing(false);
         }
       }, 1500);
-    } catch (err: any) {
-      setActionFeedback(`Reindex failed: ${err?.message || 'Could not reach backend'}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not reach backend';
+      setActionFeedback(`Reindex failed: ${msg}`);
       setIsReindexing(false);
     }
   };
@@ -325,8 +337,9 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
           setIsExtracting(false);
         }
       }, 1500);
-    } catch (err: any) {
-      setActionFeedback(`Extraction failed: ${err?.message || 'Could not reach backend'}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not reach backend';
+      setActionFeedback(`Extraction failed: ${msg}`);
       setIsExtracting(false);
     }
   };
@@ -369,8 +382,9 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
           setIsExtracting(false);
         }
       }, 1500);
-    } catch (err: any) {
-      setActionFeedback(`Extraction failed: ${err?.message || 'Could not reach backend'}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not reach backend';
+      setActionFeedback(`Extraction failed: ${msg}`);
       setIsExtracting(false);
     }
   };

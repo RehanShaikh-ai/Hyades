@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { runRAGStream, getRAGStatus } from '@/api/rag';
-import { getDashboardStats } from '@/api/dashboard';
+import { getWorkspaceDashboard } from '@/api/dashboard';
 import { getWorkspaceGraph } from '@/api/graph';
 import { DashboardStats } from '@/types/dashboard';
-import { WorkspaceGraphResponse } from '@/types/graph';
+import { GraphResponse, GraphNodeResponse } from '@/types/graph';
 import { RAGStatusResponse } from '@/types/rag';
 import stellaStudiolum from '@/assets/plates/stella-studiolum.jpg';
 
@@ -68,7 +68,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
   const [selectedModel, setSelectedModel] = useState('auto');
   const [ragStatus, setRagStatus] = useState<RAGStatusResponse | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [graphData, setGraphData] = useState<WorkspaceGraphResponse | null>(null);
+  const [graphData, setGraphData] = useState<GraphResponse | null>(null);
   const [inquiryHistory, setInquiryHistory] = useState<ResearchInquiryRecord[]>([]);
 
   const dialogueContainerRef = useRef<HTMLDivElement>(null);
@@ -85,7 +85,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
     if (!workspaceId) return;
     try {
       const [statsData, graphResp, statusData] = await Promise.all([
-        getDashboardStats(workspaceId).catch(() => null),
+        getWorkspaceDashboard(workspaceId).catch(() => null),
         getWorkspaceGraph(workspaceId).catch(() => null),
         getRAGStatus(workspaceId).catch(() => null),
       ]);
@@ -123,33 +123,36 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
       suggestions.push(`How do ${nodes[0].name} and ${nodes[1].name} connect in my research?`);
     }
     if (nodes.length > 2) {
-      suggestions.push(`Synthesize the relationships between ${nodes.slice(0, 3).map((n) => n.name).join(', ')}.`);
+      suggestions.push(`Synthesize the relationships between ${nodes.slice(0, 3).map((n: GraphNodeResponse) => n.name).join(', ')}.`);
     }
     return suggestions;
   }, [graphData]);
 
-  const handleSendMessage = async (textToSend?: string) => {
+  const messageIdCounterRef = useRef(0);
+
+  const handleSendMessage = useCallback(async (textToSend?: string) => {
     const userText = (textToSend !== undefined ? textToSend : inputPrompt).trim();
     if (!userText || isStreaming || !workspaceId) return;
 
     setInputPrompt('');
 
+    const nextId = ++messageIdCounterRef.current;
     const userMsg: Message = {
-      id: `msg-${Date.now()}`,
+      id: `msg-${nextId}`,
       sender: 'user',
       text: userText,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: 'Just now',
     };
 
     setMessages((prev) => [...prev, userMsg]);
     setIsStreaming(true);
 
-    const assistantMsgId = `stella-${Date.now()}`;
+    const assistantMsgId = `stella-${nextId}`;
     const initialAssistantMsg: Message = {
       id: assistantMsgId,
       sender: 'stella',
       text: '',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: 'Just now',
     };
 
     setMessages((prev) => [...prev, initialAssistantMsg]);
@@ -250,14 +253,15 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
           throw new Error(event.message || 'An error occurred during generation.');
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to communicate with the Stella assistant service.';
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantMsgId
             ? {
                 ...m,
                 text: '',
-                error: err?.message || 'Failed to communicate with the Stella assistant service.',
+                error: msg,
               }
             : m
         )
@@ -265,7 +269,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
     } finally {
       setIsStreaming(false);
     }
-  };
+  }, [inputPrompt, isStreaming, workspaceId, messages, selectedModel]);
 
   const activeInquiryTitle = inquiryHistory[0]?.query || initialQuery || 'Knowledge Synthesis';
 

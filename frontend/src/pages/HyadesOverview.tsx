@@ -316,7 +316,11 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                     <div className="flex-1">
                       <div className="flex items-center gap-2.5 mb-2">
                         <span className="px-2 py-0.5 rounded bg-[var(--accent-terracotta-soft)] text-[var(--accent-terracotta)] text-[11px] font-semibold uppercase tracking-wider">
-                          {activeNote.tags && activeNote.tags.length > 0 ? activeNote.tags[0] : 'Workspace Note'}
+                          {activeNote.tags && activeNote.tags.length > 0
+                            ? typeof activeNote.tags[0] === 'string'
+                              ? activeNote.tags[0]
+                              : activeNote.tags[0].name
+                            : 'Workspace Note'}
                         </span>
                         <span className="text-[11px] text-[var(--ink-tertiary)] mono">
                           Updated {new Date(activeNote.updated_at).toLocaleDateString()}
@@ -404,7 +408,12 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                             {sn.title || 'Untitled Note'}
                           </div>
                           <div className="text-[11px] text-[var(--ink-tertiary)] mt-0.5">
-                            {sn.tags && sn.tags.length > 0 ? sn.tags[0] : 'Note'} · {new Date(sn.updated_at).toLocaleDateString()}
+                            {sn.tags && sn.tags.length > 0
+                              ? typeof sn.tags[0] === 'string'
+                                ? sn.tags[0]
+                                : sn.tags[0].name
+                              : 'Note'}{' '}
+                            · {new Date(sn.updated_at).toLocaleDateString()}
                           </div>
                         </div>
                       </div>
