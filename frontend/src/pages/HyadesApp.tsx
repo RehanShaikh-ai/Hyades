@@ -161,8 +161,8 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
         </div>
       )}
 
-      {/* Top Application Shell Header (Hidden only during focused fullscreen graph mode) */}
-      {!isFullscreenObservatory && (
+      {/* Top Application Shell Header (Hidden during Observatory or focused fullscreen graph mode) */}
+      {!isFullscreenObservatory && currentDestination !== 'observatory' && (
         <HyadesHeader
           currentDestination={currentDestination}
           onNavigate={(dest) => setCurrentDestination(dest)}
@@ -207,6 +207,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
             onNavigateToNote={handleNavigateToNote}
             isFullscreen={isFullscreenObservatory}
             onToggleFullscreen={() => setIsFullscreenObservatory((prev) => !prev)}
+            onOpenSearch={() => setIsSearchOpen(true)}
           />
         )}
 

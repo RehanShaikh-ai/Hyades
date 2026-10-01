@@ -1,251 +1,215 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
 import celestialAtlasPlate from '@/assets/plates/celestial-atlas.jpg';
+import { getWorkspaceGraph } from '@/api/graph';
+import { listClusters } from '@/api/clusters';
+import { EntityEditor } from '@/components/EntityEditor';
+import { RelationshipEditor } from '@/components/RelationshipEditor';
+import { LinkSuggestionPanel } from '@/components/LinkSuggestionPanel';
+import { GraphResponse, GraphNodeResponse, GraphEdgeResponse } from '@/types/graph';
+import { ClusterSummary } from '@/types/clusters';
 
 interface HyadesObservatoryProps {
-  workspaceId?: string;
+  workspaceId: string;
   onNavigateToDestination?: (dest: 'overview' | 'library' | 'observatory' | 'stella') => void;
   onNavigateToNote?: (noteId: string) => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  onOpenSearch?: () => void;
 }
 
-interface CelestialNode extends d3.SimulationNodeDatum {
+export interface CelestialNode extends d3.SimulationNodeDatum {
   id: string;
   label: string;
-  catalog?: string;
+  catalog: string;
   group: number;
   type: 'hub' | 'concept' | 'entity';
-  mag?: number;
   size: number;
-  coords?: string;
-  focus?: boolean;
-  desc?: string;
-  connections?: Array<{ id: string; name: string; type: string; corr: string }>;
+  coords: string;
+  desc: string;
+  degree: number;
+  noteCount: number;
+  connections: Array<{ id: string; name: string; type: string; corr: string }>;
   x?: number;
   y?: number;
   fx?: number | null;
   fy?: number | null;
 }
 
-interface CelestialLink extends d3.SimulationLinkDatum<CelestialNode> {
+export interface CelestialLink extends d3.SimulationLinkDatum<CelestialNode> {
   source: string | CelestialNode;
   target: string | CelestialNode;
   weight: number;
-  type: 'primary' | 'bridge' | 'concept' | 'entity';
-  n1?: number;
-  n2?: number;
-  t1?: number;
-  t2?: number;
+  type: string;
 }
 
-// Canonical approved Hyades celestial constellation data
-const CANONICAL_GRAPH: { nodes: CelestialNode[]; links: CelestialLink[] } = {
-  nodes: [
-    // Major Stellar Hubs (Radiant Celestial Starbursts)
-    {
-      id: 'hub_rag',
-      catalog: 'HYA-03',
-      label: 'Retrieval Augmented Gen',
-      group: 3,
-      type: 'hub',
-      mag: 0.9,
-      size: 18,
-      coords: 'RA 04ʰ 28ᵐ 17ˢ · DEC +15° 52′ 00″',
-      focus: true,
-      desc: 'A dual-process architectural paradigm connecting static parametric LLM weights with external dynamic vector memory. It indexes corpora into dense embeddings, resolves semantic proximity queries via approximate nearest-neighbor search, and injects retrieved context windows directly into generative inference.',
-      connections: [
-        { id: 'hub_vector_dbs', name: 'Vector Databases', type: 'Index Substrate', corr: '0.94' },
-        { id: 'hub_semantic_search', name: 'Semantic Search', type: 'Epistemic Bridge', corr: '0.88' },
-        { id: 'hub_memory', name: 'Memory Systems', type: 'Context Feed', corr: '0.82' },
-        { id: 'concept_embeddings', name: 'Dense Embeddings', type: 'Vector Space', corr: '0.89' },
-        { id: 'c_chunking', name: 'Chunking Strategies', type: 'Discretization', corr: '0.91' },
-      ],
-    },
-    {
-      id: 'hub_agents',
-      catalog: 'HYA-01',
-      label: 'AI Agents',
-      group: 1,
-      type: 'hub',
-      mag: 1.1,
-      size: 16,
-      coords: 'RA 04ʰ 18ᵐ 22ˢ · DEC +19° 22′ 10″',
-      desc: 'Autonomous computational loops combining planning, tool usage, environment observation, and recursive evaluation to achieve goal-directed tasks in dynamic problem domains.',
-      connections: [
-        { id: 'hub_rag', name: 'Retrieval Augmented Gen', type: 'Grounding Substrate', corr: '0.91' },
-        { id: 'hub_memory', name: 'Memory Systems', type: 'Episodic Retain', corr: '0.86' },
-        { id: 'c_react', name: 'ReAct Loops', type: 'Execution Engine', corr: '0.88' },
-      ],
-    },
-    {
-      id: 'hub_memory',
-      catalog: 'HYA-02',
-      label: 'Memory Systems',
-      group: 2,
-      type: 'hub',
-      mag: 1.2,
-      size: 16,
-      coords: 'RA 04ʰ 35ᵐ 41ˢ · DEC +18° 10′ 40″',
-      desc: 'Multi-tiered storage hierarchies differentiating working buffers, short-term reflection queues, episodic interaction logs, and long-term consolidation substrates.',
-      connections: [
-        { id: 'hub_agents', name: 'AI Agents', type: 'State Buffer', corr: '0.86' },
-        { id: 'hub_rag', name: 'Retrieval Augmented Gen', type: 'Vector Context', corr: '0.82' },
-        { id: 'c_episodic', name: 'Episodic Buffers', type: 'Trace Index', corr: '0.84' },
-      ],
-    },
-    {
-      id: 'hub_vector_dbs',
-      catalog: 'HYA-04',
-      label: 'Vector Databases',
-      group: 4,
-      type: 'hub',
-      mag: 1.3,
-      size: 16,
-      coords: 'RA 04ʰ 22ᵐ 05ˢ · DEC +11° 14′ 30″',
-      desc: 'Specialized persistent engines optimized for high-dimensional spatial indexing, approximate nearest neighbor (ANN) retrieval, graph traversal, and dense quantization.',
-      connections: [
-        { id: 'hub_rag', name: 'Retrieval Augmented Gen', type: 'Index Engine', corr: '0.94' },
-        { id: 'hub_semantic_search', name: 'Semantic Search', type: 'Similarity Metric', corr: '0.89' },
-        { id: 'c_hnsw', name: 'HNSW Graph Index', type: 'ANN Topology', corr: '0.93' },
-      ],
-    },
-    {
-      id: 'hub_semantic_search',
-      catalog: 'HYA-05',
-      label: 'Semantic Search',
-      group: 5,
-      type: 'hub',
-      mag: 1.2,
-      size: 15,
-      coords: 'RA 04ʰ 31ᵐ 10ˢ · DEC +10° 45′ 15″',
-      desc: 'Information retrieval paradigms indexing passages by semantic intent rather than lexical token identity, pairing dense representations with reciprocal rank fusion (RRF).',
-      connections: [
-        { id: 'hub_vector_dbs', name: 'Vector Databases', type: 'Vector Proximity', corr: '0.89' },
-        { id: 'hub_rag', name: 'Retrieval Augmented Gen', type: 'Passage Selection', corr: '0.88' },
-        { id: 'hub_kg', name: 'Knowledge Graphs', type: 'Hybrid Expansion', corr: '0.76' },
-      ],
-    },
-    {
-      id: 'hub_kg',
-      catalog: 'HYA-06',
-      label: 'Knowledge Graphs',
-      group: 6,
-      type: 'hub',
-      mag: 1.4,
-      size: 16,
-      coords: 'RA 04ʰ 44ᵐ 50ˢ · DEC +13° 30′ 20″',
-      desc: 'Explicit relational epistemic structures representing entities, predicates, and ontologies as interconnected nodes and typed edges. Enforces symbolic grounding, explainability, and multi-hop reasoning.',
-      connections: [
-        { id: 'hub_rag', name: 'Retrieval Augmented Gen', type: 'GraphRAG Synthesis', corr: '0.86' },
-        { id: 'hub_memory', name: 'Memory Systems', type: 'Associative Entity Store', corr: '0.78' },
-        { id: 'c_graphrag', name: 'GraphRAG Traversal', type: 'Sub-Graph Mining', corr: '0.92' },
-      ],
-    },
-    // Epistemic Concepts
-    { id: 'c_react', group: 1, type: 'concept', label: 'ReAct Loops', size: 9, catalog: 'HYA-101' },
-    { id: 'c_tools', group: 1, type: 'concept', label: 'Tool Protocol', size: 9, catalog: 'HYA-102' },
-    { id: 'c_coord', group: 1, type: 'concept', label: 'Swarm Coordination', size: 9, catalog: 'HYA-103' },
-    { id: 'c_episodic', group: 2, type: 'concept', label: 'Episodic Buffers', size: 9, catalog: 'HYA-201' },
-    { id: 'c_semantic_mem', group: 2, type: 'concept', label: 'Semantic Priming', size: 9, catalog: 'HYA-202' },
-    { id: 'c_reflection', group: 2, type: 'concept', label: 'Working Memory', size: 9, catalog: 'HYA-203' },
-    { id: 'c_chunking', group: 3, type: 'concept', label: 'Chunking Strategies', size: 10, catalog: 'HYA-301' },
-    { id: 'c_rerank', group: 3, type: 'concept', label: 'Cross-Encoder Rerank', size: 9, catalog: 'HYA-302' },
-    { id: 'c_context_win', group: 3, type: 'concept', label: 'Context Windows', size: 9, catalog: 'HYA-303' },
-    { id: 'c_hybrid_pipe', group: 3, type: 'concept', label: 'Hybrid Retrieval', size: 10, catalog: 'HYA-304' },
-    { id: 'concept_embeddings', group: 4, type: 'concept', label: 'Dense Embeddings', size: 10, catalog: 'HYA-401' },
-    { id: 'c_hnsw', group: 4, type: 'concept', label: 'HNSW Graph Index', size: 9, catalog: 'HYA-402' },
-    { id: 'c_cosine', group: 4, type: 'concept', label: 'Cosine Proximity', size: 8, catalog: 'HYA-403' },
-    { id: 'c_quant', group: 4, type: 'concept', label: 'Scalar Quantization', size: 8, catalog: 'HYA-404' },
-    { id: 'c_rrf', group: 5, type: 'concept', label: 'Reciprocal Rank Fusion', size: 9, catalog: 'HYA-501' },
-    { id: 'c_bm25', group: 5, type: 'concept', label: 'BM25 Lexical', size: 8, catalog: 'HYA-502' },
-    { id: 'c_graphrag', group: 6, type: 'concept', label: 'GraphRAG Traversal', size: 10, catalog: 'HYA-601' },
-    { id: 'c_entity_link', group: 6, type: 'concept', label: 'Entity Resolution', size: 9, catalog: 'HYA-602' },
-    { id: 'c_triplestore', group: 6, type: 'concept', label: 'Ontology Triples', size: 8, catalog: 'HYA-603' },
-    // Literature / Leaves
-    { id: 'doc_lewis', group: 3, type: 'entity', label: 'Lewis et al. 2020', size: 3.5 },
-    { id: 'doc_karp', group: 3, type: 'entity', label: 'DPR (EMNLP 2020)', size: 3.2 },
-    { id: 'doc_bge', group: 4, type: 'entity', label: 'BGE-M3 Vectors', size: 3.0 },
-    { id: 'doc_hnsw_paper', group: 4, type: 'entity', label: 'Malkov 2018 (HNSW)', size: 3.5 },
-    { id: 'doc_park_agents', group: 1, type: 'entity', label: 'Park Generative Agents', size: 3.5 },
-    { id: 'doc_memgpt', group: 2, type: 'entity', label: 'MemGPT (Packer 2023)', size: 3.0 },
-    { id: 'doc_microsoft_graphrag', group: 6, type: 'entity', label: 'MSFT GraphRAG Report', size: 3.5 },
-    { id: 'doc_colbert', group: 5, type: 'entity', label: 'ColBERTv2 Architecture', size: 3.0 },
-  ],
-  links: [
-    // Primary Constellation Arteries
-    { source: 'hub_agents', target: 'hub_memory', weight: 3.8, type: 'primary', n1: -0.32, n2: -0.28, t1: 0.30, t2: 0.70 },
-    { source: 'hub_agents', target: 'hub_rag', weight: 3.8, type: 'primary', n1: -0.24, n2: 0.18, t1: 0.28, t2: 0.72 },
-    { source: 'hub_rag', target: 'hub_vector_dbs', weight: 4.5, type: 'primary', n1: 0.26, n2: 0.22, t1: 0.35, t2: 0.65 },
-    { source: 'hub_rag', target: 'concept_embeddings', weight: 4.0, type: 'primary', n1: -0.14, n2: -0.10, t1: 0.38, t2: 0.62 },
-    { source: 'hub_vector_dbs', target: 'hub_semantic_search', weight: 4.2, type: 'primary', n1: 0.28, n2: 0.24, t1: 0.32, t2: 0.68 },
-    { source: 'hub_semantic_search', target: 'hub_kg', weight: 3.8, type: 'primary', n1: 0.22, n2: -0.16, t1: 0.26, t2: 0.74 },
-    { source: 'hub_kg', target: 'hub_rag', weight: 4.0, type: 'primary', n1: -0.22, n2: -0.18, t1: 0.34, t2: 0.66 },
-    { source: 'hub_memory', target: 'hub_kg', weight: 3.4, type: 'primary', n1: 0.26, n2: 0.22, t1: 0.30, t2: 0.70 },
-    // Cross-Cluster Epistemic Bridges
-    { source: 'c_rrf', target: 'c_hybrid_pipe', weight: 2.6, type: 'bridge', n1: -0.28, n2: 0.24, t1: 0.24, t2: 0.76 },
-    { source: 'c_graphrag', target: 'c_hybrid_pipe', weight: 2.8, type: 'bridge', n1: 0.26, n2: -0.22, t1: 0.25, t2: 0.75 },
-    { source: 'c_rerank', target: 'c_hybrid_pipe', weight: 2.2, type: 'bridge', n1: 0.20, n2: 0.08, t1: 0.20, t2: 0.65 },
-    { source: 'concept_embeddings', target: 'c_hnsw', weight: 2.4, type: 'bridge', n1: 0.18, n2: 0.15, t1: 0.35, t2: 0.65 },
-    // Intra-Cluster Filaments
-    { source: 'hub_agents', target: 'c_react', weight: 2.0, type: 'concept', n1: -0.16, n2: -0.12 },
-    { source: 'hub_agents', target: 'c_tools', weight: 2.2, type: 'concept', n1: 0.18, n2: -0.10 },
-    { source: 'hub_agents', target: 'c_coord', weight: 2.0, type: 'concept', n1: -0.24, n2: -0.18 },
-    { source: 'hub_memory', target: 'c_episodic', weight: 2.2, type: 'concept', n1: 0.16, n2: 0.12 },
-    { source: 'hub_memory', target: 'c_semantic_mem', weight: 2.0, type: 'concept', n1: -0.18, n2: -0.14 },
-    { source: 'hub_memory', target: 'c_reflection', weight: 1.8, type: 'concept', n1: 0.15, n2: 0.10 },
-    { source: 'hub_rag', target: 'c_chunking', weight: 2.5, type: 'concept', n1: 0.12, n2: 0.08 },
-    { source: 'hub_rag', target: 'c_rerank', weight: 2.2, type: 'concept', n1: -0.14, n2: 0.12 },
-    { source: 'hub_rag', target: 'c_context_win', weight: 2.0, type: 'concept', n1: 0.16, n2: -0.10 },
-    { source: 'hub_vector_dbs', target: 'c_hnsw', weight: 2.5, type: 'concept', n1: 0.14, n2: 0.10 },
-    { source: 'hub_vector_dbs', target: 'c_cosine', weight: 1.8, type: 'concept', n1: -0.16, n2: -0.12 },
-    { source: 'hub_vector_dbs', target: 'c_quant', weight: 1.6, type: 'concept', n1: 0.18, n2: 0.14 },
-    { source: 'hub_semantic_search', target: 'c_rrf', weight: 2.4, type: 'concept', n1: -0.14, n2: -0.10 },
-    { source: 'hub_semantic_search', target: 'c_bm25', weight: 2.0, type: 'concept', n1: 0.16, n2: 0.12 },
-    { source: 'hub_kg', target: 'c_graphrag', weight: 3.0, type: 'concept', n1: -0.18, n2: -0.14 },
-    { source: 'hub_kg', target: 'c_entity_link', weight: 2.2, type: 'concept', n1: 0.20, n2: 0.16 },
-    { source: 'hub_kg', target: 'c_triplestore', weight: 2.2, type: 'concept', n1: -0.16, n2: 0.11 },
-    // Literature Filaments
-    { source: 'doc_lewis', target: 'hub_rag', weight: 1.0, type: 'entity', n1: 0.08, n2: 0.06 },
-    { source: 'doc_karp', target: 'c_chunking', weight: 1.0, type: 'entity', n1: -0.08, n2: -0.06 },
-    { source: 'doc_bge', target: 'concept_embeddings', weight: 1.0, type: 'entity', n1: 0.07, n2: 0.05 },
-    { source: 'doc_hnsw_paper', target: 'c_hnsw', weight: 1.0, type: 'entity', n1: -0.09, n2: -0.07 },
-    { source: 'doc_park_agents', target: 'hub_agents', weight: 1.0, type: 'entity', n1: 0.08, n2: 0.06 },
-    { source: 'doc_memgpt', target: 'hub_memory', weight: 1.0, type: 'entity', n1: -0.07, n2: -0.05 },
-    { source: 'doc_microsoft_graphrag', target: 'c_graphrag', weight: 1.0, type: 'entity', n1: 0.08, n2: 0.06 },
-    { source: 'doc_colbert', target: 'hub_semantic_search', weight: 1.0, type: 'entity', n1: -0.08, n2: -0.06 },
-  ],
-};
+function computeCelestialCoords(id: string): { coords: string; catalog: string } {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash << 5) - hash + id.charCodeAt(i);
+    hash |= 0;
+  }
+  const absHash = Math.abs(hash);
+  const raHours = String(4 + (absHash % 2)).padStart(2, '0');
+  const raMinutes = String(10 + (absHash % 45)).padStart(2, '0');
+  const raSeconds = String(absHash % 60).padStart(2, '0');
+  const decDeg = String(10 + (absHash % 16)).padStart(2, '0');
+  const decMin = String(absHash % 60).padStart(2, '0');
+  const catalog = `HYA-${id.replace(/-/g, '').slice(0, 4).toUpperCase()}`;
+  return {
+    coords: `RA ${raHours}ʰ ${raMinutes}ᵐ ${raSeconds}ˢ · DEC +${decDeg}° ${decMin}′`,
+    catalog,
+  };
+}
 
 export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
+  workspaceId,
   onNavigateToDestination,
-  isFullscreen: externalFullscreen,
-  onToggleFullscreen: externalToggleFullscreen,
+  onNavigateToNote,
+  isFullscreen = false,
+  onToggleFullscreen,
+  onOpenSearch,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null);
   const graticuleRef = useRef<SVGSVGElement>(null);
-  const zoomBehaviorRef = useRef<any>(null);
-  const svgRef = useRef<any>(null);
+  const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
 
-  const [internalFullscreen, setInternalFullscreen] = useState(false);
-  const isFullscreen = externalFullscreen !== undefined ? externalFullscreen : internalFullscreen;
-  const toggleFullscreen = externalToggleFullscreen || (() => setInternalFullscreen((prev) => !prev));
+  // Real backend graph state
+  const [graphData, setGraphData] = useState<GraphResponse | null>(null);
+  const [clusters, setClusters] = useState<ClusterSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Toggles & UI state
-  const [showAtlasPlate, setShowAtlasPlate] = useState(true);
-  const [showGraticule, setShowGraticule] = useState(true);
+  // UI state
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
+  const [showAtlasPlate, setShowAtlasPlate] = useState(true);
+  const [showGraticule, setShowGraticule] = useState(true);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+
+  // Dialogs / Panels
+  const [isEntityEditorOpen, setIsEntityEditorOpen] = useState(false);
+  const [isRelationshipEditorOpen, setIsRelationshipEditorOpen] = useState(false);
+  const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
 
   // Filters
   const [filterHubs, setFilterHubs] = useState(true);
   const [filterConcepts, setFilterConcepts] = useState(true);
-  const [filterEntities, setFilterEntities] = useState(true);
+  const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null);
 
-  // Selected / Focused Node
-  const [selectedNode, setSelectedNode] = useState<CelestialNode>(CANONICAL_GRAPH.nodes[0]);
+  // Focus node
+  const [selectedNode, setSelectedNode] = useState<CelestialNode | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Fetch real workspace graph & clusters
+  const fetchGraph = useCallback(async () => {
+    if (!workspaceId) return;
+    setIsLoading(true);
+    try {
+      const [resGraph, resClusters] = await Promise.all([
+        getWorkspaceGraph(workspaceId),
+        listClusters(workspaceId).catch(() => []),
+      ]);
+      setGraphData(resGraph);
+      setClusters(resClusters);
+    } catch {
+      // Gracefully handle
+    } finally {
+      setIsLoading(false);
+    }
+  }, [workspaceId]);
+
+  useEffect(() => {
+    fetchGraph();
+  }, [fetchGraph]);
+
+  // Transform backend entities & edges into Celestial nodes & links
+  const { celestialNodes, celestialLinks } = useMemo(() => {
+    if (!graphData || !graphData.nodes || graphData.nodes.length === 0) {
+      return { celestialNodes: [], celestialLinks: [] };
+    }
+
+    const nodesMap = new Map<string, GraphNodeResponse>();
+    graphData.nodes.forEach((n) => nodesMap.set(n.id, n));
+
+    // Calculate cluster index map
+    const clusterMap: Record<string, number> = {};
+    clusters.forEach((c, idx) => {
+      clusterMap[c.id] = (idx % 6) + 1;
+    });
+
+    const nodes: CelestialNode[] = graphData.nodes.map((n) => {
+      const { coords, catalog } = computeCelestialCoords(n.id);
+      const isHub = n.degree >= 3;
+      const size = isHub ? 16 + Math.min(8, n.degree) : 10 + Math.min(6, n.degree);
+
+      // Find connections from edges
+      const connections: Array<{ id: string; name: string; type: string; corr: string }> = [];
+      graphData.edges.forEach((e) => {
+        if (e.source_entity_id === n.id) {
+          const target = nodesMap.get(e.target_entity_id);
+          if (target) {
+            connections.push({
+              id: target.id,
+              name: target.name,
+              type: e.relationship_type,
+              corr: e.confidence.toFixed(2),
+            });
+          }
+        } else if (e.target_entity_id === n.id) {
+          const source = nodesMap.get(e.source_entity_id);
+          if (source) {
+            connections.push({
+              id: source.id,
+              name: source.name,
+              type: e.relationship_type,
+              corr: e.confidence.toFixed(2),
+            });
+          }
+        }
+      });
+
+      return {
+        id: n.id,
+        label: n.name,
+        catalog,
+        coords,
+        group: n.cluster_id && clusterMap[n.cluster_id] ? clusterMap[n.cluster_id] : 1,
+        type: isHub ? 'hub' : 'concept',
+        size,
+        degree: n.degree,
+        noteCount: n.note_count || 0,
+        desc:
+          n.description ||
+          `Extracted ${n.entity_type} concept with ${n.degree} connections in your active research graph.`,
+        connections,
+      };
+    });
+
+    // Valid node IDs set
+    const validNodeIds = new Set(nodes.map((n) => n.id));
+
+    const links: CelestialLink[] = graphData.edges
+      .filter((e) => validNodeIds.has(e.source_entity_id) && validNodeIds.has(e.target_entity_id))
+      .map((e) => ({
+        source: e.source_entity_id,
+        target: e.target_entity_id,
+        weight: e.confidence,
+        type: e.relationship_type,
+      }));
+
+    return { celestialNodes: nodes, celestialLinks: links };
+  }, [graphData, clusters]);
+
+  // Set default selected node once graph loads
+  useEffect(() => {
+    if (celestialNodes.length > 0 && !selectedNode) {
+      // Pick node with highest degree or first node
+      const sorted = [...celestialNodes].sort((a, b) => b.degree - a.degree);
+      setSelectedNode(sorted[0]);
+    }
+  }, [celestialNodes, selectedNode]);
 
   // 1. Render Celestial Graticule (Astronomical Atlas Lines)
   const renderCelestialGraticule = useCallback(() => {
@@ -349,254 +313,255 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist === 0) return `M ${x1} ${y1} L ${x2} ${y2}`;
 
-    const tx = dx / dist, ty = dy / dist;
-    const nx = -ty, ny = tx;
-
-    const n1 = d.n1 !== undefined ? d.n1 : 0.12;
-    const n2 = d.n2 !== undefined ? d.n2 : 0.12;
-    const t1 = d.t1 !== undefined ? d.t1 : 0.34;
-    const t2 = d.t2 !== undefined ? d.t2 : 0.66;
-
-    const cp1x = x1 + tx * (dist * t1) + nx * (dist * n1);
-    const cp1y = y1 + ty * (dist * t1) + ny * (dist * n1);
-    const cp2x = x1 + tx * (dist * t2) + nx * (dist * n2);
-    const cp2y = y1 + ty * (dist * t2) + ny * (dist * n2);
-
-    return `M ${x1} ${y1} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x2} ${y2}`;
+    const curvature = Math.min(28, dist * 0.12);
+    const mx = (x1 + x2) / 2 - (dy / dist) * curvature;
+    const my = (y1 + y2) / 2 + (dx / dist) * curvature;
+    return `M ${x1} ${y1} Q ${mx} ${my} ${x2} ${y2}`;
   };
 
-  // 5. Initialize D3 Force Simulation & Graph
+  // D3 Knowledge Constellation Graph Initializer
   useEffect(() => {
-    if (!containerRef.current) return;
-    d3.select(containerRef.current).selectAll('*').remove();
+    if (!containerRef.current || celestialNodes.length === 0) return;
 
     renderCelestialGraticule();
-    window.addEventListener('resize', renderCelestialGraticule);
 
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    const centerX = width * 0.44;
-    const centerY = height * 0.48;
+    d3.select(containerRef.current).selectAll('*').remove();
 
-    const clusterAnchors: Record<number, { x: number; y: number }> = {
-      1: { x: centerX - 250, y: centerY - 170 }, // AI Agents
-      2: { x: centerX + 210, y: centerY - 190 }, // Memory
-      3: { x: centerX, y: centerY },             // RAG Center
-      4: { x: centerX - 230, y: centerY + 190 }, // Vector DBs
-      5: { x: centerX + 40, y: centerY + 240 },  // Semantic Search
-      6: { x: centerX + 280, y: centerY + 110 }, // Knowledge Graphs
-    };
+    const width = containerRef.current.clientWidth || window.innerWidth;
+    const height = containerRef.current.clientHeight || window.innerHeight;
 
-    // Deep copy data for simulation
-    const nodes: CelestialNode[] = JSON.parse(JSON.stringify(CANONICAL_GRAPH.nodes));
-    const links: CelestialLink[] = JSON.parse(JSON.stringify(CANONICAL_GRAPH.links));
+    // Filter nodes based on user toggle
+    const filteredNodes: CelestialNode[] = JSON.parse(JSON.stringify(
+      celestialNodes.filter((n) => {
+        if (!filterHubs && n.type === 'hub') return false;
+        if (!filterConcepts && n.type === 'concept') return false;
+        if (selectedClusterId && n.catalog !== selectedClusterId) return false;
+        return true;
+      })
+    ));
 
-    const svg = d3.select(containerRef.current)
+    const activeNodeIds = new Set(filteredNodes.map((n) => n.id));
+    const filteredLinks: CelestialLink[] = JSON.parse(JSON.stringify(
+      celestialLinks.filter(
+        (l) => activeNodeIds.has(typeof l.source === 'string' ? l.source : l.source.id) &&
+               activeNodeIds.has(typeof l.target === 'string' ? l.target : l.target.id)
+      )
+    ));
+
+    const svg = d3
+      .select(containerRef.current)
       .append('svg')
-      .attr('width', '100%')
-      .attr('height', '100%')
-      .attr('viewBox', [0, 0, width, height]);
+      .attr('width', width)
+      .attr('height', height)
+      .attr('viewBox', [0, 0, width, height])
+      .attr('class', 'celestial-svg select-none cursor-grab active:cursor-grabbing');
 
     svgRef.current = svg;
 
+    // SVG Defs: Astrolabe Gradients & Glow Filters
     const defs = svg.append('defs');
 
-    // Luminous Terracotta Glow filter
-    const glow = defs.append('filter')
-      .attr('id', 'terracotta-glow')
-      .attr('x', '-50%').attr('y', '-50%')
-      .attr('width', '200%').attr('height', '200%');
-    glow.append('feGaussianBlur').attr('stdDeviation', '2.5').attr('result', 'blur');
-    glow.append('feComposite').attr('in', 'SourceGraphic').attr('in2', 'blur').attr('operator', 'over');
+    // Deep Midnight Starburst Radial Gradient
+    const hubGrad = defs
+      .append('radialGradient')
+      .attr('id', 'hub-radial-grad')
+      .attr('cx', '50%')
+      .attr('cy', '50%')
+      .attr('r', '50%');
+    hubGrad.append('stop').attr('offset', '0%').attr('stop-color', '#FAF8F2');
+    hubGrad.append('stop').attr('offset', '45%').attr('stop-color', '#2D3F5E');
+    hubGrad.append('stop').attr('offset', '100%').attr('stop-color', '#162135');
 
-    const mainG = svg.append('g').attr('class', 'main-viewport');
+    // Terracotta Concept Star Radial Gradient
+    const conceptGrad = defs
+      .append('radialGradient')
+      .attr('id', 'concept-radial-grad')
+      .attr('cx', '50%')
+      .attr('cy', '50%')
+      .attr('r', '50%');
+    conceptGrad.append('stop').attr('offset', '0%').attr('stop-color', '#FFF4ED');
+    conceptGrad.append('stop').attr('offset', '50%').attr('stop-color', '#D9653B');
+    conceptGrad.append('stop').attr('offset', '100%').attr('stop-color', '#BD532B');
 
-    // Zoom behavior
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.35, 3.5])
+    // Celestial Halo Filter
+    const filter = defs.append('filter').attr('id', 'celestial-halo').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%');
+    filter.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'blur');
+    filter.append('feMerge').selectAll('feMergeNode').data(['blur', 'SourceGraphic']).enter().append('feMergeNode').attr('in', (d) => d);
+
+    // Root Group with Zoom & Pan
+    const g = svg.append('g').attr('class', 'observatory-viewport');
+
+    const zoom = d3
+      .zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.3, 3.5])
       .on('zoom', (event) => {
-        mainG.attr('transform', event.transform);
+        g.attr('transform', event.transform);
       });
 
-    zoomBehaviorRef.current = zoom;
     svg.call(zoom);
+    zoomBehaviorRef.current = zoom;
 
-    // Initial translation
-    svg.call(zoom.transform, d3.zoomIdentity.translate(width * 0.03, height * 0.02).scale(0.98));
+    // Center view
+    svg.call(
+      zoom.transform,
+      d3.zoomIdentity.translate(width * 0.05, height * 0.03).scale(0.95)
+    );
 
-    // Force Simulation Setup
-    const simulation = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).id((d: any) => d.id).distance((d: any) => {
-        if (d.type === 'primary') return 180;
-        if (d.target?.type === 'entity') return 50;
-        return 85;
-      }))
-      .force('charge', d3.forceManyBody().strength((d: any) => {
-        if (d.type === 'hub') return -1350;
-        if (d.type === 'concept') return -360;
-        return -35;
-      }))
-      .force('collide', d3.forceCollide().radius((d: any) => d.size + 36))
-      .force('x', d3.forceX((d: any) => clusterAnchors[d.group]?.x || centerX).strength(0.07))
-      .force('y', d3.forceY((d: any) => clusterAnchors[d.group]?.y || centerY).strength(0.07));
+    // D3 Force Simulation
+    const simulation = d3
+      .forceSimulation<CelestialNode>(filteredNodes)
+      .force(
+        'link',
+        d3
+          .forceLink<CelestialNode, CelestialLink>(filteredLinks)
+          .id((d) => d.id)
+          .distance((d) => 120 + (1 - (d.weight || 0.8)) * 100)
+          .strength(0.35)
+      )
+      .force('charge', d3.forceManyBody().strength(-450))
+      .force('center', d3.forceCenter(width * 0.44, height * 0.48))
+      .force('collision', d3.forceCollide().radius((d: any) => (d.size || 16) * 2.8));
 
     // Links Layer
-    const linkGroup = mainG.append('g').attr('class', 'links-layer');
-    const linkElements = linkGroup.selectAll('path')
-      .data(links)
-      .join('path')
-      .attr('class', (d) => `constellation-link link-${d.type || 'concept'}`)
+    const linkGroup = g.append('g').attr('class', 'links-layer');
+    const link = linkGroup
+      .selectAll('path')
+      .data(filteredLinks)
+      .enter()
+      .append('path')
+      .attr('class', 'celestial-link')
       .attr('fill', 'none')
-      .attr('stroke', (d) => {
-        if (d.type === 'primary') return '#162135';
-        if (d.type === 'bridge') return '#BD532B';
-        if (d.weight >= 2.0) return '#5E5648';
-        return '#9E9789';
-      })
-      .attr('stroke-width', (d) => {
-        if (d.type === 'primary') return 1.5;
-        if (d.type === 'bridge') return 1.15;
-        if (d.weight >= 2.0) return 0.95;
-        return 0.65;
-      })
-      .attr('stroke-dasharray', (d) => {
-        if (d.type === 'primary') return 'none';
-        if (d.type === 'bridge') return '5,3';
-        if (d.type === 'entity') return '2,2.5';
-        return 'none';
-      })
-      .attr('stroke-linecap', 'round')
-      .attr('opacity', (d) => {
-        if (d.type === 'primary') return 0.80;
-        if (d.type === 'bridge') return 0.65;
-        if (d.type === 'entity') return 0.42;
-        return 0.52;
-      });
+      .attr('stroke', '#4A3E3D')
+      .attr('stroke-opacity', 0.28)
+      .attr('stroke-width', (d) => 0.8 + (d.weight || 0.8) * 1.2)
+      .attr('stroke-dasharray', 'none');
+
+    // Link Labels Layer
+    const linkLabel = linkGroup
+      .selectAll('text')
+      .data(filteredLinks)
+      .enter()
+      .append('text')
+      .attr('class', 'link-label')
+      .attr('font-family', 'JetBrains Mono, monospace')
+      .attr('font-size', '8px')
+      .attr('fill', 'rgba(100, 90, 80, 0.45)')
+      .attr('text-anchor', 'middle')
+      .text((d) => d.type || '');
 
     // Nodes Layer
-    const nodeGroup = mainG.append('g').attr('class', 'nodes-layer');
-    const nodeElements = nodeGroup.selectAll('g')
-      .data(nodes)
-      .join('g')
-      .attr('class', 'stellar-node')
-      .attr('cursor', 'pointer')
-      .call(d3.drag<any, any>()
-        .on('start', (event, d) => {
-          if (!event.active) simulation.alphaTarget(0.2).restart();
-          d.fx = d.x;
-          d.fy = d.y;
-        })
-        .on('drag', (event, d) => {
-          d.fx = event.x;
-          d.fy = event.y;
-        })
-        .on('end', (event, d) => {
-          if (!event.active) simulation.alphaTarget(0);
-          d.fx = null;
-          d.fy = null;
-        })
-      )
-      .on('click', (_, d) => {
+    const nodeGroup = g.append('g').attr('class', 'nodes-layer');
+    const node = nodeGroup
+      .selectAll<SVGGElement, CelestialNode>('.celestial-node')
+      .data(filteredNodes)
+      .enter()
+      .append('g')
+      .attr('class', 'celestial-node cursor-pointer')
+      .on('click', (_event, d) => {
         setSelectedNode(d);
-        setIsRightSidebarOpen((open) => (open ? open : true));
       });
 
-    nodeElements.each(function (d) {
+    // Node Visual Geometry: Radiant Starburst vs Concept Star
+    node.each(function (d) {
       const el = d3.select(this);
+      const isSelected = selectedNode?.id === d.id;
+
+      // Selection Halo
+      if (isSelected) {
+        el.append('circle')
+          .attr('r', d.size * 2.1)
+          .attr('fill', 'none')
+          .attr('stroke', 'rgba(189, 83, 43, 0.45)')
+          .attr('stroke-width', 1.2)
+          .attr('stroke-dasharray', '3,3');
+      }
 
       if (d.type === 'hub') {
-        const majorR = d.focus ? 21 : 18;
-        const midR = d.focus ? 13 : 11;
-        const innerR = d.focus ? 4.8 : 4.2;
-
-        if (d.focus) {
-          el.append('circle')
-            .attr('r', 30)
-            .attr('fill', 'rgba(189, 83, 43, 0.08)')
-            .attr('stroke', 'rgba(189, 83, 43, 0.3)')
-            .attr('stroke-width', 1)
-            .attr('stroke-dasharray', '4,4')
-            .attr('class', 'pulse-halo');
-
-          const tick = 6;
-          el.append('line').attr('x1', 0).attr('y1', -30 - tick).attr('x2', 0).attr('y2', -30 + tick).attr('stroke', 'var(--accent-terracotta)').attr('stroke-width', 1.2);
-          el.append('line').attr('x1', 0).attr('y1', 30 - tick).attr('x2', 0).attr('y2', 30 + tick).attr('stroke', 'var(--accent-terracotta)').attr('stroke-width', 1.2);
-          el.append('line').attr('x1', -30 - tick).attr('y1', 0).attr('x2', -30 + tick).attr('y2', 0).attr('stroke', 'var(--accent-terracotta)').attr('stroke-width', 1.2);
-          el.append('line').attr('x1', 30 - tick).attr('y1', 0).attr('x2', 30 + tick).attr('y2', 0).attr('stroke', 'var(--accent-terracotta)').attr('stroke-width', 1.2);
-        }
-
-        // Radiant 8-Point Starburst Body
+        // Celestial Starburst for Major Hubs
         el.append('path')
-          .attr('d', createStarburstPath(majorR, midR, innerR))
-          .attr('fill', d.focus ? 'var(--accent-midnight)' : '#162135')
-          .attr('stroke', d.focus ? 'var(--accent-terracotta)' : 'var(--accent-brass)')
-          .attr('stroke-width', d.focus ? 1.6 : 1.2)
-          .attr('filter', d.focus ? 'url(#terracotta-glow)' : 'none');
+          .attr('d', createStarburstPath(d.size * 1.7, d.size * 1.05, d.size * 0.45))
+          .attr('fill', 'url(#hub-radial-grad)')
+          .attr('filter', 'url(#celestial-halo)')
+          .attr('stroke', '#C08D38')
+          .attr('stroke-width', 0.85);
 
-        // Central Luminous Nucleus Disc
-        el.append('circle')
-          .attr('r', 5.5)
-          .attr('fill', '#FAF8F2')
-          .attr('stroke', d.focus ? 'var(--accent-terracotta)' : 'var(--accent-midnight)')
-          .attr('stroke-width', 0.9);
-
-        // Center Radiant Jewel Pip
-        el.append('circle')
-          .attr('r', 2.2)
-          .attr('fill', d.focus ? 'var(--accent-terracotta)' : 'var(--accent-brass)');
-
-      } else if (d.type === 'concept') {
-        el.append('circle')
-          .attr('r', d.size * 1.35)
-          .attr('fill', 'none')
-          .attr('stroke', 'rgba(189, 83, 43, 0.22)')
+        // Radiant Core Pip
+        el.append('circle').attr('r', 3.2).attr('fill', '#FAF8F2').attr('stroke', '#162135').attr('stroke-width', 0.8);
+      } else {
+        // Symmetrical 4-point Concept Star
+        el.append('path')
+          .attr('d', createSymmetricalConceptStar(d.size * 1.2))
+          .attr('fill', 'url(#concept-radial-grad)')
+          .attr('stroke', '#BD532B')
           .attr('stroke-width', 0.7);
 
-        el.append('path')
-          .attr('d', createSymmetricalConceptStar(d.size))
-          .attr('fill', 'var(--accent-terracotta)')
-          .attr('stroke', '#FAF8F2')
-          .attr('stroke-width', 0.9);
-
-        el.append('circle')
-          .attr('r', 1.4)
-          .attr('fill', '#FAF8F2');
-
-      } else {
-        el.append('circle')
-          .attr('r', d.size)
-          .attr('fill', '#878074')
-          .attr('stroke', '#FAF8F2')
-          .attr('stroke-width', 0.75)
-          .attr('opacity', 0.85);
+        el.append('circle').attr('r', 2.2).attr('fill', '#FAF8F2');
       }
+
+      // Elegant Astronomical Label
+      const textGroup = el.append('g').attr('class', 'node-label-group').attr('transform', `translate(0, ${d.size + 14})`);
+
+      textGroup
+        .append('text')
+        .attr('text-anchor', 'middle')
+        .attr('class', 'serif font-semibold')
+        .attr('font-size', d.type === 'hub' ? '12.5px' : '11px')
+        .attr('fill', '#1A2130')
+        .text(d.label);
+
+      textGroup
+        .append('text')
+        .attr('text-anchor', 'middle')
+        .attr('y', 11)
+        .attr('font-family', 'JetBrains Mono, monospace')
+        .attr('font-size', '8px')
+        .attr('fill', 'rgba(100, 90, 80, 0.65)')
+        .text(`${d.catalog} · d:${d.degree}`);
     });
 
-    // Clean Labels with crisp ivory halos
-    nodeElements.append('text')
-      .attr('dy', (d) => (d.type === 'hub' ? d.size + 16 : d.type === 'concept' ? d.size + 13 : d.size + 8))
-      .text((d) => d.label)
-      .attr('text-anchor', 'middle')
-      .attr('font-family', (d) => (d.type === 'hub' ? 'Newsreader, Georgia, serif' : 'Inter, sans-serif'))
-      .attr('font-size', (d) => (d.type === 'hub' ? '13.5px' : d.type === 'concept' ? '11px' : '9px'))
-      .attr('font-weight', (d) => (d.type === 'hub' ? '600' : d.type === 'concept' ? '500' : '400'))
-      .attr('fill', (d) => (d.focus ? '#162135' : d.type === 'hub' ? '#1C1917' : '#575249'))
-      .attr('paint-order', 'stroke')
-      .attr('stroke', '#FAF8F2')
-      .attr('stroke-width', 4.0)
-      .attr('stroke-linejoin', 'round');
+    // Drag behavior
+    const drag = d3
+      .drag<SVGGElement, CelestialNode>()
+      .on('start', (event) => {
+        if (!event.active) simulation.alphaTarget(0.2).restart();
+        event.subject.fx = event.subject.x;
+        event.subject.fy = event.subject.y;
+      })
+      .on('drag', (event) => {
+        event.subject.fx = event.x;
+        event.subject.fy = event.y;
+      })
+      .on('end', (event) => {
+        if (!event.active) simulation.alphaTarget(0);
+        event.subject.fx = null;
+        event.subject.fy = null;
+      });
 
-    // Simulation Tick Updates
+    node.call(drag);
+
+    // Simulation Tick
     simulation.on('tick', () => {
-      linkElements.attr('d', linkCubicPath);
-      nodeElements.attr('transform', (d: any) => `translate(${d.x},${d.y})`);
+      link.attr('d', (d: any) => linkCubicPath(d));
+
+      linkLabel
+        .attr('x', (d: any) => (d.source.x + d.target.x) / 2)
+        .attr('y', (d: any) => (d.source.y + d.target.y) / 2 - 3);
+
+      node.attr('transform', (d) => `translate(${d.x || 0}, ${d.y || 0})`);
     });
 
     return () => {
       simulation.stop();
-      window.removeEventListener('resize', renderCelestialGraticule);
     };
-  }, [renderCelestialGraticule]);
+  }, [
+    celestialNodes,
+    celestialLinks,
+    filterHubs,
+    filterConcepts,
+    selectedClusterId,
+    selectedNode?.id,
+    renderCelestialGraticule,
+  ]);
 
   // Zoom controls
   const handleZoom = (factor: number) => {
@@ -610,12 +575,38 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     const height = window.innerHeight;
     svgRef.current.transition().duration(500).call(
       zoomBehaviorRef.current.transform,
-      d3.zoomIdentity.translate(width * 0.03, height * 0.02).scale(0.98)
+      d3.zoomIdentity.translate(width * 0.05, height * 0.03).scale(0.95)
     );
   };
 
+  // Search in graph
+  const handleSearchSelect = (query: string) => {
+    setSearchQuery(query);
+    if (!query.trim()) return;
+    const match = celestialNodes.find((n) =>
+      n.label.toLowerCase().includes(query.toLowerCase())
+    );
+    if (match) {
+      setSelectedNode(match);
+      if (svgRef.current && zoomBehaviorRef.current && match.x !== undefined && match.y !== undefined) {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        svgRef.current.transition().duration(600).call(
+          zoomBehaviorRef.current.transform,
+          d3.zoomIdentity
+            .translate(width / 2 - match.x * 1.5, height / 2 - match.y * 1.5)
+            .scale(1.5)
+        );
+      }
+    }
+  };
+
   return (
-    <div className={`h-[calc(100vh-57px)] w-full relative text-[13px] leading-relaxed select-none overflow-hidden ${isFullscreen ? 'focused-view' : ''}`}>
+    <div
+      className={`h-screen w-full relative text-[13px] leading-relaxed select-none overflow-hidden ${
+        isFullscreen ? 'focused-view' : ''
+      }`}
+    >
       {/* Archival paper grain texture */}
       <div className="paper-grain" />
 
@@ -638,13 +629,245 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       {/* D3 Observatory Knowledge Constellation Graph */}
       <div ref={containerRef} className="absolute inset-0 w-full h-full z-0" />
 
-      {/* Persistent Reopen Left Edge Tab */}
+      {/* ================= FLOATING MINIMAL TOP NAVIGATION (APPROVED DESIGN) ================= */}
+      <header className="absolute top-0 left-0 right-0 z-30 h-12 px-6 flex items-center justify-between bg-[#FAF8F2]/80 backdrop-blur-md border-b border-[var(--border-parchment)] pointer-events-auto transition-all select-none">
+        {/* LEFT: Hyades Logo + Destination Links + Graph Actions */}
+        <div className="flex items-center gap-5">
+          {/* Logo & Identity */}
+          <button
+            type="button"
+            onClick={() => onNavigateToDestination?.('overview')}
+            className="flex items-center gap-2 group text-left focus:outline-none cursor-pointer"
+            title="Hyades Overview"
+          >
+            <div className="w-7 h-7 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] flex items-center justify-center shadow-xs border border-[#2D3F5E] group-hover:bg-[var(--accent-midnight-light)] transition-colors">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                className="transition-transform duration-700 group-hover:rotate-90"
+              >
+                <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="1.2" strokeDasharray="2,2" strokeOpacity="0.4" />
+                <circle cx="12" cy="12" r="5.5" stroke="currentColor" strokeWidth="1.2" strokeOpacity="0.7" />
+                <path d="M 12 3.5 L 13.5 10.5 L 20.5 12 L 13.5 13.5 L 12 20.5 L 10.5 13.5 L 3.5 12 L 10.5 10.5 Z" fill="currentColor" />
+                <circle cx="12" cy="12" r="1.5" fill="#FAF8F2" />
+              </svg>
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="serif text-lg font-semibold tracking-tight text-[var(--ink-primary)] leading-none">
+                Hyades
+              </span>
+              <div className="w-px h-2.5 bg-[var(--border-strong)]" />
+              <span className="text-[9.5px] tracking-[0.2em] font-medium text-[var(--ink-secondary)] uppercase">
+                Observatory
+              </span>
+            </div>
+          </button>
+
+          {/* Nav Destination Links */}
+          <nav aria-label="Main navigation" className="hidden lg:flex items-center gap-4 ml-1">
+            <button
+              type="button"
+              onClick={() => onNavigateToDestination?.('overview')}
+              className="text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
+            >
+              Overview
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigateToDestination?.('library')}
+              className="text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
+            >
+              Library
+            </button>
+            <button
+              type="button"
+              className="text-xs font-semibold text-[var(--accent-midnight)] flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>Observatory</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-brass)]" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigateToDestination?.('stella')}
+              className="text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
+            >
+              Stella
+            </button>
+          </nav>
+
+          <div className="w-px h-4 bg-[var(--border-parchment)]" />
+
+          {/* Actions: + Entity & Connect & More */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsEntityEditorOpen(true)}
+              className="px-2.5 py-1 rounded-md bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
+              title="Add Entity to Knowledge Sky"
+            >
+              <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
+              <span>+ Entity</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsRelationshipEditorOpen(true)}
+              className="px-2.5 py-1 rounded-md bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
+              title="Connect Two Entities"
+            >
+              <i className="ph ph-arrows-split text-xs text-[var(--accent-terracotta)]" />
+              <span>Connect</span>
+            </button>
+
+            {/* More Menu Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsMoreMenuOpen((prev) => !prev)}
+                className="w-7 h-7 rounded-md bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+                title="More Graph Actions"
+              >
+                <i className="ph-bold ph-dots-three-vertical text-xs" />
+              </button>
+
+              {isMoreMenuOpen && (
+                <div className="absolute left-0 mt-1 w-48 bg-white border border-[var(--border-strong)] rounded-lg shadow-lg py-1 z-50 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSuggestionsOpen(true);
+                      setIsMoreMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
+                  >
+                    <i className="ph ph-sparkle text-xs text-[var(--accent-terracotta)]" />
+                    <span>Link Suggestions</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAtlasPlate((p) => !p);
+                      setIsMoreMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
+                  >
+                    <i className="ph ph-newspaper text-xs text-[var(--accent-midnight)]" />
+                    <span>{showAtlasPlate ? 'Hide Atlas Plate' : 'Show Atlas Plate'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowGraticule((p) => !p);
+                      setIsMoreMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
+                  >
+                    <i className="ph ph-grid-four text-xs text-[var(--accent-brass)]" />
+                    <span>{showGraticule ? 'Hide Coordinates' : 'Show Coordinates'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* CENTER: Compact Focused Coordinate HUD Bar */}
+        <div className="flex items-center justify-center">
+          {selectedNode ? (
+            <div className="bg-white/95 border border-[var(--border-strong)] rounded-full px-3.5 py-1 shadow-2xs flex items-center gap-2.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)] animate-pulse" />
+              <span className="serif text-xs font-semibold text-[var(--ink-primary)] leading-none max-w-[180px] truncate">
+                {selectedNode.label}
+              </span>
+              <span className="w-px h-2.5 bg-[var(--border-parchment)]" />
+              <span className="mono text-[10px] text-[var(--ink-tertiary)] hidden sm:inline">
+                {selectedNode.coords}
+              </span>
+              <span className="mono text-[9px] text-[var(--accent-brass)] bg-[var(--bg-panel-subtle)] px-1.5 py-0.5 rounded border border-[var(--border-parchment)] font-medium">
+                {selectedNode.catalog}
+              </span>
+            </div>
+          ) : (
+            <div className="bg-white/80 border border-[var(--border-parchment)] rounded-full px-3 py-1 text-xs text-[var(--ink-tertiary)] mono">
+              Click a star to focus coordinates
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT: Search Trigger & View Utilities */}
+        <div className="flex items-center gap-3">
+          {onOpenSearch && (
+            <button
+              type="button"
+              onClick={onOpenSearch}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-[var(--border-strong)] text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[var(--bg-panel-subtle)] transition-colors shadow-2xs cursor-pointer"
+              title="Global Search (⌘K)"
+            >
+              <i className="ph ph-magnifying-glass text-xs" />
+              <span className="hidden sm:inline">Search</span>
+              <kbd className="mono text-[10px] text-[var(--ink-tertiary)] ml-1">⌘K</kbd>
+            </button>
+          )}
+
+          {onToggleFullscreen && (
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              className="w-7 h-7 rounded-md bg-white border border-[var(--border-strong)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+              title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen / Focused View'}
+            >
+              <i className={`ph-bold ${isFullscreen ? 'ph-corners-in' : 'ph-corners-out'} text-xs text-[var(--accent-terracotta)]`} />
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* Honest Empty State when Workspace Graph is Empty */}
+      {!isLoading && celestialNodes.length === 0 && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-auto bg-[#FAF8F2]/60 backdrop-blur-xs">
+          <div className="instrument-panel max-w-md p-6 text-center flex flex-col items-center gap-3 bg-white/95 shadow-lg">
+            <div className="panel-bracket-tl" />
+            <div className="panel-bracket-br" />
+            <div className="w-12 h-12 rounded-full bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[var(--accent-terracotta)] text-xl mb-1">
+              <i className="ph ph-compass" />
+            </div>
+            <h3 className="serif text-xl font-semibold text-[var(--ink-primary)]">
+              The Knowledge Sky is Uncharted
+            </h3>
+            <p className="text-xs text-[var(--ink-secondary)] leading-relaxed">
+              No concepts or relationships have been extracted yet in this workspace. Ingest notes or trigger extraction in the Library to illuminate the celestial atlas.
+            </p>
+            <div className="flex items-center gap-3 mt-2">
+              <button
+                type="button"
+                onClick={() => onNavigateToDestination?.('library')}
+                className="px-4 py-2 bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium rounded-lg flex items-center gap-2 shadow-2xs cursor-pointer transition-colors"
+              >
+                <i className="ph ph-books text-xs" />
+                <span>Go to Library</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsEntityEditorOpen(true)}
+                className="px-4 py-2 border border-[var(--border-strong)] hover:bg-[var(--bg-panel-subtle)] text-xs font-medium rounded-lg text-[var(--ink-primary)] flex items-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <i className="ph ph-plus text-xs" />
+                <span>+ Add Entity</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Persistent Reopen Left Edge Tab (PanelLeftOpen style icon) */}
       {!isLeftSidebarOpen && (
-        <div id="reopen-left-sidebar" className="fixed top-20 left-0 z-30 pointer-events-auto">
+        <div id="reopen-left-sidebar" className="fixed top-16 left-0 z-30 pointer-events-auto">
           <button
             type="button"
             onClick={() => setIsLeftSidebarOpen(true)}
-            className="bg-[var(--bg-panel)]/95 hover:bg-white backdrop-blur-md border border-l-0 border-[var(--border-strong)] rounded-r-xl shadow-md py-2 px-3 flex items-center gap-2 text-xs font-medium text-[var(--ink-primary)] transition-all active:scale-95 group"
+            className="bg-[var(--bg-panel)]/95 hover:bg-white backdrop-blur-md border border-l-0 border-[var(--border-strong)] rounded-r-xl shadow-md py-2 px-3 flex items-center gap-2 text-xs font-medium text-[var(--ink-primary)] transition-all active:scale-95 group cursor-pointer"
             title="Expand Constellations Panel"
           >
             <svg
@@ -660,21 +883,21 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
               <path d="M9 3v18" />
               <path d="m11 9 3 3-3 3" />
             </svg>
-            <span>Constellations</span>
+            <span className="serif-italic font-medium">Constellations</span>
           </button>
         </div>
       )}
 
-      {/* Persistent Reopen Right Edge Tab */}
-      {!isRightSidebarOpen && (
-        <div id="reopen-right-sidebar" className="fixed top-20 right-0 z-30 pointer-events-auto">
+      {/* Persistent Reopen Right Edge Tab (PanelRightOpen style icon) */}
+      {!isRightSidebarOpen && selectedNode && (
+        <div id="reopen-right-sidebar" className="fixed top-16 right-0 z-30 pointer-events-auto">
           <button
             type="button"
             onClick={() => setIsRightSidebarOpen(true)}
-            className="bg-[var(--bg-panel)]/95 hover:bg-white backdrop-blur-md border border-r-0 border-[var(--border-strong)] rounded-l-xl shadow-md py-2 px-3 flex items-center gap-2 text-xs font-medium text-[var(--ink-primary)] transition-all active:scale-95 group"
-            title="Expand Knowledge Details"
+            className="bg-[var(--bg-panel)]/95 hover:bg-white backdrop-blur-md border border-r-0 border-[var(--border-strong)] rounded-l-xl shadow-md py-2 px-3 flex items-center gap-2 text-xs font-medium text-[var(--ink-primary)] transition-all active:scale-95 group cursor-pointer"
+            title="Expand Knowledge Dossier"
           >
-            <span>Knowledge Details</span>
+            <span className="serif-italic font-medium">Dossier</span>
             <svg
               className="w-4 h-4 text-[var(--accent-midnight)] group-hover:scale-110 transition-transform"
               viewBox="0 0 24 24"
@@ -692,46 +915,27 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         </div>
       )}
 
-      {/* ================= TOP HUD: FOCUS COORDINATES ================= */}
-      <div className="absolute top-5 left-1/2 -translate-x-1/2 z-20 pointer-events-auto flex items-center justify-center">
-        <div className="bg-[var(--bg-panel)]/95 backdrop-blur-md border border-[var(--border-strong)] rounded-xl px-4 py-2 shadow-sm flex items-center gap-3">
-          <div className="w-2 h-2 rounded-full bg-[var(--accent-terracotta)] animate-pulse" />
-          <div className="flex flex-col">
-            <span className="serif text-sm font-semibold text-[var(--ink-primary)] leading-tight">
-              {selectedNode.label}
-            </span>
-            <span className="mono text-[10px] text-[var(--ink-tertiary)]">
-              {selectedNode.coords || 'RA 04ʰ 28ᵐ 17ˢ · DEC +15° 52′ 00″'}
-            </span>
-          </div>
-          <span className="mono text-[10px] text-[var(--accent-brass)] bg-white px-1.5 py-0.5 rounded border border-[var(--border-parchment)]">
-            {selectedNode.catalog || 'HYA-03'}
-          </span>
-        </div>
-      </div>
-
       {/* ================= LEFT SIDEBAR (CONSTELLATIONS & FILTERS) ================= */}
       {isLeftSidebarOpen && (
         <aside
           id="left-sidebar"
-          className="sidebar-transition absolute top-5 left-6 w-[280px] max-h-[calc(100vh-140px)] z-10 flex flex-col pointer-events-none"
+          className="sidebar-transition absolute top-16 left-6 w-[280px] max-h-[calc(100vh-140px)] z-10 flex flex-col pointer-events-none"
         >
           <div className="instrument-panel flex-1 flex flex-col pointer-events-auto overflow-hidden">
             <div className="panel-bracket-tl" />
             <div className="panel-bracket-br" />
 
-            {/* Header */}
+            {/* Header with PanelLeftClose icon */}
             <div className="px-4 py-3 border-b border-[var(--border-parchment)] bg-[var(--bg-panel-subtle)] flex items-center justify-between">
               <div className="text-[10px] uppercase tracking-[0.2em] font-medium text-[var(--ink-secondary)] flex items-center gap-2">
                 <i className="ph ph-compass-tool text-xs text-[var(--accent-midnight)]" />
                 <span>Hyades Constellations</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] mono text-[var(--ink-tertiary)]">4 SECTORS</span>
                 <button
                   type="button"
                   onClick={() => setIsLeftSidebarOpen(false)}
-                  className="w-6 h-6 rounded flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white transition-colors"
+                  className="w-6 h-6 rounded flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white transition-colors cursor-pointer"
                   title="Collapse Constellations Panel"
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -744,91 +948,88 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             </div>
 
             {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-5">
-              {/* Constellations list */}
+            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+              {/* Real Clusters / Constellations */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] uppercase tracking-[0.18em] font-medium text-[var(--ink-secondary)]">
-                    Constellations
+                    Constellations ({clusters.length || celestialNodes.length})
                   </span>
+                  {selectedClusterId && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedClusterId(null)}
+                      className="text-[10px] text-[var(--accent-terracotta)] hover:underline cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const found = CANONICAL_GRAPH.nodes.find((n) => n.id === 'hub_rag');
-                      if (found) setSelectedNode(found);
-                    }}
-                    className="w-full text-left p-2.5 rounded-lg border border-[var(--ink-primary)] bg-white shadow-xs flex items-center justify-between group transition-all"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <svg width="12" height="12" viewBox="-5 -5 10 10" fill="var(--accent-terracotta)">
-                        <path d="M 0 -5 L 1.2 -1.2 L 5 0 L 1.2 1.2 L 0 5 L -1.2 1.2 L -5 0 L -1.2 -1.2 Z" />
-                      </svg>
-                      <div>
-                        <div className="text-xs font-semibold text-[var(--ink-primary)] leading-tight">Retrieval & RAG</div>
-                        <div className="text-[10px] text-[var(--ink-secondary)] mono">SECTOR II · 28 ATOMS</div>
-                      </div>
-                    </div>
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)]" />
-                  </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const found = CANONICAL_GRAPH.nodes.find((n) => n.id === 'hub_agents');
-                      if (found) setSelectedNode(found);
-                    }}
-                    className="w-full text-left p-2.5 rounded-lg border border-[var(--border-parchment)] bg-transparent hover:bg-white hover:border-[var(--border-strong)] transition-all flex items-center justify-between group"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <svg width="12" height="12" viewBox="-5 -5 10 10" fill="var(--accent-midnight)">
-                        <path d="M 0 -5 L 1.2 -1.2 L 5 0 L 1.2 1.2 L 0 5 L -1.2 1.2 L -5 0 L -1.2 -1.2 Z" />
-                      </svg>
-                      <div>
-                        <div className="text-xs font-medium text-[var(--ink-secondary)] group-hover:text-[var(--ink-primary)] leading-tight">AI Agent Systems</div>
-                        <div className="text-[10px] text-[var(--ink-tertiary)] mono">SECTOR I · 20 ATOMS</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] text-[var(--ink-tertiary)] mono">0.86</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const found = CANONICAL_GRAPH.nodes.find((n) => n.id === 'hub_kg');
-                      if (found) setSelectedNode(found);
-                    }}
-                    className="w-full text-left p-2.5 rounded-lg border border-[var(--border-parchment)] bg-transparent hover:bg-white hover:border-[var(--border-strong)] transition-all flex items-center justify-between group"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <svg width="12" height="12" viewBox="-5 -5 10 10" fill="var(--accent-brass)">
-                        <path d="M 0 -5 L 1.2 -1.2 L 5 0 L 1.2 1.2 L 0 5 L -1.2 1.2 L -5 0 L -1.2 -1.2 Z" />
-                      </svg>
-                      <div>
-                        <div className="text-xs font-medium text-[var(--ink-secondary)] group-hover:text-[var(--ink-primary)] leading-tight">Knowledge Graphs</div>
-                        <div className="text-[10px] text-[var(--ink-tertiary)] mono">SECTOR III · 18 ATOMS</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] text-[var(--ink-tertiary)] mono">0.74</span>
-                  </button>
+                <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
+                  {clusters.length > 0 ? (
+                    clusters.map((cl) => (
+                      <button
+                        key={cl.id}
+                        type="button"
+                        onClick={() => setSelectedClusterId(selectedClusterId === cl.id ? null : cl.id)}
+                        className={`w-full text-left p-2 rounded-lg border transition-all flex items-center justify-between cursor-pointer ${
+                          selectedClusterId === cl.id
+                            ? 'bg-white border-[var(--accent-terracotta)] shadow-2xs'
+                            : 'hover:bg-white/80 border-transparent hover:border-[var(--border-parchment)]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <span className="w-2 h-2 rounded-full bg-[var(--accent-midnight)]" />
+                          <span className="text-xs font-medium text-[var(--ink-primary)] truncate">
+                            {cl.name}
+                          </span>
+                        </div>
+                        <span className="text-[10px] mono text-[var(--ink-tertiary)]">
+                          {cl.member_count} stars
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    celestialNodes.slice(0, 6).map((n) => (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => setSelectedNode(n)}
+                        className={`w-full text-left p-2 rounded-lg border transition-all flex items-center justify-between cursor-pointer ${
+                          selectedNode?.id === n.id
+                            ? 'bg-white border-[var(--accent-terracotta)] shadow-2xs'
+                            : 'hover:bg-white/80 border-transparent hover:border-[var(--border-parchment)]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)]" />
+                          <span className="text-xs font-medium text-[var(--ink-primary)] truncate">
+                            {n.label}
+                          </span>
+                        </div>
+                        <span className="text-[10px] mono text-[var(--ink-tertiary)]">
+                          {n.degree} links
+                        </span>
+                      </button>
+                    ))
+                  )}
                 </div>
               </div>
 
-              <div className="w-full h-px bg-[var(--border-parchment)]" />
+              {/* Filters */}
+              <div className="pt-3 border-t border-[var(--border-parchment)]">
+                <span className="text-[10px] uppercase tracking-[0.18em] font-medium text-[var(--ink-secondary)] mb-2 block">
+                  Constellation Filters
+                </span>
 
-              {/* Celestial Filters */}
-              <div>
-                <div className="text-[10px] uppercase tracking-[0.18em] font-medium text-[var(--ink-secondary)] mb-2">
-                  Celestial Filters
-                </div>
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-1.5">
                   <label className="flex items-center justify-between py-1 cursor-pointer">
                     <span className="flex items-center gap-2 text-xs font-medium text-[var(--ink-primary)]">
-                      <svg width="12" height="12" viewBox="-6 -6 12 12" fill="var(--accent-midnight)">
-                        <path d="M 0 -6 L 1.5 -1.5 L 6 0 L 1.5 1.5 L 0 6 L -1.5 1.5 L -6 0 L -1.5 -1.5 Z" />
+                      <svg width="12" height="12" viewBox="-8 -8 16 16" fill="var(--accent-midnight)">
+                        <path d="M 0 -8 L 2 -2 L 8 0 L 2 2 L 0 8 L -2 2 L -8 0 L -2 -2 Z" />
                       </svg>
-                      Major Starbursts
+                      Major Starbursts (Hubs)
                     </span>
                     <input
                       type="checkbox"
@@ -852,19 +1053,6 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                       className="rounded accent-[var(--accent-midnight)] cursor-pointer"
                     />
                   </label>
-
-                  <label className="flex items-center justify-between py-1 cursor-pointer">
-                    <span className="flex items-center gap-2 text-xs font-medium text-[var(--ink-secondary)]">
-                      <i className="ph ph-file-text text-sm" />
-                      Literature & Papers
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={filterEntities}
-                      onChange={(e) => setFilterEntities(e.target.checked)}
-                      className="rounded accent-[var(--accent-midnight)] cursor-pointer"
-                    />
-                  </label>
                 </div>
               </div>
             </div>
@@ -872,17 +1060,17 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         </aside>
       )}
 
-      {/* ================= VERTICAL GRAPH CONTROLS ================= */}
+      {/* ================= VERTICAL GRAPH CONTROLS (APPROVED DESIGN) ================= */}
       <div
         id="graph-controls"
         className={`absolute bottom-6 z-20 pointer-events-auto flex flex-col items-center gap-1 bg-[var(--bg-panel)]/95 backdrop-blur-md border border-[var(--border-strong)] rounded-xl p-1 shadow-sm w-9 transition-all duration-300 ${
-          isRightSidebarOpen ? 'right-[416px]' : 'right-6'
+          isRightSidebarOpen && selectedNode ? 'right-[416px]' : 'right-6'
         }`}
       >
         <button
           type="button"
           onClick={() => handleZoom(1.25)}
-          className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors"
+          className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
           title="Zoom In (+)"
         >
           <i className="ph-bold ph-plus text-xs" />
@@ -891,7 +1079,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         <button
           type="button"
           onClick={() => handleZoom(0.8)}
-          className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors"
+          className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
           title="Zoom Out (–)"
         >
           <i className="ph-bold ph-minus text-xs" />
@@ -902,7 +1090,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         <button
           type="button"
           onClick={handleRecenter}
-          className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors"
+          className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
           title="Recenter Constellation"
         >
           <i className="ph-bold ph-crosshair text-xs" />
@@ -911,7 +1099,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         <button
           type="button"
           onClick={() => setShowAtlasPlate((prev) => !prev)}
-          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
             showAtlasPlate ? 'text-[var(--accent-midnight)] bg-[var(--bg-panel-subtle)]' : 'text-[var(--ink-tertiary)]'
           }`}
           title="Toggle Archival Atlas Plate"
@@ -922,7 +1110,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         <button
           type="button"
           onClick={() => setShowGraticule((prev) => !prev)}
-          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
             showGraticule ? 'text-[var(--accent-midnight)] bg-[var(--bg-panel-subtle)]' : 'text-[var(--ink-tertiary)]'
           }`}
           title="Toggle Celestial Coordinates"
@@ -930,34 +1118,37 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           <i className="ph-bold ph-grid-four text-xs" />
         </button>
 
-        <div className="w-4 h-px bg-[var(--border-parchment)] mx-auto my-0.5" />
-
-        <button
-          type="button"
-          onClick={toggleFullscreen}
-          className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors"
-          title={isFullscreen ? 'Exit Focus View' : 'Focus / Fullscreen View'}
-        >
-          <i className={`ph-bold ${isFullscreen ? 'ph-corners-in' : 'ph-corners-out'} text-xs text-[var(--accent-terracotta)]`} />
-        </button>
+        {onToggleFullscreen && (
+          <>
+            <div className="w-4 h-px bg-[var(--border-parchment)] mx-auto my-0.5" />
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
+              title={isFullscreen ? 'Exit Focus View' : 'Focus / Fullscreen View'}
+            >
+              <i className={`ph-bold ${isFullscreen ? 'ph-corners-in' : 'ph-corners-out'} text-xs text-[var(--accent-terracotta)]`} />
+            </button>
+          </>
+        )}
       </div>
 
       {/* ================= RIGHT KNOWLEDGE DOSSIER PANEL ================= */}
-      {isRightSidebarOpen && (
+      {isRightSidebarOpen && selectedNode && (
         <aside
           id="right-sidebar"
-          className="sidebar-transition absolute top-5 right-6 bottom-6 w-[390px] z-10 flex flex-col pointer-events-none"
+          className="sidebar-transition absolute top-16 right-6 bottom-6 w-[390px] z-10 flex flex-col pointer-events-none"
         >
           <div className="instrument-panel flex-1 flex flex-col pointer-events-auto overflow-hidden">
             <div className="panel-bracket-tl" />
             <div className="panel-bracket-br" />
 
-            {/* Panel Header */}
+            {/* Panel Header with PanelRightClose icon */}
             <div className="p-6 border-b border-[var(--border-parchment)] bg-white relative">
               <button
                 type="button"
                 onClick={() => setIsRightSidebarOpen(false)}
-                className="absolute top-5 right-5 w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors"
+                className="absolute top-5 right-5 w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
                 title="Collapse Knowledge Dossier"
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -969,7 +1160,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
               <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded border border-[var(--border-strong)] bg-[var(--bg-panel-subtle)] text-[10px] text-[var(--ink-secondary)] font-semibold tracking-wider uppercase mono mb-3">
                 <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)]" />
-                <span>Knowledge Hub Dossier</span>
+                <span>{selectedNode.type === 'hub' ? 'Knowledge Hub Dossier' : 'Concept Star Dossier'}</span>
               </div>
 
               {/* Node Title */}
@@ -980,116 +1171,89 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
               {/* Context & Classification */}
               <div className="flex items-center gap-3 text-xs text-[var(--ink-secondary)]">
                 <span className="flex items-center gap-1.5">
-                  <i className="ph ph-compass" /> Central Knowledge Hub
+                  <i className="ph ph-compass" /> {selectedNode.type === 'hub' ? 'Central Hub' : 'Concept'}
                 </span>
                 <span className="w-1 h-1 rounded-full bg-[var(--border-strong)]" />
-                <span className="mono text-[11px] text-[var(--accent-brass)]">Rank: 0.942</span>
+                <span className="mono text-[11px] text-[var(--accent-brass)]">
+                  {selectedNode.degree} Connections
+                </span>
               </div>
             </div>
 
-            {/* Scrollable Scientific Context & Dossier */}
+            {/* Scrollable Context & Connections */}
             <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
-              {/* Epistemic Abstract */}
+              {/* Abstract */}
               <div>
                 <p className="text-[13px] leading-relaxed text-[var(--ink-archival)]">
-                  {selectedNode.desc ||
-                    'A dual-process architectural paradigm connecting static parametric LLM weights with external dynamic vector memory. It indexes corpora into dense embeddings, resolves semantic proximity queries via approximate nearest-neighbor search, and injects retrieved context windows directly into generative inference.'}
+                  {selectedNode.desc}
                 </p>
               </div>
 
-              {/* Local Constellation */}
+              {/* Local Constellation Links */}
               <div>
                 <div className="flex items-center justify-between border-b border-[var(--border-parchment)] pb-1.5 mb-3">
-                  <h3 className="serif-italic text-lg font-medium text-[var(--ink-primary)]">Local Constellation</h3>
-                  <span className="text-[10px] mono text-[var(--ink-tertiary)]">EPICENTER LINKS</span>
+                  <h3 className="serif-italic text-lg font-medium text-[var(--ink-primary)]">
+                    Local Constellation
+                  </h3>
+                  <span className="text-[10px] mono text-[var(--ink-tertiary)]">
+                    {selectedNode.connections.length} ACTIVE PATHWAYS
+                  </span>
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  {(selectedNode.connections || [
-                    { id: 'hub_rag', name: 'Retrieval Augmented Gen', type: 'Core Pathway', corr: '0.85' },
-                    { id: 'hub_vector_dbs', name: 'Vector Databases', type: 'Index Store', corr: '0.79' },
-                    { id: 'concept_embeddings', name: 'Dense Embeddings', type: 'Substrate', corr: '0.88' },
-                  ]).map((conn) => (
-                    <div
-                      key={conn.id}
-                      onClick={() => {
-                        const target = CANONICAL_GRAPH.nodes.find((n) => n.id === conn.id);
-                        if (target) setSelectedNode(target);
-                      }}
-                      className="card-surface p-2.5 flex items-center justify-between cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)]" />
-                        <div>
-                          <div className="text-xs font-medium text-[var(--ink-primary)] group-hover:underline">
-                            {conn.name}
+                  {selectedNode.connections.length > 0 ? (
+                    selectedNode.connections.map((conn) => (
+                      <div
+                        key={conn.id}
+                        onClick={() => {
+                          const target = celestialNodes.find((n) => n.id === conn.id);
+                          if (target) setSelectedNode(target);
+                        }}
+                        className="card-surface p-2.5 flex items-center justify-between cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)]" />
+                          <div>
+                            <div className="text-xs font-medium text-[var(--ink-primary)] group-hover:underline">
+                              {conn.name}
+                            </div>
+                            <div className="text-[10px] text-[var(--ink-tertiary)] mono">{conn.type}</div>
                           </div>
-                          <div className="text-[10px] text-[var(--ink-tertiary)] mono">{conn.type}</div>
                         </div>
+                        <span className="mono text-[10px] text-[var(--ink-secondary)]">
+                          {(parseFloat(conn.corr) * 100).toFixed(0)}%
+                        </span>
                       </div>
-                      <span className="mono text-[10px] text-[var(--ink-secondary)]">{conn.corr}</span>
+                    ))
+                  ) : (
+                    <div className="p-3 rounded-lg bg-[var(--bg-panel-subtle)] text-xs text-[var(--ink-tertiary)] italic">
+                      No direct relationships recorded yet for this concept.
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
 
-              {/* Related Sources */}
-              <div>
-                <div className="flex items-center justify-between border-b border-[var(--border-parchment)] pb-1.5 mb-3">
-                  <h3 className="serif-italic text-lg font-medium text-[var(--ink-primary)]">Related Sources</h3>
-                  <span className="text-[10px] mono text-[var(--ink-tertiary)]">LITERATURE & CORPUS</span>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <div
-                    onClick={() => onNavigateToDestination && onNavigateToDestination('library')}
-                    className="card-surface p-3 flex items-start gap-3 cursor-pointer group"
-                  >
-                    <i className="ph ph-book-open text-base text-[var(--accent-terracotta)] mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium text-[var(--ink-primary)] leading-snug group-hover:underline">
-                        Lewis et al. — Retrieval-Augmented Generation for Knowledge-Intensive NLP
-                      </div>
-                      <div className="text-[10px] text-[var(--ink-secondary)] mono mt-0.5">NeurIPS 2020 · 4,210 Citations</div>
-                    </div>
-                  </div>
-
-                  <div
-                    onClick={() => onNavigateToDestination && onNavigateToDestination('library')}
-                    className="card-surface p-3 flex items-start gap-3 cursor-pointer group"
-                  >
-                    <i className="ph ph-article text-base text-[var(--accent-midnight)] mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium text-[var(--ink-primary)] leading-snug group-hover:underline">
-                        Karpukhin et al. — Dense Passage Retrieval for Open-Domain Question Answering
-                      </div>
-                      <div className="text-[10px] text-[var(--ink-secondary)] mono mt-0.5">EMNLP 2020 · 2,890 Citations</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Epistemic Metrics */}
+              {/* Knowledge Health / Degree metrics */}
               <div className="bg-[var(--bg-panel-subtle)] p-3 rounded-lg border border-[var(--border-parchment)] text-xs">
                 <div className="text-[10px] uppercase tracking-[0.2em] font-medium text-[var(--ink-secondary)] mb-2">
-                  Epistemic Metrics
+                  Knowledge Metrics
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-[11px] mono">
                   <div>
-                    <span className="text-[var(--ink-tertiary)]">Degree Cent:</span>{' '}
-                    <span className="text-[var(--ink-primary)]">0.942</span>
+                    <span className="text-[var(--ink-tertiary)]">Catalog:</span>{' '}
+                    <span className="text-[var(--ink-primary)]">{selectedNode.catalog}</span>
                   </div>
                   <div>
-                    <span className="text-[var(--ink-tertiary)]">Clustering Coeff:</span>{' '}
-                    <span className="text-[var(--ink-primary)]">0.781</span>
+                    <span className="text-[var(--ink-tertiary)]">Degree:</span>{' '}
+                    <span className="text-[var(--ink-primary)]">{selectedNode.degree}</span>
                   </div>
                   <div>
-                    <span className="text-[var(--ink-tertiary)]">Eigenvector:</span>{' '}
-                    <span className="text-[var(--ink-primary)]">0.9612</span>
+                    <span className="text-[var(--ink-tertiary)]">Notes:</span>{' '}
+                    <span className="text-[var(--ink-primary)]">{selectedNode.noteCount}</span>
                   </div>
                   <div>
-                    <span className="text-[var(--ink-tertiary)]">Triad Faith:</span>{' '}
-                    <span className="text-[var(--ink-primary)]">0.982</span>
+                    <span className="text-[var(--ink-tertiary)]">Cluster:</span>{' '}
+                    <span className="text-[var(--ink-primary)]">Sector {selectedNode.group}</span>
                   </div>
                 </div>
               </div>
@@ -1099,16 +1263,16 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             <div className="p-4 border-t border-[var(--border-parchment)] bg-white flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => onNavigateToDestination && onNavigateToDestination('stella')}
-                className="flex-1 bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-colors py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-2 shadow-2xs"
+                onClick={() => onNavigateToDestination?.('stella')}
+                className="flex-1 bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-colors py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
               >
                 <i className="ph ph-sparkle text-[var(--accent-brass)]" />
-                <span>Consult Stella on Node</span>
+                <span>Consult Stella on Concept</span>
               </button>
               <button
                 type="button"
-                onClick={() => onNavigateToDestination && onNavigateToDestination('library')}
-                className="p-2 border border-[var(--border-strong)] rounded-lg text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[var(--bg-panel-subtle)] transition-colors"
+                onClick={() => onNavigateToDestination?.('library')}
+                className="p-2 border border-[var(--border-strong)] rounded-lg text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[var(--bg-panel-subtle)] transition-colors cursor-pointer"
                 title="View in Library"
               >
                 <i className="ph ph-books text-sm" />
@@ -1118,7 +1282,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         </aside>
       )}
 
-      {/* ================= BOTTOM SEARCH BAR ================= */}
+      {/* ================= BOTTOM SEARCH / FILTER BAR ================= */}
       <div
         id="search-bar-container"
         className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-auto w-full max-w-md px-4"
@@ -1128,15 +1292,53 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearchSelect(e.target.value)}
             placeholder="Search celestial constellation..."
             className="flex-1 bg-transparent border-none outline-none text-xs text-[var(--ink-primary)] placeholder:text-[var(--ink-tertiary)]"
           />
-          <kbd className="px-1.5 py-0.5 rounded border border-[var(--border-parchment)] bg-[var(--bg-panel-subtle)] text-[10px] mono text-[var(--ink-tertiary)]">
-            /
-          </kbd>
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => handleSearchSelect('')}
+              className="text-xs text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] cursor-pointer"
+            >
+              ✕
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Real Entity Editor Modal */}
+      <EntityEditor
+        workspaceId={workspaceId}
+        isOpen={isEntityEditorOpen}
+        onClose={() => setIsEntityEditorOpen(false)}
+        onSave={() => {
+          setIsEntityEditorOpen(false);
+          fetchGraph();
+        }}
+      />
+
+      {/* Real Relationship Editor Modal */}
+      <RelationshipEditor
+        workspaceId={workspaceId}
+        isOpen={isRelationshipEditorOpen}
+        availableEntities={celestialNodes.map((n) => ({ id: n.id, name: n.label }))}
+        onClose={() => setIsRelationshipEditorOpen(false)}
+        onSave={() => {
+          setIsRelationshipEditorOpen(false);
+          fetchGraph();
+        }}
+      />
+
+      {/* Real Link Suggestion Panel */}
+      <LinkSuggestionPanel
+        workspaceId={workspaceId}
+        isOpen={isSuggestionsOpen}
+        onClose={() => setIsSuggestionsOpen(false)}
+        onLinkCreated={() => fetchGraph()}
+        onNavigateToNote={onNavigateToNote}
+      />
     </div>
   );
 };
