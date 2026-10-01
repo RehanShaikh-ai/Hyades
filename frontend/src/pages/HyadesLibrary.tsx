@@ -1,9 +1,12 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { listNotes, createNote, updateNote } from '@/api/notes';
 import { listSources } from '@/api/sources';
+import { listClusters } from '@/api/clusters';
 import { triggerExtraction, triggerReindex } from '@/api/graph_index';
+import { getJobStatus } from '@/api/jobs';
 import { Note } from '@/types/note';
 import { Source } from '@/types/source';
+import { ClusterResponse } from '@/types/cluster';
 import libraryScriptorium from '@/assets/plates/library-scriptorium.jpg';
 import libraryCatalogFolio from '@/assets/plates/library-catalog-folio.jpg';
 
@@ -48,6 +51,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 }) => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
+  const [clusters, setClusters] = useState<ClusterResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Filters & Search
@@ -80,16 +84,15 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [notesRes, sourcesRes] = await Promise.allSettled([
+      const [notesRes, sourcesRes, clustersRes] = await Promise.allSettled([
         listNotes(workspaceId, { page_size: 100, is_archived: false, sort: 'updated_at_desc' }),
         listSources(workspaceId, { page_size: 100 }),
+        listClusters(workspaceId),
       ]);
 
-      const fetchedNotes = notesRes.status === 'fulfilled' ? notesRes.value.items || [] : [];
-      const fetchedSources = sourcesRes.status === 'fulfilled' ? sourcesRes.value.items || [] : [];
-
-      setNotes(fetchedNotes);
-      setSources(fetchedSources);
+      setNotes(notesRes.status === 'fulfilled' ? notesRes.value.items || [] : []);
+      setSources(sourcesRes.status === 'fulfilled' ? sourcesRes.value.items || [] : []);
+      setClusters(clustersRes.status === 'fulfilled' ? clustersRes.value || [] : []);
     } catch {
       // Fallback gracefully
     } finally {
@@ -101,7 +104,60 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
     fetchData();
   }, [fetchData]);
 
-  // Transform into unified library items
+  // Real Topic Shelves dynamically computed from clusters or note tags
+  const topicShelves = useMemo(() => {
+    if (clusters.length > 0) {
+      const colors = [
+        'bg-[var(--accent-midnight)]',
+        'bg-[var(--accent-terracotta)]',
+        'bg-[var(--accent-brass)]',
+        'bg-[var(--accent-stone)]',
+        'bg-emerald-700',
+        'bg-purple-800',
+      ];
+      return clusters.map((c, idx) => ({
+        key: c.id,
+        label: c.label,
+        count: c.member_count ?? c.members?.length ?? 0,
+        color: colors[idx % colors.length],
+        memberNoteIds: new Set(c.members?.map((m) => m.note_id) || []),
+      }));
+    }
+
+    const tagCounts: Record<string, number> = {};
+    notes.forEach((n) => {
+      n.tags?.forEach((t) => {
+        tagCounts[t] = (tagCounts[t] || 0) + 1;
+      });
+    });
+
+    const entries = Object.entries(tagCounts);
+    if (entries.length > 0) {
+      const colors = [
+        'bg-[var(--accent-midnight)]',
+        'bg-[var(--accent-terracotta)]',
+        'bg-[var(--accent-brass)]',
+        'bg-[var(--accent-stone)]',
+      ];
+      return entries.map(([tag, count], idx) => ({
+        key: tag,
+        label: tag,
+        count,
+        color: colors[idx % colors.length],
+        memberNoteIds: new Set(notes.filter((n) => n.tags?.includes(tag)).map((n) => n.id)),
+      }));
+    }
+
+    return [];
+  }, [clusters, notes]);
+
+  // Disconnected notes count
+  const unconnectedNotesCount = useMemo(
+    () => notes.filter((n) => !n.tags || n.tags.length === 0).length,
+    [notes]
+  );
+
+  // Transform into unified library items from real workspace data
   const unifiedItems: UnifiedItem[] = useMemo(() => {
     const list: UnifiedItem[] = [];
 
@@ -113,119 +169,39 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
         type: 'source',
         format: isPdf ? 'PDF' : 'Book',
         title: s.title || `Archival Source ${idx + 1}`,
-        authorOrMeta: s.source_type === 'pdf' ? 'Extracted Paper · 2024 · 4,210 Citations' : 'Scholarly Treatise · Classical Archive',
-        excerpt: s.extracted_text?.slice(0, 240) || s.title || 'A foundational knowledge document indexed in your Hyades archival repository.',
-        topic: idx % 2 === 0 ? 'Memory & Retrieval' : 'AI & Agents',
-        topicColor: idx % 2 === 0 ? 'var(--accent-terracotta)' : 'var(--accent-midnight)',
-        status: 'Indexed (18 Chunks)',
+        authorOrMeta: s.source_type ? `${s.source_type.toUpperCase()} · Ingested Source` : 'Ingested Source',
+        excerpt: s.extracted_text?.slice(0, 240) || s.title || 'Knowledge document indexed in your Hyades repository.',
+        topic: 'Sources',
+        topicColor: 'var(--accent-terracotta)',
+        status: 'Indexed Source',
         statusColor: 'text-emerald-700',
-        conceptCount: 18 + (idx * 3) % 15,
-        linkCount: 10 + (idx * 2) % 12,
-        dateStr: idx === 0 ? 'Today' : 'Sep 28',
+        conceptCount: 0,
+        linkCount: 0,
+        dateStr: s.created_at ? new Date(s.created_at).toLocaleDateString() : 'Recent',
         rawSource: s,
       });
     });
 
     // Notes mapping
-    notes.forEach((n, idx) => {
+    notes.forEach((n) => {
+      const firstTag = n.tags && n.tags.length > 0 ? n.tags[0] : 'General';
       list.push({
         id: n.id,
         type: 'note',
         format: 'Note',
-        title: n.title || 'Untitled Synthesis Note',
-        authorOrMeta: 'Self-authored synthesis and epistemological annotations',
-        excerpt: n.content ? n.content.slice(0, 220).replace(/[#*`_]/g, '') : 'Draft research notes on knowledge topologies.',
-        topic: idx % 2 === 0 ? 'Philosophy & Logic' : 'Knowledge Graphs',
-        topicColor: idx % 2 === 0 ? 'var(--accent-stone)' : 'var(--accent-brass)',
-        status: (n.tags && n.tags.length > 0) ? `${n.tags.length} Tags Attached` : 'Self-Authored',
+        title: n.title || 'Untitled Note',
+        authorOrMeta: (n.tags && n.tags.length > 0) ? `Tags: ${n.tags.join(', ')}` : 'Research Note',
+        excerpt: n.content ? n.content.slice(0, 220).replace(/[#*`_]/g, '') : 'No content recorded.',
+        topic: firstTag,
+        topicColor: 'var(--accent-midnight)',
+        status: (n.tags && n.tags.length > 0) ? `${n.tags.length} Tags Attached` : 'No Tags',
         statusColor: 'text-[var(--ink-secondary)]',
-        conceptCount: 8 + (idx * 2) % 12,
-        linkCount: 6 + idx % 6,
-        dateStr: idx === 0 ? 'Yesterday' : 'Sep 24',
+        conceptCount: 0,
+        linkCount: 0,
+        dateStr: n.updated_at ? new Date(n.updated_at).toLocaleDateString() : 'Recent',
         rawNote: n,
       });
     });
-
-    // Default canonical items if workspace is empty
-    if (list.length === 0) {
-      list.push(
-        {
-          id: 'canon-1',
-          type: 'source',
-          format: 'PDF',
-          title: 'Retrieval-Augmented Generation for Knowledge Tasks',
-          authorOrMeta: 'Lewis et al. · NeurIPS 2020 · 4,210 Citations',
-          excerpt: 'Large pre-trained language models store factual knowledge in their parameters, but their ability to access and manipulate that knowledge is limited. We propose Retrieval-Augmented Generation (RAG), combining pre-trained parametric and non-parametric memory for knowledge-intensive NLP.',
-          topic: 'Memory & Retrieval',
-          topicColor: 'var(--accent-terracotta)',
-          status: 'Indexed (18 Chunks)',
-          statusColor: 'text-emerald-700',
-          conceptCount: 28,
-          linkCount: 14,
-          dateStr: 'Today',
-        },
-        {
-          id: 'canon-2',
-          type: 'note',
-          format: 'Note',
-          title: 'Notes on Stoic Philosophy & Information Systems',
-          authorOrMeta: 'Diogenes Laërtius Book VII reading notes and epistemological synthesis',
-          excerpt: 'Analyzing the Stoic concept of katalepsis (comprehension) through the lens of modern retrieval verification and epistemological certainty.',
-          topic: 'Philosophy & Logic',
-          topicColor: 'var(--accent-stone)',
-          status: 'Self-Authored',
-          statusColor: 'text-[var(--ink-secondary)]',
-          conceptCount: 8,
-          linkCount: 6,
-          dateStr: 'Yesterday',
-        },
-        {
-          id: 'canon-3',
-          type: 'source',
-          format: 'PDF',
-          title: 'Dense Passage Retrieval for Open-Domain QA',
-          authorOrMeta: 'Karpukhin et al. · EMNLP 2020 · 2,890 Citations',
-          excerpt: 'Open-domain question answering relies on efficient passage retrieval to select candidate contexts. We show that retrieval can be implemented using dense representations learned from question-passage pairs.',
-          topic: 'AI & Agents',
-          topicColor: 'var(--accent-midnight)',
-          status: '1 Citation to Review',
-          statusColor: 'text-amber-700',
-          conceptCount: 19,
-          linkCount: 11,
-          dateStr: 'Sep 28',
-        },
-        {
-          id: 'canon-4',
-          type: 'note',
-          format: 'Note',
-          title: 'Graph Neural Networks vs Relational Schema Bridges',
-          authorOrMeta: 'Draft synthesis note on message passing in knowledge topologies',
-          excerpt: 'Investigating how inductive bias in graph neural networks intersects with traditional ontology schemas and semantic relational triples.',
-          topic: 'Knowledge Graphs',
-          topicColor: 'var(--accent-brass)',
-          status: '0 connections established',
-          statusColor: 'text-amber-700',
-          conceptCount: 12,
-          linkCount: 0,
-          dateStr: 'Sep 26',
-        },
-        {
-          id: 'canon-5',
-          type: 'source',
-          format: 'Book',
-          title: 'Porphyry of Tyre — Isagoge (Categories Translation)',
-          authorOrMeta: 'Classical Latin translation & commentary by Boethius (480–524 AD)',
-          excerpt: 'The fundamental treatise introducing Aristotle\'s Categories, proposing the Tree of Porphyry classification system that laid the foundation for hierarchical ontology.',
-          topic: 'Philosophy & Logic',
-          topicColor: 'var(--accent-stone)',
-          status: '1 Discovery Bridge',
-          statusColor: 'text-[var(--accent-terracotta)]',
-          conceptCount: 14,
-          linkCount: 8,
-          dateStr: 'Sep 24',
-        }
-      );
-    }
 
     return list;
   }, [sources, notes]);
@@ -267,33 +243,135 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
   const selectedItem: UnifiedItem | undefined = filteredItems[selectedIndex] || filteredItems[0];
 
-  // Actions
+  // Actions with real ARQ polling
   const handleTriggerReindex = async () => {
     setIsReindexing(true);
     setActionFeedback('Reindexing vector store and knowledge graph...');
     try {
-      await triggerReindex(workspaceId);
-      setActionFeedback('Reindex completed successfully.');
-    } catch {
-      setActionFeedback('Reindex requested in background.');
-    } finally {
+      const res = await triggerReindex(workspaceId);
+      if (res.status === 'completed') {
+        setActionFeedback('Reindex complete: knowledge graph and vector indexes synchronized.');
+        setIsReindexing(false);
+        fetchData();
+        return;
+      }
+
+      // Poll ARQ background job status
+      const startTime = Date.now();
+      const interval = setInterval(async () => {
+        try {
+          const job = await getJobStatus(res.job_id);
+          if (job.status === 'completed') {
+            clearInterval(interval);
+            const summary = job.progress?.summary || 'Reindex complete: knowledge graph synchronized.';
+            setActionFeedback(summary);
+            setIsReindexing(false);
+            fetchData();
+          } else if (job.status === 'failed') {
+            clearInterval(interval);
+            setActionFeedback(`Reindex failed: ${job.error_message || 'Internal error'}`);
+            setIsReindexing(false);
+          } else if (Date.now() - startTime > 30000) {
+            clearInterval(interval);
+            setActionFeedback('Reindexing is continuing in background.');
+            setIsReindexing(false);
+          }
+        } catch {
+          clearInterval(interval);
+          setActionFeedback('Reindex submitted in background.');
+          setIsReindexing(false);
+        }
+      }, 1500);
+    } catch (err: any) {
+      setActionFeedback(`Reindex failed: ${err?.message || 'Could not reach backend'}`);
       setIsReindexing(false);
-      setTimeout(() => setActionFeedback(null), 3500);
     }
   };
 
-  const handleTriggerExtract = async () => {
+  const handleTriggerWorkspaceExtract = async () => {
+    setIsExtracting(true);
+    setActionFeedback('Extracting concepts across all workspace notes...');
+    try {
+      const res = await triggerExtraction(workspaceId);
+      if (res.status === 'completed') {
+        setActionFeedback('Extraction complete: Observatory graph populated with new concepts.');
+        setIsExtracting(false);
+        fetchData();
+        return;
+      }
+
+      const startTime = Date.now();
+      const interval = setInterval(async () => {
+        try {
+          const job = await getJobStatus(res.job_id);
+          if (job.status === 'completed') {
+            clearInterval(interval);
+            const summary = job.progress?.summary || 'Extraction complete: Observatory graph updated.';
+            setActionFeedback(summary);
+            setIsExtracting(false);
+            fetchData();
+          } else if (job.status === 'failed') {
+            clearInterval(interval);
+            setActionFeedback(`Extraction failed: ${job.error_message || 'Internal error'}`);
+            setIsExtracting(false);
+          } else if (Date.now() - startTime > 30000) {
+            clearInterval(interval);
+            setActionFeedback('Extraction continuing in background.');
+            setIsExtracting(false);
+          }
+        } catch {
+          clearInterval(interval);
+          setActionFeedback('Extraction submitted in background.');
+          setIsExtracting(false);
+        }
+      }, 1500);
+    } catch (err: any) {
+      setActionFeedback(`Extraction failed: ${err?.message || 'Could not reach backend'}`);
+      setIsExtracting(false);
+    }
+  };
+
+  const handleTriggerMaterialExtract = async () => {
     if (!selectedItem) return;
     setIsExtracting(true);
     setActionFeedback(`Extracting concepts from "${selectedItem.title}"...`);
     try {
-      await triggerExtraction(workspaceId);
-      setActionFeedback('Extraction completed. New concepts added to Observatory.');
-    } catch {
-      setActionFeedback('Extraction scheduled.');
-    } finally {
+      const noteIds = selectedItem.type === 'note' ? [selectedItem.id] : undefined;
+      const res = await triggerExtraction(workspaceId, noteIds);
+      if (res.status === 'completed') {
+        setActionFeedback(`Extraction complete for "${selectedItem.title}".`);
+        setIsExtracting(false);
+        fetchData();
+        return;
+      }
+
+      const startTime = Date.now();
+      const interval = setInterval(async () => {
+        try {
+          const job = await getJobStatus(res.job_id);
+          if (job.status === 'completed') {
+            clearInterval(interval);
+            setActionFeedback(`Extraction complete for "${selectedItem.title}".`);
+            setIsExtracting(false);
+            fetchData();
+          } else if (job.status === 'failed') {
+            clearInterval(interval);
+            setActionFeedback(`Extraction failed: ${job.error_message || 'Internal error'}`);
+            setIsExtracting(false);
+          } else if (Date.now() - startTime > 30000) {
+            clearInterval(interval);
+            setActionFeedback('Extraction continuing in background.');
+            setIsExtracting(false);
+          }
+        } catch {
+          clearInterval(interval);
+          setActionFeedback('Extraction submitted in background.');
+          setIsExtracting(false);
+        }
+      }, 1500);
+    } catch (err: any) {
+      setActionFeedback(`Extraction failed: ${err?.message || 'Could not reach backend'}`);
       setIsExtracting(false);
-      setTimeout(() => setActionFeedback(null), 3500);
     }
   };
 
@@ -421,19 +499,19 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
           <div className="flex items-center gap-4 text-xs text-[var(--ink-secondary)]">
             <div className="flex items-center gap-1.5">
               <i className="ph ph-file-text text-sm text-[var(--accent-midnight)]" />
-              <span className="font-medium text-[var(--ink-primary)]">{sources.length || 142}</span>
+              <span className="font-medium text-[var(--ink-primary)]">{sources.length}</span>
               <span>Sources</span>
             </div>
             <div className="w-px h-3 bg-[var(--border-parchment)]" />
             <div className="flex items-center gap-1.5">
               <i className="ph ph-note-pencil text-sm text-[var(--accent-terracotta)]" />
-              <span className="font-medium text-[var(--ink-primary)]">{notes.length || 24}</span>
+              <span className="font-medium text-[var(--ink-primary)]">{notes.length}</span>
               <span>Notes</span>
             </div>
             <div className="w-px h-3 bg-[var(--border-parchment)]" />
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-600" />
-              <span>Index Synchronized</span>
+              <span>Workspace Synced</span>
             </div>
           </div>
         </div>
@@ -500,7 +578,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                     >
                       <span className="flex items-center gap-2.5">
                         <i className="ph ph-file-text text-sm text-[var(--accent-midnight)]" />
-                        <span>Sources & Papers</span>
+                        <span>Sources</span>
                       </span>
                       <span className="mono text-[11px] text-[var(--ink-tertiary)]">
                         {unifiedItems.filter((i) => i.type === 'source').length}
@@ -544,24 +622,25 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                   </div>
 
                   <div className="flex flex-col gap-1">
-                    {[
-                      { key: 'memory', label: 'Memory & Retrieval', count: 54, color: 'bg-[var(--accent-terracotta)]' },
-                      { key: 'agents', label: 'AI & Agents', count: 38, color: 'bg-[var(--accent-midnight)]' },
-                      { key: 'graphs', label: 'Knowledge Graphs', count: 32, color: 'bg-[var(--accent-brass)]' },
-                      { key: 'philosophy', label: 'Philosophy & Logic', count: 26, color: 'bg-[var(--accent-stone)]' },
-                    ].map((topic) => (
-                      <div
-                        key={topic.key}
-                        onClick={() => setActiveTopic(activeTopic === topic.label ? null : topic.label)}
-                        className={`shelf-item ${activeTopic === topic.label ? 'active' : ''}`}
-                      >
-                        <span className="flex items-center gap-2.5 truncate">
-                          <span className={`w-2 h-2 rounded-full ${topic.color} shrink-0`} />
-                          <span className="truncate">{topic.label}</span>
-                        </span>
-                        <span className="mono text-[11px] text-[var(--ink-tertiary)]">{topic.count}</span>
+                    {topicShelves.length > 0 ? (
+                      topicShelves.map((topic) => (
+                        <div
+                          key={topic.key}
+                          onClick={() => setActiveTopic(activeTopic === topic.label ? null : topic.label)}
+                          className={`shelf-item ${activeTopic === topic.label ? 'active' : ''}`}
+                        >
+                          <span className="flex items-center gap-2.5 truncate">
+                            <span className={`w-2 h-2 rounded-full ${topic.color} shrink-0`} />
+                            <span className="truncate">{topic.label}</span>
+                          </span>
+                          <span className="mono text-[11px] text-[var(--ink-tertiary)]">{topic.count}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-xs text-[var(--ink-tertiary)] italic py-1">
+                        No topic clusters yet. Add notes to generate clusters.
                       </div>
-                    ))}
+                    )}
                   </div>
                 </div>
 
@@ -586,44 +665,29 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                         <span className="w-2 h-2 rounded-full bg-[var(--accent-brass)]" />
                         <span className="text-xs font-medium text-[var(--ink-primary)]">Disconnected Notes</span>
                       </div>
-                      <span className="mono text-[11px] text-[var(--ink-secondary)]">4</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setActiveAttention(activeAttention === 'citations' ? null : 'citations')}
-                      className={`w-full text-left p-2 rounded-lg border flex items-center justify-between transition-colors ${
-                        activeAttention === 'citations'
-                          ? 'border-[var(--accent-terracotta)] bg-white font-medium'
-                          : 'border-[var(--border-parchment)] bg-white hover:border-[var(--accent-terracotta)]'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-[var(--accent-terracotta)]" />
-                        <span className="text-xs font-medium text-[var(--ink-primary)]">Citations to Review</span>
-                      </div>
-                      <span className="mono text-[11px] text-[var(--ink-secondary)]">3</span>
+                      <span className="mono text-[11px] text-[var(--ink-secondary)]">{unconnectedNotesCount}</span>
                     </button>
                   </div>
                 </div>
 
                 <div className="w-full h-px bg-[var(--border-parchment)] my-5" />
 
-                {/* Section: Maintenance Operations */}
-                <div>
-                  <div className="flex items-center justify-between mb-2.5">
+                {/* Section: Maintenance & Ingestion Operations */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] uppercase tracking-wider font-semibold text-[var(--ink-tertiary)] mono">
                       MAINTENANCE
                     </span>
                     <span className="text-[10px] mono text-[var(--accent-brass)]">SYSTEM</span>
                   </div>
 
+                  {/* Reindex Button */}
                   <button
                     type="button"
                     onClick={handleTriggerReindex}
-                    disabled={isReindexing}
-                    className="w-full p-2.5 rounded-lg border border-[var(--border-parchment)] bg-white hover:bg-[var(--bg-panel-subtle)] hover:border-[var(--border-strong)] flex items-center justify-between transition-all group active:scale-98"
-                    title="Reindex Vector Store & Knowledge Graph"
+                    disabled={isReindexing || isExtracting}
+                    className="w-full p-2.5 rounded-lg border border-[var(--border-parchment)] bg-white hover:bg-[var(--bg-panel-subtle)] hover:border-[var(--border-strong)] flex items-center justify-between transition-all group active:scale-98 disabled:opacity-50 cursor-pointer"
+                    title="Rebuild Vector Indexes & Synchronize Graph"
                   >
                     <div className="flex items-center gap-2">
                       <i
@@ -632,11 +696,37 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                         }`}
                       />
                       <div className="text-left">
-                        <div className="text-xs font-medium text-[var(--ink-primary)]">Reindex Archive</div>
+                        <div className="text-xs font-medium text-[var(--ink-primary)]">
+                          {isReindexing ? 'Reindexing...' : 'Reindex Archive'}
+                        </div>
                         <div className="text-[10px] text-[var(--ink-tertiary)]">Vectors & Observatory Graph</div>
                       </div>
                     </div>
                     <span className="text-[10px] mono text-[var(--ink-tertiary)]">Sync</span>
+                  </button>
+
+                  {/* Workspace-Level Extraction Button */}
+                  <button
+                    type="button"
+                    onClick={handleTriggerWorkspaceExtract}
+                    disabled={isExtracting || isReindexing}
+                    className="w-full p-2.5 rounded-lg border border-[var(--border-parchment)] bg-white hover:bg-[var(--bg-panel-subtle)] hover:border-[var(--border-strong)] flex items-center justify-between transition-all group active:scale-98 disabled:opacity-50 cursor-pointer"
+                    title="Extract entities & relationships from all workspace notes"
+                  >
+                    <div className="flex items-center gap-2">
+                      <i
+                        className={`ph ph-sparkle text-xs text-[var(--accent-terracotta)] ${
+                          isExtracting ? 'animate-pulse' : 'group-hover:scale-110 transition-transform'
+                        }`}
+                      />
+                      <div className="text-left">
+                        <div className="text-xs font-medium text-[var(--ink-primary)]">
+                          {isExtracting ? 'Extracting...' : 'Extract All Notes'}
+                        </div>
+                        <div className="text-[10px] text-[var(--ink-tertiary)]">All Concepts to Observatory</div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] mono text-[var(--ink-tertiary)]">Extract</span>
                   </button>
                 </div>
 
@@ -724,84 +814,105 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
               </div>
 
               {/* Rows List */}
-              <div className="divide-y divide-[var(--border-parchment)]">
-                {filteredItems.map((item, index) => {
-                  const isSelected = selectedIndex === index;
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => {
-                        setSelectedIndex(index);
-                        if (!isRightDossierOpen) setIsRightDossierOpen(true);
-                      }}
-                      className={`catalog-row px-5 py-3.5 flex items-start justify-between gap-4 cursor-pointer ${
-                        isSelected ? 'selected' : ''
-                      }`}
-                    >
-                      <div className="flex items-start gap-3 flex-1 min-w-0">
-                        {/* Type Icon */}
-                        <div
-                          className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 ${
-                            item.format === 'Note'
-                              ? 'bg-[var(--accent-terracotta-soft)] border-[var(--accent-terracotta-soft)] text-[var(--accent-terracotta)]'
-                              : 'bg-[var(--bg-panel-subtle)] border-[var(--border-parchment)] text-[var(--accent-midnight)]'
-                          }`}
-                        >
-                          <i
-                            className={
+              {filteredItems.length === 0 ? (
+                <div className="p-12 text-center flex flex-col items-center justify-center">
+                  <i className="ph ph-books text-3xl text-[var(--ink-tertiary)] mb-2" />
+                  <p className="serif text-base font-semibold text-[var(--ink-primary)]">
+                    No items in library
+                  </p>
+                  <p className="text-xs text-[var(--ink-secondary)] max-w-sm mt-1 mb-4">
+                    {searchQuery || activeTopic || activeCategory !== 'all'
+                      ? 'No items match your active filter or search criteria.'
+                      : 'This workspace archive is currently empty. Add notes or ingest sources to begin.'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditNote({ id: '', type: 'note', format: 'Note', title: '', authorOrMeta: '', excerpt: '', topic: 'General', topicColor: '', status: '', statusColor: '', conceptCount: 0, linkCount: 0, dateStr: '' })}
+                    className="px-4 py-2 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] text-xs font-medium cursor-pointer hover:bg-[var(--accent-midnight-light)] transition-colors"
+                  >
+                    Create Note
+                  </button>
+                </div>
+              ) : (
+                <div className="divide-y divide-[var(--border-parchment)]">
+                  {filteredItems.map((item, index) => {
+                    const isSelected = selectedIndex === index;
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => {
+                          setSelectedIndex(index);
+                          if (!isRightDossierOpen) setIsRightDossierOpen(true);
+                        }}
+                        className={`catalog-row px-5 py-3.5 flex items-start justify-between gap-4 cursor-pointer ${
+                          isSelected ? 'selected' : ''
+                        }`}
+                      >
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
+                          {/* Type Icon */}
+                          <div
+                            className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 ${
                               item.format === 'Note'
-                                ? 'ph ph-note-pencil text-sm'
-                                : item.format === 'Book'
-                                ? 'ph ph-book-open text-sm'
-                                : 'ph ph-file-pdf text-sm'
-                            }
-                          />
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-semibold text-[var(--ink-primary)] leading-tight truncate">
-                              {item.title}
-                            </span>
-                            <span
-                              className={`px-1.5 py-0.2 rounded text-[10px] font-medium shrink-0 border ${
+                                ? 'bg-[var(--accent-terracotta-soft)] border-[var(--accent-terracotta-soft)] text-[var(--accent-terracotta)]'
+                                : 'bg-[var(--bg-panel-subtle)] border-[var(--border-parchment)] text-[var(--accent-midnight)]'
+                            }`}
+                          >
+                            <i
+                              className={
                                 item.format === 'Note'
-                                  ? 'bg-orange-50 text-[var(--accent-terracotta)] border-orange-100'
-                                  : 'bg-blue-50 text-[var(--accent-midnight)] border-blue-100'
-                              }`}
-                            >
-                              {item.format}
-                            </span>
+                                  ? 'ph ph-note-pencil text-sm'
+                                  : item.format === 'Book'
+                                  ? 'ph ph-book-open text-sm'
+                                  : 'ph ph-file-pdf text-sm'
+                              }
+                            />
                           </div>
 
-                          <div className="text-[11.5px] text-[var(--ink-secondary)] mt-0.5 truncate">
-                            {item.authorOrMeta}
-                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[13px] font-semibold text-[var(--ink-primary)] leading-tight truncate">
+                                {item.title}
+                              </span>
+                              <span
+                                className={`px-1.5 py-0.2 rounded text-[10px] font-medium shrink-0 border ${
+                                  item.format === 'Note'
+                                    ? 'bg-orange-50 text-[var(--accent-terracotta)] border-orange-100'
+                                    : 'bg-blue-50 text-[var(--accent-midnight)] border-blue-100'
+                                }`}
+                              >
+                                {item.format}
+                              </span>
+                            </div>
 
-                          <div className="flex items-center gap-2 text-[10.5px] text-[var(--ink-tertiary)] mt-1">
-                            <span className="font-medium" style={{ color: item.topicColor }}>
-                              {item.topic}
-                            </span>
-                            <span>·</span>
-                            <span className={item.statusColor}>{item.status}</span>
+                            <div className="text-[11.5px] text-[var(--ink-secondary)] mt-0.5 truncate">
+                              {item.authorOrMeta}
+                            </div>
+
+                            <div className="flex items-center gap-2 text-[10.5px] text-[var(--ink-tertiary)] mt-1">
+                              <span className="font-medium" style={{ color: item.topicColor }}>
+                                {item.topic}
+                              </span>
+                              <span>·</span>
+                              <span className={item.statusColor}>{item.status}</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="w-24 text-right hidden sm:flex flex-col items-end shrink-0">
-                        <span className="mono text-[11px] font-semibold text-[var(--accent-midnight)]">
-                          {item.conceptCount} concepts
-                        </span>
-                        <span className="text-[10px] text-[var(--ink-tertiary)] mono">{item.linkCount} links</span>
-                      </div>
+                        <div className="w-24 text-right hidden sm:flex flex-col items-end shrink-0">
+                          <span className="mono text-[11px] font-semibold text-[var(--accent-midnight)]">
+                            {item.conceptCount} concepts
+                          </span>
+                          <span className="text-[10px] text-[var(--ink-tertiary)] mono">{item.linkCount} links</span>
+                        </div>
 
-                      <div className="w-20 text-right shrink-0">
-                        <span className="mono text-[11px] text-[var(--ink-secondary)]">{item.dateStr}</span>
+                        <div className="w-20 text-right shrink-0">
+                          <span className="mono text-[11px] text-[var(--ink-secondary)]">{item.dateStr}</span>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Bottom Pagination / Ledger Info */}
               <div className="px-5 py-3 border-t border-[var(--border-parchment)] bg-[var(--bg-panel-subtle)] flex items-center justify-between text-xs text-[var(--ink-secondary)]">
@@ -963,7 +1074,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={handleTriggerExtract}
+                      onClick={handleTriggerMaterialExtract}
                       disabled={isExtracting}
                       className="py-1.5 px-2.5 border border-[var(--border-strong)] bg-white hover:bg-[var(--bg-panel-subtle)] rounded-lg text-xs font-medium text-[var(--ink-primary)] flex items-center justify-center gap-1.5 transition-colors shadow-2xs group"
                       title="Extract concepts & entities from document"
