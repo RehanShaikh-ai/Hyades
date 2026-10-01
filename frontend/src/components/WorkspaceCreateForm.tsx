@@ -65,10 +65,14 @@ export const WorkspaceCreateForm: React.FC<WorkspaceCreateFormProps> = ({
 
   return (
     <div className="mb-6">
-      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono mb-4">Create Knowledge Workspace</h3>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <div className="form-group mb-5">
-          <label htmlFor="workspace-name">Workspace Name</label>
+      <h3 className="text-xs font-semibold text-[#878074] uppercase tracking-wider font-mono mb-4">
+        Create Knowledge Workspace
+      </h3>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="workspace-name" className="text-xs font-medium text-[#1C1917]">
+            Workspace Name
+          </label>
           <input
             id="workspace-name"
             data-testid="workspace-name-input"
@@ -77,12 +81,14 @@ export const WorkspaceCreateForm: React.FC<WorkspaceCreateFormProps> = ({
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Quantum Research Notes"
             disabled={loading}
+            className="w-full px-3 py-2 bg-[#FAF8F2] border border-[#DCD6C8] rounded-lg text-xs text-[#1C1917] placeholder-[#A8A29E] focus:outline-none focus:border-[#162135] focus:ring-1 focus:ring-[#162135] transition-colors"
           />
-          <div className="input-glow" />
         </div>
 
-        <div className="form-group mb-5">
-          <label htmlFor="workspace-description">Description (optional)</label>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="workspace-description" className="text-xs font-medium text-[#1C1917]">
+            Description (optional)
+          </label>
           <input
             id="workspace-description"
             data-testid="workspace-description-input"
@@ -91,16 +97,18 @@ export const WorkspaceCreateForm: React.FC<WorkspaceCreateFormProps> = ({
             onChange={(e) => setDescription(e.target.value)}
             placeholder="e.g. Distributed team notes and references"
             disabled={loading}
+            className="w-full px-3 py-2 bg-[#FAF8F2] border border-[#DCD6C8] rounded-lg text-xs text-[#1C1917] placeholder-[#A8A29E] focus:outline-none focus:border-[#162135] focus:ring-1 focus:ring-[#162135] transition-colors"
           />
-          <div className="input-glow" />
         </div>
 
-        <div className="form-group mb-5">
-          <label htmlFor="workspace-owner-select">Owner</label>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="workspace-owner-select" className="text-xs font-medium text-[#1C1917]">
+            Owner
+          </label>
           {selectedUser ? (
-            <div data-testid="selected-workspace-owner" className="px-3.5 py-2.5 bg-white/[0.03] border border-white/[0.08] rounded-xl text-xs font-mono flex items-center justify-between gap-3">
-              <span className="font-semibold text-slate-200">{selectedUser.display_name}</span>
-              <span className="text-slate-500 text-[11px] truncate max-w-[220px]">{selectedUser.id}</span>
+            <div data-testid="selected-workspace-owner" className="px-3 py-2 bg-[#EFECE4] border border-[#DCD6C8] rounded-lg text-xs font-mono flex items-center justify-between gap-3">
+              <span className="font-semibold text-[#1C1917]">{selectedUser.display_name}</span>
+              <span className="text-[#878074] text-[11px] truncate max-w-[220px]">{selectedUser.id}</span>
             </div>
           ) : !isManualOwner && users.length > 0 ? (
             <div className="flex gap-2 items-center">
@@ -110,10 +118,10 @@ export const WorkspaceCreateForm: React.FC<WorkspaceCreateFormProps> = ({
                 value={ownerId || users[0]?.id || ''}
                 onChange={(e) => setOwnerId(e.target.value)}
                 disabled={loading}
-                className="flex-1 bg-slate-900 border border-white/[0.1] text-slate-100 px-3.5 py-2.5 rounded-xl outline-none font-mono text-xs focus:border-sky-500/60"
+                className="flex-1 bg-[#FAF8F2] border border-[#DCD6C8] text-[#1C1917] px-3 py-2 rounded-lg outline-none font-mono text-xs focus:border-[#162135]"
               >
                 {users.map((u) => (
-                  <option key={u.id} value={u.id} className="bg-slate-900 text-slate-100">
+                  <option key={u.id} value={u.id} className="bg-[#FAF8F2] text-[#1C1917]">
                     {u.display_name} ({u.id})
                   </option>
                 ))}
@@ -121,7 +129,7 @@ export const WorkspaceCreateForm: React.FC<WorkspaceCreateFormProps> = ({
               <button
                 type="button"
                 onClick={() => setIsManualOwner(true)}
-                className="px-3 py-2 bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 border border-white/[0.08] rounded-xl text-xs font-mono whitespace-nowrap transition-colors"
+                className="px-3 py-2 bg-[#EFECE4] hover:bg-[#E5E0D4] text-[#575249] border border-[#DCD6C8] rounded-lg text-xs font-mono whitespace-nowrap transition-colors cursor-pointer"
               >
                 Manual UUID
               </button>
@@ -136,13 +144,13 @@ export const WorkspaceCreateForm: React.FC<WorkspaceCreateFormProps> = ({
                 onChange={(e) => setCustomOwnerId(e.target.value)}
                 placeholder="Enter owner UUID (e.g. 123e4567-e89b...)"
                 disabled={loading}
-                className="flex-1 bg-white/[0.03] border border-white/[0.1] text-slate-100 px-3.5 py-2.5 rounded-xl font-mono text-xs outline-none focus:border-sky-500/60"
+                className="flex-1 bg-[#FAF8F2] border border-[#DCD6C8] text-[#1C1917] px-3 py-2 rounded-lg font-mono text-xs outline-none focus:border-[#162135]"
               />
               {users.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setIsManualOwner(false)}
-                  className="px-3 py-2 bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 border border-white/[0.08] rounded-xl text-xs font-mono whitespace-nowrap transition-colors"
+                  className="px-3 py-2 bg-[#EFECE4] hover:bg-[#E5E0D4] text-[#575249] border border-[#DCD6C8] rounded-lg text-xs font-mono whitespace-nowrap transition-colors cursor-pointer"
                 >
                   Select User
                 </button>
@@ -156,18 +164,18 @@ export const WorkspaceCreateForm: React.FC<WorkspaceCreateFormProps> = ({
         {successWorkspace && (
           <div 
             data-testid="workspace-create-success" 
-            className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-xs font-mono text-emerald-300"
+            className="p-3 bg-[#EBF2EB] border border-[#A7CCA8] rounded-lg text-xs font-mono text-[#2D5A27]"
           >
-            Workspace created: <strong className="text-emerald-200">{successWorkspace.name}</strong> (ID: {successWorkspace.id})
+            Workspace created: <strong className="text-[#1B3E16]">{successWorkspace.name}</strong> (ID: {successWorkspace.id})
           </div>
         )}
 
-        <div className="submit-wrap mt-4">
+        <div className="mt-3">
           <button
             type="submit"
             data-testid="workspace-create-submit"
             disabled={loading}
-            className="btn-base"
+            className="w-full py-2 px-4 rounded-lg bg-[#162135] text-[#FAF8F2] hover:bg-[#233350] transition-colors text-xs font-medium disabled:opacity-50 cursor-pointer"
           >
             {loading ? 'Creating...' : 'Create Workspace'}
           </button>

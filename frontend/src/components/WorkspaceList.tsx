@@ -26,13 +26,15 @@ export const WorkspaceList: React.FC<WorkspaceListProps> = ({
   return (
     <div className="mb-6">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">Workspaces ({workspaces.length})</h3>
+        <h3 className="text-xs font-semibold text-[#878074] uppercase tracking-wider font-mono">
+          Workspaces ({workspaces.length})
+        </h3>
         {onRefresh && (
           <button
             type="button"
             data-testid="refresh-workspaces-button"
             onClick={onRefresh}
-            className="px-2.5 py-1 text-xs font-mono text-slate-400 hover:text-slate-200 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] rounded-lg transition-colors"
+            className="px-2.5 py-1 text-xs font-mono text-[#575249] hover:text-[#1C1917] bg-[#EFECE4] hover:bg-[#E5E0D4] border border-[#DCD6C8] rounded-md transition-colors"
           >
             Refresh
           </button>
@@ -47,42 +49,48 @@ export const WorkspaceList: React.FC<WorkspaceListProps> = ({
       )}
 
       {!loading && !error && workspaces.length > 0 && (
-        <ul data-testid="workspace-list" className="flex flex-col gap-3.5 list-none p-0 m-0">
+        <ul data-testid="workspace-list" className="flex flex-col gap-3 list-none p-0 m-0">
           {workspaces.map((workspace) => {
             const isSelected = selectedWorkspaceId === workspace.id;
             return (
               <li
                 key={workspace.id}
                 data-testid="workspace-item"
-                className={`p-4 sm:p-5 rounded-xl border backdrop-blur-md transition-all duration-200 flex flex-col gap-3.5 ${
+                className={`p-4 rounded-xl border transition-all duration-200 flex flex-col gap-3 ${
                   isSelected
-                    ? 'bg-sky-500/[0.08] border-sky-500/40 shadow-[0_0_24px_rgba(56,189,248,0.18)]'
-                    : 'bg-white/[0.03] border-white/[0.08] hover:border-white/[0.15] hover:bg-white/[0.05] shadow-sm'
+                    ? 'bg-[#F2EFE7] border-[#162135] shadow-xs'
+                    : 'bg-[#FAF8F2] border-[#DCD6C8] hover:border-[#B5AFA4] hover:bg-white shadow-2xs'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="font-semibold text-slate-100 text-sm tracking-tight m-0">{workspace.name}</h4>
+                      <h4 className="serif font-semibold text-[#1C1917] text-sm tracking-tight m-0">
+                        {workspace.name}
+                      </h4>
                       {isSelected && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 bg-sky-500/20 text-sky-300 border border-sky-500/40 rounded-full shrink-0">
-                          <Check size={10} strokeWidth={3} /> Selected
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono font-medium px-2 py-0.5 bg-[#162135] text-[#FAF8F2] rounded-full shrink-0">
+                          <Check size={10} strokeWidth={2.5} /> Active
                         </span>
                       )}
                     </div>
                     {workspace.description && (
-                      <p className="text-xs text-slate-400 mt-1.5 mb-0 leading-relaxed line-clamp-2">{workspace.description}</p>
+                      <p className="text-xs text-[#575249] mt-1.5 mb-0 leading-relaxed line-clamp-2">
+                        {workspace.description}
+                      </p>
                     )}
                   </div>
-                  <span className="text-[11px] text-slate-500 font-mono shrink-0 pt-0.5">
+                  <span className="text-[11px] text-[#878074] font-mono shrink-0 pt-0.5">
                     {new Date(workspace.created_at).toLocaleDateString()}
                   </span>
                 </div>
 
-                <div className="pt-3 border-t border-white/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono min-w-0">
-                    <span className="text-slate-600">Owner:</span>
-                    <span className="truncate max-w-[180px] sm:max-w-[220px] text-slate-400 font-mono">{workspace.owner_id}</span>
+                <div className="pt-2.5 border-t border-[#E5E0D4] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-1.5 text-[11px] text-[#878074] font-mono min-w-0">
+                    <span>Owner:</span>
+                    <span className="truncate max-w-[180px] sm:max-w-[220px] text-[#575249] font-mono">
+                      {workspace.owner_id}
+                    </span>
                   </div>
 
                   {onSelectWorkspace && (
@@ -90,14 +98,14 @@ export const WorkspaceList: React.FC<WorkspaceListProps> = ({
                       type="button"
                       data-testid={`open-workspace-${workspace.id}`}
                       onClick={() => onSelectWorkspace(workspace)}
-                      className={`whitespace-nowrap inline-flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold font-mono transition-all border shrink-0 ${
+                      className={`whitespace-nowrap inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 cursor-pointer ${
                         isSelected
-                          ? 'bg-sky-500 hover:bg-sky-400 text-slate-950 border-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.35)]'
-                          : 'bg-white/[0.06] hover:bg-white/[0.1] text-slate-200 border-white/[0.1] hover:border-sky-500/40'
+                          ? 'bg-[#162135] text-[#FAF8F2] hover:bg-[#233350] border border-[#162135]'
+                          : 'bg-[#EFECE4] hover:bg-[#E5E0D4] text-[#1C1917] border border-[#DCD6C8]'
                       }`}
                     >
-                      <span>Open Knowledge Base</span>
-                      <ArrowRight size={13} strokeWidth={2.5} />
+                      <span>Open Workspace</span>
+                      <ArrowRight size={13} strokeWidth={2} />
                     </button>
                   )}
                 </div>
@@ -109,3 +117,4 @@ export const WorkspaceList: React.FC<WorkspaceListProps> = ({
     </div>
   );
 };
+

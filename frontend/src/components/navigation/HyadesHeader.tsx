@@ -261,17 +261,6 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             </button>
           </div>
         )}
-
-        {/* User Profile Trigger */}
-        <button
-          type="button"
-          onClick={onOpenAccountModal}
-          className="w-8 h-8 rounded-full bg-[var(--bg-panel)] text-[var(--ink-primary)] hover:bg-white border border-[var(--border-strong)] flex items-center justify-center font-serif text-xs shadow-2xs relative ml-1 transition-all active:scale-95"
-          title="Account & Setup"
-        >
-          <span className="serif font-semibold">RS</span>
-          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[var(--accent-brass)] border border-[var(--bg-panel)]" />
-        </button>
       </div>
     </header>
   );

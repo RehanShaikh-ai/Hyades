@@ -335,7 +335,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   }
 
   return (
-    <div className="relative min-h-[calc(100vh-57px)] select-none text-[13px] leading-relaxed pb-20">
+    <div className="relative flex-1 h-full overflow-y-auto w-full select-none text-[13px] leading-relaxed pb-28">
       {/* Archival paper grain texture */}
       <div className="paper-grain" />
 

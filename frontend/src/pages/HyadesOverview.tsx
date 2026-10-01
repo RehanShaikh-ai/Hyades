@@ -91,7 +91,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
   }
 
   return (
-    <div className="relative min-h-[calc(100vh-57px)] select-none text-[13px] leading-relaxed pb-20">
+    <div className="relative flex-1 h-full overflow-y-auto w-full select-none text-[13px] leading-relaxed pb-28">
       {/* Paper grain */}
       <div className="paper-grain" />
 
