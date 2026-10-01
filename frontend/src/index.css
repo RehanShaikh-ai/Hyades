@@ -2,6 +2,35 @@
 @import "tailwindcss";
 
 :root {
+  /* Hyades Warm Archival Ivory Foundation */
+  --bg-base: #EFECE4;
+  --bg-canvas: #F7F5EE;
+  --bg-panel: #FAF8F2;
+  --bg-panel-subtle: #F2EFE7;
+  --bg-card: #FFFFFF;
+  
+  /* Hyades Inks & Text */
+  --ink-primary: #1C1917;
+  --ink-secondary: #575249;
+  --ink-tertiary: #878074;
+  --ink-archival: #433D35;
+  
+  /* Hyades Accents */
+  --accent-midnight: #162135;
+  --accent-midnight-light: #22324F;
+  --accent-terracotta: #BD532B;
+  --accent-terracotta-soft: rgba(189, 83, 43, 0.10);
+  --accent-brass: #C08D38;
+  --accent-brass-soft: rgba(192, 141, 56, 0.12);
+  
+  /* Hyades Borders & Lines */
+  --border-parchment: #DCD6C8;
+  --border-strong: #C9C2B0;
+  
+  /* Hyades Radii */
+  --radius-panel: 14px;
+  --radius-control: 8px;
+
   /* Constellation Neon Accents */
   --blue: #38bdf8;
   --teal: #2dd4bf;
@@ -1730,5 +1759,64 @@ svg[aria-hidden="true"] {
   margin-bottom: 0 !important;
   box-shadow: none !important;
   background: transparent !important;
+}
+
+/* ==========================================================================
+   Hyades Archival Design System Styles
+   ========================================================================== */
+
+/* Typographic hierarchy */
+.serif { font-family: "Newsreader", Georgia, serif; }
+.serif-italic { font-family: "Newsreader", Georgia, serif; font-style: italic; }
+.mono { font-family: "JetBrains Mono", monospace; }
+.sans { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+
+/* Subtle paper lithograph grain texture */
+.paper-grain {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url('data:image/svg+xml,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E');
+}
+
+/* Instrument & Desk Panels */
+.instrument-panel {
+  background-color: rgba(250, 248, 242, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 10px 30px -10px rgba(45, 38, 30, 0.07), 0 2px 6px rgba(45, 38, 30, 0.02);
+  position: relative;
+}
+
+.archival-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border-parchment);
+  border-radius: var(--radius-control);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.archival-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 4px 14px -4px rgba(45, 38, 30, 0.08);
+}
+
+/* Hyades custom scrollbar */
+.hyades-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.hyades-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.hyades-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-parchment);
+  border-radius: 9999px;
+}
+.hyades-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
 }
 
