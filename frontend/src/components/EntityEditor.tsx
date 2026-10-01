@@ -176,7 +176,7 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({
             rows={3}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Concise summary or definition of this entity in your knowledge atlas..."
+            placeholder="Concise summary or definition of this entity in Hyades..."
             className="w-full bg-white/[0.04] border border-white/[0.1] focus:border-sky-500/60 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none transition-all resize-none leading-relaxed"
           />
         </div>

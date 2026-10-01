@@ -31,42 +31,35 @@
   --radius-panel: 14px;
   --radius-control: 8px;
 
-  /* Constellation Neon Accents */
-  --blue: #38bdf8;
-  --teal: #2dd4bf;
-  --mauve: #818cf8;
-  --yellow: #fcd34d;
-  --red: #f43f5e;
-  --green: #4ade80;
+  /* Hyades Semantic Tokens */
+  --text: #1C1917;
+  --subtext1: #575249;
+  --subtext0: #878074;
+  --overlay2: #C9C2B0;
+  --overlay1: #DCD6C8;
+  --overlay0: #EFECE4;
   
-  /* Text and Overlays */
-  --text: #f1f5f9;
-  --subtext1: #cbd5e1;
-  --subtext0: #94a3b8;
-  --overlay2: #64748b;
-  --overlay1: #475569;
-  --overlay0: #334155;
+  --base: #EFECE4;
+  --mantle: #FAF8F2;
+  --crust: #EFECE4;
+  
+  --card-bg: #FFFFFF;
+  --card-border: #DCD6C8;
+  --card-hover-bg: #FAF8F2;
+  --card-hover-border: #C9C2B0;
+  --card-glow: rgba(189, 83, 43, 0.12);
 
-  /* Surfaces (Glassmorphic) */
-  --surface2: rgba(255, 255, 255, 0.08);
-  --surface1: rgba(255, 255, 255, 0.05);
-  --surface0: rgba(255, 255, 255, 0.03);
-
-  /* Foundation (Deep space, glassy to let starfield show through) */
-  --base: rgba(6, 8, 13, 0.55);
-  --mantle: rgba(10, 13, 20, 0.75);
-  --crust: #030407;
-
-  /* App specific tokens */
-  --card-bg: rgba(13, 17, 28, 0.6);
-  --card-border: rgba(255, 255, 255, 0.08);
-  --card-hover-bg: rgba(20, 27, 45, 0.8);
-  --card-hover-border: rgba(56, 189, 248, 0.35);
-  --card-glow: rgba(56, 189, 248, 0.15);
+  /* Status Accents (Restrained Archival) */
+  --blue: #162135;
+  --teal: #2D6A4F;
+  --mauve: #BD532B;
+  --yellow: #C08D38;
+  --red: #C53030;
+  --green: #2B6CB0;
 
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color: var(--text);
-  background: var(--crust);
+  color: var(--ink-primary);
+  background: var(--bg-base);
 }
 
 * { box-sizing: border-box; }
@@ -83,8 +76,8 @@ body,
 
 body {
   min-height: 100vh;
-  background: var(--crust);
-  color: var(--text);
+  background-color: var(--bg-base);
+  color: var(--ink-primary);
   overflow-x: hidden;
 }
 
@@ -100,77 +93,15 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--blue);
+  outline: 2px solid var(--accent-terracotta);
   outline-offset: 2px;
 }
 
-/* ==========================================================================
-   App Shell & Background Blueprint Grid
-   ========================================================================== */
-.app-shell {
-  background: var(--crust);
-  height: 100vh;
-  display: flex;
-  position: relative;
-  overflow: hidden;
-}
 
-.app-shell:before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-image:
-    radial-gradient(at 15% 25%, rgba(129, 140, 248, 0.08), transparent 55%),
-    radial-gradient(at 85% 70%, rgba(56, 189, 248, 0.08), transparent 55%),
-    radial-gradient(rgba(45, 212, 191, 0.04), transparent 65%);
-}
 
-.starfield-canvas {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-}
 
-/* ==========================================================================
-   Sidebar
-   ========================================================================== */
-.app-sidebar {
-  z-index: 20;
-  background: var(--mantle);
-  border-right: 1px solid var(--card-border);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  scrollbar-width: none;
-  flex-direction: column;
-  width: 240px;
-  min-width: 240px;
-  height: 100vh;
-  display: flex;
-  position: relative;
-  overflow: hidden auto;
-}
 
-.app-sidebar::-webkit-scrollbar {
-  display: none;
-}
 
-.app-sidebar::after {
-  content: "KNOWLEDGE ATLAS // SYSTEMS ONLINE";
-  position: absolute;
-  left: -130px;
-  top: 50%;
-  transform: translateY(-50%) rotate(-90deg);
-  font-family: 'Space Mono', monospace;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 10px;
-  color: var(--text);
-  opacity: 0.04;
-  pointer-events: none;
-}
 
 .sidebar-workspace-switcher {
   border-bottom: 1px solid var(--card-border);

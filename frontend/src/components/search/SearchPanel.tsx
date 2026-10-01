@@ -97,7 +97,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onNoteSel
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search knowledge atlas..."
+            placeholder="Search Hyades..."
             className="w-full bg-surface0 border border-surface1 rounded-lg pl-10 pr-10 py-2.5 text-[14px] text-text outline-none focus:border-blue-400/50 focus:bg-surface1 focus:shadow-[0_0_0_2px_rgba(56,189,248,0.1)] transition-all"
             autoFocus
           />
