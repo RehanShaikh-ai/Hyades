@@ -63,7 +63,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   // Active workspace ID
-  const effectiveWorkspaceId = selectedWorkspace?.id || initialWorkspaceId || 'default-workspace';
+  const effectiveWorkspaceId = selectedWorkspace?.id || initialWorkspaceId || (workspaces[0]?.id) || '';
 
   // Fetch workspaces & users on mount
   const refreshWorkspaces = useCallback(async () => {
@@ -75,7 +75,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
       if (items.length > 0) {
         if (initialWorkspaceId) {
           const match = items.find((w) => w.id === initialWorkspaceId);
-          if (match) setSelectedWorkspace(match);
+          setSelectedWorkspace(match || items[0]);
         } else if (!selectedWorkspace) {
           const savedId = localStorage.getItem('hyades_active_workspace_id');
           const savedMatch = items.find((w) => w.id === savedId);
