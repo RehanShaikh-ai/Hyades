@@ -1,7 +1,6 @@
-import React from 'react';
-import { Search, ChevronDown } from 'lucide-react';
-import { HealthStatus, HEALTH_DISPLAY_TEXT } from '@/hooks/useHealth';
+import React, { useState, useRef, useEffect } from 'react';
 import { Workspace } from '@/types/workspaces';
+import { HealthStatus } from '@/hooks/useHealth';
 
 export type HyadesDestination = 'overview' | 'library' | 'observatory' | 'stella';
 
@@ -13,8 +12,10 @@ interface HyadesHeaderProps {
   onSelectWorkspace: (workspace: Workspace) => void;
   onOpenAccountModal: () => void;
   onOpenSearch: () => void;
-  healthStatus: HealthStatus;
-  onRefreshHealth: () => void;
+  onNewNote?: () => void;
+  onCycleEnvironment?: () => void;
+  healthStatus?: HealthStatus;
+  onRefreshHealth?: () => void;
 }
 
 export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
@@ -25,13 +26,15 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
   onSelectWorkspace,
   onOpenAccountModal,
   onOpenSearch,
+  onNewNote,
+  onCycleEnvironment,
   healthStatus,
   onRefreshHealth,
 }) => {
-  const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = React.useState(false);
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setIsWorkspaceMenuOpen(false);
@@ -41,178 +44,234 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const destinations: Array<{ id: HyadesDestination; label: string }> = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'library', label: 'Library' },
-    { id: 'observatory', label: 'Observatory' },
-    { id: 'stella', label: 'Stella' },
-  ];
+  const destinationTitle = {
+    overview: 'Overview',
+    library: 'Library',
+    observatory: 'Observatory',
+    stella: 'Stella',
+  }[currentDestination];
 
   return (
-    <header className="w-full bg-[#FAF8F2]/95 border-b border-[#DCD6C8] z-30 sticky top-0 backdrop-blur-md transition-all select-none">
-      <div className="max-w-[1720px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
-        {/* Left: Brand Mark */}
-        <div className="flex items-center gap-6">
+    <header className="sticky top-0 z-30 w-full bg-[var(--bg-base)]/85 backdrop-blur-md border-b border-[var(--border-parchment)] px-6 lg:px-8 py-3 flex items-center justify-between transition-all select-none">
+      {/* Left: Branding & Core Navigation */}
+      <div className="flex items-center gap-6 lg:gap-8">
+        <button
+          type="button"
+          onClick={() => onNavigate('overview')}
+          className="flex items-center gap-3 group text-left focus:outline-none"
+          title="Hyades Overview"
+        >
+          {/* Astrolabe Mark */}
+          <div className="w-8 h-8 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] flex items-center justify-center shadow-xs border border-[#2D3F5E] group-hover:bg-[var(--accent-midnight-light)] transition-colors">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="transition-transform duration-700 group-hover:rotate-90"
+            >
+              <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="1.2" strokeOpacity="0.4" strokeDasharray="2,2" />
+              <circle cx="12" cy="12" r="5.5" stroke="currentColor" strokeWidth="1.2" strokeOpacity="0.7" />
+              <path d="M 12 3.5 L 13.5 10.5 L 20.5 12 L 13.5 13.5 L 12 20.5 L 10.5 13.5 L 3.5 12 L 10.5 10.5 Z" fill="currentColor" />
+              <circle cx="12" cy="12" r="1.5" fill="#FAF8F2" />
+            </svg>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="serif text-[22px] font-semibold tracking-tight text-[var(--ink-primary)] leading-none">Hyades</span>
+            <div className="w-px h-3 bg-[var(--border-strong)]" />
+            <span className="text-[10px] tracking-[0.2em] font-medium text-[var(--ink-secondary)] uppercase">
+              {destinationTitle}
+            </span>
+          </div>
+        </button>
+
+        {/* Primary Application Destinations */}
+        <nav className="flex items-center gap-5 lg:gap-7 ml-1" aria-label="Main navigation">
           <button
             type="button"
+            aria-label="Overview"
             onClick={() => onNavigate('overview')}
-            className="flex items-center gap-2.5 text-left group focus:outline-none"
-            aria-label="Hyades Home"
+            className={`nav-item flex items-center gap-1.5 ${currentDestination === 'overview' ? 'active' : ''}`}
+            aria-current={currentDestination === 'overview' ? 'page' : undefined}
           >
-            {/* Hyades Celestial Starburst Mark */}
-            <div className="w-8 h-8 rounded-lg bg-[#162135] flex items-center justify-center shadow-xs border border-[#C9C2B0] transition-transform group-hover:scale-105">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5Z" fill="#BD532B" />
-                <circle cx="12" cy="12" r="3" fill="#FAF8F2" />
-              </svg>
-            </div>
-            <div className="flex flex-col">
-              <span className="serif text-lg font-semibold tracking-wide text-[#1C1917] leading-none">
-                HYADES
-              </span>
-              <span className="mono text-[9px] tracking-widest text-[#878074] uppercase mt-0.5">
-                Archival Atlas
-              </span>
-            </div>
+            <span>Overview</span>
+          </button>
+          <button
+            type="button"
+            aria-label="Library"
+            onClick={() => onNavigate('library')}
+            className={`nav-item flex items-center gap-1.5 ${currentDestination === 'library' ? 'active' : ''}`}
+            aria-current={currentDestination === 'library' ? 'page' : undefined}
+          >
+            <span>Library</span>
+          </button>
+          <button
+            type="button"
+            aria-label="Observatory"
+            onClick={() => onNavigate('observatory')}
+            className={`nav-item group flex items-center gap-1.5 ${currentDestination === 'observatory' ? 'active' : ''}`}
+            aria-current={currentDestination === 'observatory' ? 'page' : undefined}
+          >
+            <span>Observatory</span>
+            <span className="text-[11px] text-[var(--accent-terracotta)] opacity-0 group-hover:opacity-100 transition-opacity">↗</span>
+          </button>
+          <button
+            type="button"
+            aria-label="Stella"
+            onClick={() => onNavigate('stella')}
+            className={`nav-item flex items-center gap-1.5 ${currentDestination === 'stella' ? 'active' : ''}`}
+            aria-current={currentDestination === 'stella' ? 'page' : undefined}
+          >
+            <span>Stella</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-brass)]" />
+          </button>
+        </nav>
+      </div>
+
+      {/* Right: Global Search & Fast Actions */}
+      <div className="flex items-center gap-3">
+        {/* Workspace Switcher Pill */}
+        <div className="relative hidden md:block" ref={dropdownRef}>
+          <button
+            type="button"
+            onClick={() => setIsWorkspaceMenuOpen((prev) => !prev)}
+            data-testid="active-workspace-badge"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[var(--ink-secondary)] bg-[var(--bg-panel)] hover:bg-white border border-[var(--border-strong)] transition-colors shadow-2xs"
+            title="Switch Workspace"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)]" />
+            <span className="max-w-[130px] truncate">{selectedWorkspace?.name ?? 'Default Workspace'}</span>
+            <i className="ph ph-caret-down text-[10px] opacity-70" />
           </button>
 
-          {/* Workspace Switcher Pill */}
-          <div className="relative" ref={dropdownRef}>
-            <button
-              type="button"
-              onClick={() => setIsWorkspaceMenuOpen((prev) => !prev)}
-              data-testid="active-workspace-badge"
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-[#575249] bg-[#EFECE4]/80 hover:bg-[#EFECE4] border border-[#DCD6C8] transition-colors focus:outline-none"
-              title="Switch Workspace"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-[#BD532B]" />
-              <span className="max-w-[130px] truncate">{selectedWorkspace?.name ?? 'Default Workspace'}</span>
-              <ChevronDown size={12} className="text-[#878074]" />
-            </button>
-
-            {isWorkspaceMenuOpen && (
-              <div className="absolute top-full left-0 mt-1 w-64 bg-[#FAF8F2] border border-[#C9C2B0] rounded-xl shadow-xl py-1.5 z-50 animate-fade-in">
-                <div className="px-3 py-1 text-[10px] mono uppercase tracking-wider text-[#878074] border-b border-[#DCD6C8]">
-                  Workspaces
-                </div>
-                <div className="max-h-56 overflow-y-auto hyades-scroll py-1">
-                  {workspaces.map((ws) => {
-                    const isSelected = ws.id === selectedWorkspace?.id;
-                    return (
-                      <button
-                        key={ws.id}
-                        type="button"
-                        onClick={() => {
-                          onSelectWorkspace(ws);
-                          setIsWorkspaceMenuOpen(false);
-                        }}
-                        className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-[#EFECE4] transition-colors ${
-                          isSelected ? 'font-semibold text-[#BD532B] bg-[#EFECE4]/50' : 'text-[#1C1917]'
-                        }`}
-                      >
-                        <span className="truncate">{ws.name}</span>
-                        {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-[#BD532B]" />}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="border-t border-[#DCD6C8] pt-1 px-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsWorkspaceMenuOpen(false);
-                      onOpenAccountModal();
-                    }}
-                    className="w-full text-left px-2.5 py-1.5 text-xs text-[#575249] hover:text-[#1C1917] hover:bg-[#EFECE4] rounded-md transition-colors"
-                  >
-                    Manage Workspaces & Accounts →
-                  </button>
-                </div>
+          {isWorkspaceMenuOpen && (
+            <div className="absolute top-full right-0 mt-1 w-64 bg-[var(--bg-panel)] border border-[var(--border-strong)] rounded-xl shadow-xl py-1.5 z-50 animate-fade-in">
+              <div className="px-3 py-1 text-[10px] mono uppercase tracking-wider text-[var(--ink-tertiary)] border-b border-[var(--border-parchment)]">
+                Workspaces
               </div>
-            )}
-          </div>
+              <div className="max-h-56 overflow-y-auto py-1">
+                {workspaces.map((ws) => {
+                  const isSelected = ws.id === selectedWorkspace?.id;
+                  return (
+                    <button
+                      key={ws.id}
+                      type="button"
+                      onClick={() => {
+                        onSelectWorkspace(ws);
+                        setIsWorkspaceMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition-colors ${
+                        isSelected
+                          ? 'bg-white font-medium text-[var(--ink-primary)]'
+                          : 'text-[var(--ink-secondary)] hover:bg-white/60 hover:text-[var(--ink-primary)]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                            isSelected ? 'bg-[var(--accent-terracotta)]' : 'bg-[var(--border-strong)]'
+                          }`}
+                        />
+                        <span className="truncate">{ws.name}</span>
+                      </div>
+                      {isSelected && <span className="mono text-[10px] text-[var(--accent-terracotta)]">Active</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="border-t border-[var(--border-parchment)] pt-1 mt-1 px-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsWorkspaceMenuOpen(false);
+                    onOpenAccountModal();
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white transition-colors flex items-center gap-2"
+                >
+                  <i className="ph ph-gear text-xs text-[var(--accent-midnight)]" />
+                  <span>Workspace Settings & Setup</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Center: Primary Editorial Navigation */}
-        <nav className="flex items-center gap-1 sm:gap-2 h-full" aria-label="Hyades main destinations">
-          {destinations.map((dest) => {
-            const isActive = currentDestination === dest.id;
-            return (
-              <button
-                key={dest.id}
-                type="button"
-                onClick={() => onNavigate(dest.id)}
-                className={`relative h-14 px-3 sm:px-4 flex items-center text-sm font-medium transition-colors focus:outline-none ${
-                  isActive
-                    ? 'text-[#1C1917] font-semibold'
-                    : 'text-[#878074] hover:text-[#1C1917]'
-                }`}
-              >
-                <span>{dest.label}</span>
-                {isActive && (
-                  <span
-                    className="absolute bottom-0 left-2 right-2 h-0.5 bg-[#BD532B] rounded-full transition-all"
-                    aria-hidden="true"
-                  />
-                )}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* Right: Global Search Trigger & Health & Profile */}
-        <div className="flex items-center gap-3">
-          {/* Global Search Pill */}
+        {/* Backend Telemetry Health Indicator */}
+        {healthStatus && (
           <button
             type="button"
-            onClick={onOpenSearch}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#EFECE4] hover:bg-[#E5E0D5] border border-[#DCD6C8] text-[#575249] hover:text-[#1C1917] transition-all text-xs focus:outline-none"
-            title="Global Search (⌘K)"
-          >
-            <Search size={13} className="text-[#878074]" />
-            <span className="hidden md:inline text-xs">Search knowledge...</span>
-            <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] mono bg-[#FAF8F2] border border-[#C9C2B0] rounded text-[#878074]">
-              ⌘K
-            </kbd>
-          </button>
-
-          {/* System Health Indicator */}
-          <div
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#FAF8F2] border border-[#DCD6C8] text-[11px] text-[#575249]"
-            title={`System Health: ${HEALTH_DISPLAY_TEXT[healthStatus]}`}
+            onClick={onRefreshHealth}
+            data-testid="health-status"
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs mono text-[var(--ink-secondary)] bg-[var(--bg-panel)] hover:bg-white border border-[var(--border-strong)] transition-colors shadow-2xs"
+            title={`Backend: ${healthStatus === 'connected' ? 'Connected' : healthStatus === 'loading' ? 'Loading' : 'Unavailable'}`}
           >
             <span
               className={`w-1.5 h-1.5 rounded-full ${
                 healthStatus === 'connected'
-                  ? 'bg-emerald-500'
+                  ? 'bg-emerald-600'
                   : healthStatus === 'loading'
                   ? 'bg-amber-500 animate-pulse'
                   : 'bg-rose-500'
               }`}
             />
-            <span data-testid="health-status" className="hidden lg:inline text-[11px] mono">
-              {HEALTH_DISPLAY_TEXT[healthStatus]}
+            <span>
+              Backend: {healthStatus === 'connected' ? 'Connected' : healthStatus === 'loading' ? 'Loading' : 'Unavailable'}
             </span>
+          </button>
+        )}
+
+        {/* Global Quick Search Trigger (⌘K) */}
+        <button
+          type="button"
+          onClick={onOpenSearch}
+          className="w-48 sm:w-60 px-3 py-1.5 bg-[var(--bg-panel)] hover:bg-white border border-[var(--border-strong)] rounded-xl flex items-center justify-between text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-all shadow-2xs group"
+          title="Global Search (⌘K)"
+          aria-label="Global Search (⌘K)"
+        >
+          <div className="flex items-center gap-2 truncate">
+            <i className="ph ph-magnifying-glass text-sm text-[var(--accent-midnight)] group-hover:scale-105 transition-transform" />
+            <span className="text-[12px] truncate">Search knowledge base...</span>
+          </div>
+          <kbd className="px-1.5 py-0.5 rounded border border-[var(--border-parchment)] bg-[var(--bg-panel-subtle)] text-[10px] mono text-[var(--ink-tertiary)] shrink-0">
+            ⌘K
+          </kbd>
+        </button>
+
+        {/* New Note Action */}
+        <button
+          type="button"
+          onClick={onNewNote}
+          className="bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-all px-3.5 py-1.5 rounded-lg flex items-center gap-2 shadow-2xs border border-[#233552] text-xs font-medium active:scale-95 shrink-0"
+        >
+          <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
+          <span className="hidden sm:inline">New Note</span>
+        </button>
+
+        {/* Architectural Environment Perspective Toggle */}
+        {onCycleEnvironment && (
+          <div className="relative ml-1">
             <button
               type="button"
-              onClick={onRefreshHealth}
-              className="text-[#878074] hover:text-[#1C1917] p-0.5 rounded transition-colors focus:outline-none"
-              title="Refresh Health"
+              onClick={onCycleEnvironment}
+              id="env-toggle-btn"
+              className="w-8 h-8 rounded-lg bg-[var(--bg-panel)] hover:bg-white border border-[var(--border-strong)] flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors shadow-2xs"
+              title="Toggle background perspective"
             >
-              ↻
+              <i className="ph-bold ph-columns text-sm text-[var(--accent-midnight)]" />
             </button>
           </div>
+        )}
 
-          {/* Profile / Account Administration Icon */}
-          <button
-            type="button"
-            onClick={onOpenAccountModal}
-            className="w-8 h-8 rounded-full bg-[#162135] text-[#FAF8F2] font-semibold text-xs flex items-center justify-center hover:ring-2 hover:ring-[#BD532B] transition-all focus:outline-none shadow-xs"
-            title="Account & Setup"
-          >
-            RS
-          </button>
-        </div>
+        {/* User Profile Trigger */}
+        <button
+          type="button"
+          onClick={onOpenAccountModal}
+          className="w-8 h-8 rounded-full bg-[var(--bg-panel)] text-[var(--ink-primary)] hover:bg-white border border-[var(--border-strong)] flex items-center justify-center font-serif text-xs shadow-2xs relative ml-1 transition-all active:scale-95"
+          title="Account & Setup"
+        >
+          <span className="serif font-semibold">RS</span>
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[var(--accent-brass)] border border-[var(--bg-panel)]" />
+        </button>
       </div>
     </header>
   );

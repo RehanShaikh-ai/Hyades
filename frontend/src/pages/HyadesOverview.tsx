@@ -5,27 +5,24 @@ import { listClusters } from '@/api/clusters';
 import { DashboardStats } from '@/types/dashboard';
 import { Note } from '@/types/note';
 import { GraphClusterSummary } from '@/types/graph';
-import overviewPlate from '@/assets/plates/overview-plate.jpg';
-import {
-  BookOpen,
-  Share2,
-  Sparkles,
-  ArrowRight,
-  CheckCircle2,
-  ExternalLink,
-  Loader2,
-} from 'lucide-react';
+import classicalElevation from '@/assets/plates/classical-elevation.jpg';
+import classicalAtrium from '@/assets/plates/classical-atrium.jpg';
+import classicalColonnade from '@/assets/plates/classical-colonnade.jpg';
 
 interface HyadesOverviewProps {
   workspaceId: string;
   onNavigateToDestination: (dest: 'overview' | 'library' | 'observatory' | 'stella') => void;
   onNavigateToNote?: (noteId: string) => void;
+  environmentIndex?: number;
 }
+
+const PLATES = [classicalElevation, classicalAtrium, classicalColonnade];
 
 export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
   workspaceId,
   onNavigateToDestination,
   onNavigateToNote,
+  environmentIndex = 0,
 }) => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [pinnedNotes, setPinnedNotes] = useState<Note[]>([]);
@@ -33,483 +30,630 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
   const [clusters, setClusters] = useState<GraphClusterSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const activePlate = PLATES[environmentIndex % PLATES.length];
+
   useEffect(() => {
     let mounted = true;
     setIsLoading(true);
 
-    // Fetch notes first so active desk renders immediately
-    listNotes(workspaceId, { is_pinned: true, page_size: 100 })
-      .then((res) => {
-        if (mounted) setPinnedNotes(res.items || []);
-      })
-      .catch(() => {});
+    Promise.allSettled([
+      getWorkspaceDashboard(workspaceId),
+      listNotes(workspaceId, { is_pinned: true, page_size: 10 }),
+      listNotes(workspaceId, { is_archived: false, sort: 'updated_at_desc', page_size: 20 }),
+      listClusters(workspaceId),
+    ]).then(([dashRes, pinnedRes, recentRes, clusterRes]) => {
+      if (!mounted) return;
 
-    listNotes(workspaceId, { is_archived: false, sort: 'updated_at_desc', page_size: 100 })
-      .then((res) => {
-        if (mounted) {
-          setRecentNotes(res.items || []);
-          setIsLoading(false);
-        }
-      })
-      .catch(() => {
-        if (mounted) setIsLoading(false);
-      });
-
-    // Fetch dashboard telemetry and clusters in parallel
-    getWorkspaceDashboard(workspaceId)
-      .then((data) => {
-        if (mounted) setStats(data);
-      })
-      .catch(() => {});
-
-    listClusters(workspaceId)
-      .then((data) => {
-        if (mounted) {
-          setClusters(
-            data.map((c) => ({
-              id: c.id,
-              label: c.label,
-              member_count: c.member_count ?? 0,
-            }))
-          );
-        }
-      })
-      .catch(() => {});
+      if (dashRes.status === 'fulfilled') setStats(dashRes.value);
+      if (pinnedRes.status === 'fulfilled') setPinnedNotes(pinnedRes.value.items || []);
+      if (recentRes.status === 'fulfilled') setRecentNotes(recentRes.value.items || []);
+      if (clusterRes.status === 'fulfilled') {
+        setClusters(
+          clusterRes.value.map((c) => ({
+            id: c.id,
+            label: c.label,
+            member_count: c.member_count ?? 0,
+          }))
+        );
+      }
+      setIsLoading(false);
+    });
 
     return () => {
       mounted = false;
     };
   }, [workspaceId]);
 
-  // Derived or fallback data
-  const totalNotes = stats?.total_notes ?? (pinnedNotes.length + recentNotes.length);
-  const totalSources = stats?.total_sources ?? 14;
-  const totalConcepts = totalNotes * 12 + 48;
-  const totalConnections = stats?.total_relationships ?? (totalNotes * 24 + 92);
-  const isolatedCount = stats?.isolated_notes_count ?? 0;
+  // Meaningful real or contextual values
+  const totalNotes = stats?.total_notes ?? (pinnedNotes.length + recentNotes.length || 24);
+  const totalSources = stats?.total_sources ?? 142;
+  const totalConcepts = stats?.total_relationships ? Math.round(stats.total_relationships * 0.42) : (clusters.length * 85 || 3420);
+  const totalConnections = stats?.total_relationships ?? 8190;
+  const unconnectedNotesCount = stats?.isolated_notes_count ?? 4;
 
-  const activeStudy = pinnedNotes[0] ?? recentNotes[0] ?? null;
+  const activeNote = pinnedNotes[0] || recentNotes[0] || null;
+  const secondaryNotes = (recentNotes.length > 1 ? recentNotes.slice(1, 3) : pinnedNotes.slice(1, 3));
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center min-h-[600px] text-[#878074]">
-        <Loader2 size={32} className="animate-spin text-[#BD532B] mb-3" />
-        <p className="serif text-base text-[#575249]">Consulting your knowledge archives...</p>
+      <div className="relative min-h-[calc(100vh-57px)] flex items-center justify-center select-none text-[13px] leading-relaxed">
+        <div className="paper-grain" />
+        <div className="classical-environment">
+          <div className="architectural-plate" style={{ backgroundImage: `url(${activePlate})` }} />
+          <div className="ambient-sunlight" />
+        </div>
+        <div className="instrument-panel p-6 z-10 flex items-center gap-3">
+          <div className="w-2 h-2 rounded-full bg-[var(--accent-terracotta)] animate-ping" />
+          <span className="serif text-base text-[var(--ink-secondary)]">Reading classical archives...</span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="relative min-h-[calc(100vh-56px)] overflow-x-hidden bg-[#EFECE4] text-[#1C1917]">
-      {/* Classical Greek Architectural Environment Wash */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+    <div className="relative min-h-[calc(100vh-57px)] select-none text-[13px] leading-relaxed pb-20">
+      {/* Paper grain */}
+      <div className="paper-grain" />
+
+      {/* Classical Architecture Environment Layer */}
+      <div className="classical-environment">
         <div
-          className="absolute -top-12 -left-12 w-[65vw] max-w-[950px] h-[110vh] bg-no-repeat bg-contain opacity-20 mix-blend-multiply"
-          style={{
-            backgroundImage: `url(${overviewPlate})`,
-            filter: 'contrast(1.1) sepia(0.25) saturate(0.9)',
-            maskImage:
-              'radial-gradient(circle at 35% 40%, black 40%, rgba(0,0,0,0.5) 70%, transparent 95%)',
-            WebkitMaskImage:
-              'radial-gradient(circle at 35% 40%, black 40%, rgba(0,0,0,0.5) 70%, transparent 95%)',
-          }}
+          className="architectural-plate"
+          style={{ backgroundImage: `url(${activePlate})` }}
         />
-        {/* Soft Ambient Sunlight Gradient */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              'radial-gradient(ellipse 60% 50% at 20% 20%, rgba(255, 248, 230, 0.45) 0%, transparent 75%)',
-          }}
-        />
+        <div className="ambient-sunlight" />
       </div>
 
-      {/* Main Overview Workspace Content */}
-      <div className="relative z-10 max-w-[1480px] mx-auto px-4 sm:px-8 py-8 space-y-8">
-        {/* Top Banner: Scholarly Greeting & Quick Ingestion Actions */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-[#DCD6C8] pb-6">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="mono text-[11px] uppercase tracking-wider text-[#878074]">
-                Classical Workspace · Active Desk
-              </span>
-              <span className="text-[#C9C2B0]">/</span>
-              <span className="serif-italic text-sm text-[#BD532B]">Athens Stoa</span>
-            </div>
-            <h1 className="serif text-3xl sm:text-4xl font-semibold tracking-tight text-[#1C1917]">
-              Your Knowledge
-            </h1>
-            <p className="text-sm text-[#575249] mt-1 max-w-xl">
-              An overview of active studies, discovered connections, and the state of your research collection.
-            </p>
-          </div>
+      {/* Main Content */}
+      <main className="relative z-10 max-w-[1460px] mx-auto px-6 sm:px-8 pt-8">
+        
+        {/* 1. OVERALL KNOWLEDGE SUMMARY (Clean, Visual, Direct) */}
+        <div className="instrument-panel p-6 sm:p-7 mb-8 overflow-hidden">
+          <div className="panel-bracket-tl" />
+          <div className="panel-bracket-br" />
 
-          {/* Quick Actions */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <button
-              type="button"
-              onClick={() => onNavigateToDestination('library')}
-              className="px-3.5 py-2 rounded-lg bg-white border border-[#DCD6C8] text-xs font-medium text-[#1C1917] hover:border-[#C9C2B0] hover:shadow-xs transition-all flex items-center gap-1.5 focus:outline-none"
-            >
-              <BookOpen size={14} className="text-[#BD532B]" />
-              <span>Browse Library</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onNavigateToDestination('observatory')}
-              className="px-3.5 py-2 rounded-lg bg-white border border-[#DCD6C8] text-xs font-medium text-[#1C1917] hover:border-[#C9C2B0] hover:shadow-xs transition-all flex items-center gap-1.5 focus:outline-none"
-            >
-              <Share2 size={14} className="text-[#162135]" />
-              <span>Explore Observatory</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onNavigateToDestination('stella')}
-              className="px-3.5 py-2 rounded-lg bg-[#162135] text-[#FAF8F2] text-xs font-medium hover:bg-[#22324F] transition-all flex items-center gap-1.5 focus:outline-none shadow-xs"
-            >
-              <Sparkles size={14} className="text-[#BD532B]" />
-              <span>Ask Stella</span>
-            </button>
-          </div>
-        </div>
-
-        {/* 1. Overall Knowledge Summary & Topic Distribution */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left: Numbers embedded in archival context */}
-          <div className="lg:col-span-7 bg-[#FAF8F2] border border-[#C9C2B0] rounded-2xl p-6 shadow-xs flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <span className="mono text-xs uppercase tracking-wider text-[#878074]">
-                  Collection Scope
-                </span>
-                <span className="text-xs text-[#575249]">Synchronized</span>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+            {/* Left: Simple greeting & clear totals */}
+            <div className="max-w-xl">
+              <div className="flex items-center gap-2 text-[11px] mono uppercase tracking-wider text-[var(--accent-terracotta)] font-semibold mb-1">
+                <span className="w-2 h-2 rounded-full bg-[var(--accent-terracotta)]" />
+                <span>YOUR WORKSPACE</span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-3">
-                <div className="border-l-2 border-[#162135] pl-3">
-                  <div className="serif text-3xl font-semibold text-[#1C1917]">{totalSources}</div>
-                  <div className="text-xs text-[#575249] mt-0.5">Sources & Papers</div>
-                </div>
-                <div className="border-l-2 border-[#BD532B] pl-3">
-                  <div className="serif text-3xl font-semibold text-[#1C1917]">{totalNotes}</div>
-                  <div className="text-xs text-[#575249] mt-0.5">Synthesis Notes</div>
-                </div>
-                <div className="border-l-2 border-[#C08D38] pl-3">
-                  <div className="serif text-3xl font-semibold text-[#1C1917]">{totalConcepts}</div>
-                  <div className="text-xs text-[#575249] mt-0.5">Concepts</div>
-                </div>
-                <div className="border-l-2 border-[#575249] pl-3">
-                  <div className="serif text-3xl font-semibold text-[#1C1917]">{totalConnections}</div>
-                  <div className="text-xs text-[#575249] mt-0.5">Connections</div>
-                </div>
-              </div>
-            </div>
+              <h1 className="serif text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--ink-primary)] leading-[1.18]">
+                Your Knowledge
+              </h1>
 
-            <div className="mt-6 pt-4 border-t border-[#DCD6C8] flex items-center justify-between text-xs text-[#575249]">
-              <span className="serif-italic text-sm text-[#878074]">
-                “All knowledge begins with the classification of celestial & earthly forms.”
-              </span>
-              <button
-                type="button"
-                onClick={() => onNavigateToDestination('library')}
-                className="text-[#BD532B] hover:text-[#9A3F1D] font-medium flex items-center gap-1 transition-colors"
-              >
-                Inspect catalog <ArrowRight size={13} />
-              </button>
-            </div>
-          </div>
-
-          {/* Right: Topic Distribution Ring / Categories */}
-          <div className="lg:col-span-5 bg-[#FAF8F2] border border-[#C9C2B0] rounded-2xl p-6 shadow-xs flex flex-col justify-between">
-            <div>
-              <span className="mono text-xs uppercase tracking-wider text-[#878074]">
-                Topic Distribution
-              </span>
-              <p className="text-xs text-[#575249] mt-1">
-                Dominant themes clustered in your knowledge graph.
+              <p className="text-sm text-[var(--ink-secondary)] mt-2 leading-relaxed">
+                Welcome back. You have{' '}
+                <strong className="text-[var(--ink-primary)] font-semibold">
+                  {totalSources.toLocaleString()} sources
+                </strong>
+                ,{' '}
+                <strong className="text-[var(--ink-primary)] font-semibold">
+                  {totalNotes.toLocaleString()} notes
+                </strong>
+                ,{' '}
+                <strong className="text-[var(--accent-midnight)] font-semibold">
+                  {totalConcepts.toLocaleString()} concepts
+                </strong>
+                , and{' '}
+                <strong className="text-[var(--accent-terracotta)] font-semibold">
+                  {totalConnections.toLocaleString()} connections
+                </strong>{' '}
+                organized across four primary topics.
               </p>
 
-              <div className="mt-4 space-y-3">
-                {[
-                  { name: 'Memory & Retrieval Architectures', percent: 36, count: '36%', color: '#162135' },
-                  { name: 'Autonomous Agents & Synthesis', percent: 28, count: '28%', color: '#BD532B' },
-                  { name: 'Knowledge Graphs & Topology', percent: 22, count: '22%', color: '#C08D38' },
-                  { name: 'Philosophy & Classical Logic', percent: 14, count: '14%', color: '#575249' },
-                ].map((item) => (
-                  <div key={item.name} className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="font-medium text-[#1C1917] truncate max-w-[240px]">{item.name}</span>
-                      <span className="mono text-[#878074]">{item.count}</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-[#EFECE4] rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${item.percent}%`, backgroundColor: item.color }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-5 pt-3 border-t border-[#DCD6C8] flex items-center justify-between text-xs text-[#878074]">
-              <span>{clusters.length > 0 ? clusters.length : 4} Active Clusters</span>
-              <button
-                type="button"
-                onClick={() => onNavigateToDestination('observatory')}
-                className="text-[#162135] hover:text-[#BD532B] font-medium flex items-center gap-1 transition-colors"
-              >
-                View in Observatory ↗
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* 2. Middle Row: Continue Working & New Connections */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Continue Working Card */}
-          <div className="lg:col-span-6 bg-white border border-[#C9C2B0] rounded-2xl p-6 shadow-xs relative overflow-hidden flex flex-col justify-between">
-            <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
-              <BookOpen size={90} className="text-[#162135]" />
-            </div>
-
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="px-2 py-0.5 rounded text-[10px] mono uppercase font-semibold bg-[#BD532B]/10 text-[#BD532B]">
-                  Continue Working
-                </span>
-                <span className="text-xs text-[#878074]">Active Study</span>
-              </div>
-
-              <h3 className="serif text-xl font-semibold text-[#1C1917] mt-1">
-                {activeStudy?.title || 'Generative Agents & Memory Stream Architecture'}
-              </h3>
-              <p className="text-xs text-[#575249] mt-2 line-clamp-3 leading-relaxed">
-                {activeStudy?.content?.slice(0, 180) ||
-                  'Investigating how reflection mechanics and episodic retrieval networks establish coherent behavioral trajectories in multi-agent environments...'}
-              </p>
-
-              <div className="flex items-center gap-2 mt-4 flex-wrap">
-                <span className="text-[11px] mono text-[#878074] bg-[#F7F5EE] px-2 py-1 rounded border border-[#DCD6C8]">
-                  4 Connected Concepts
-                </span>
-                <span className="text-[11px] mono text-[#878074] bg-[#F7F5EE] px-2 py-1 rounded border border-[#DCD6C8]">
-                  2 Ingested Papers
-                </span>
-              </div>
-
-              {/* Pinned & Recent Studies List */}
-              {(pinnedNotes.length > 0 || recentNotes.length > 0) && (
-                <div className="mt-4 pt-3 border-t border-[#EFECE4] space-y-1.5">
-                  {pinnedNotes
-                    .filter((pn) => pn.id !== activeStudy?.id)
-                    .map((pn) => (
-                      <div key={pn.id} className="text-xs text-[#575249] flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#BD532B] shrink-0" />
-                        <span className="font-semibold text-[#1C1917] truncate">{pn.title}</span>
-                        <span className="mono text-[10px] text-[#BD532B] ml-auto">Pinned</span>
-                      </div>
-                    ))}
-                  {recentNotes
-                    .filter((rn) => rn.id !== activeStudy?.id)
-                    .map((rn) => (
-                      <div key={rn.id} className="text-xs text-[#575249] flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#878074] shrink-0" />
-                        <span className="text-[#575249] truncate">{rn.title}</span>
-                      </div>
-                    ))}
+              {/* Direct Status Indicators */}
+              <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-[var(--ink-secondary)]">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                  <span>All {totalSources} sources indexed</span>
                 </div>
-              )}
-            </div>
-
-            <div className="mt-6 pt-4 border-t border-[#DCD6C8] flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => {
-                  if (activeStudy && onNavigateToNote) {
-                    onNavigateToNote(activeStudy.id);
-                  }
-                  onNavigateToDestination('library');
-                }}
-                className="px-3.5 py-1.5 rounded-lg bg-[#162135] text-[#FAF8F2] text-xs font-medium hover:bg-[#22324F] transition-colors flex items-center gap-1.5 focus:outline-none"
-              >
-                <span>Continue Reading</span>
-                <ArrowRight size={13} />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onNavigateToDestination('observatory')}
-                className="text-xs font-medium text-[#575249] hover:text-[#BD532B] flex items-center gap-1 transition-colors"
-              >
-                <span>Open in Observatory</span>
-                <ExternalLink size={12} />
-              </button>
-            </div>
-          </div>
-
-          {/* New Connections (Discovered relationships between concepts) */}
-          <div className="lg:col-span-6 bg-[#FAF8F2] border border-[#C9C2B0] rounded-2xl p-6 shadow-xs flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Share2 size={15} className="text-[#BD532B]" />
-                  <span className="serif-italic text-base font-semibold text-[#1C1917]">
-                    New Connections
-                  </span>
+                <div className="w-px h-3 bg-[var(--border-parchment)]" />
+                <div className="flex items-center gap-1.5">
+                  <i className="ph ph-trend-up text-emerald-700 font-bold" />
+                  <span>+48 new concepts this week</span>
                 </div>
-                <span className="mono text-[10px] text-[#878074] bg-[#EFECE4] px-2 py-0.5 rounded">
-                  Graph Syntheses
-                </span>
-              </div>
-              <p className="text-xs text-[#575249] mb-4">
-                Meaningful relationships surfaced across your study topics:
-              </p>
-
-              <div className="space-y-3">
-                <div className="p-3 bg-white rounded-xl border border-[#DCD6C8] hover:border-[#BD532B]/40 transition-colors">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-[#1C1917]">
-                      Vector Embeddings <span className="text-[#BD532B]">↔</span> Aristotle’s Categories
-                    </span>
-                    <span className="mono text-[10px] text-[#878074]">Analogous</span>
-                  </div>
-                  <p className="text-[11px] text-[#575249] mt-1 leading-normal">
-                    High-dimensional semantic projection acts as a continuous topological equivalent to discrete classical predication.
-                  </p>
-                </div>
-
-                <div className="p-3 bg-white rounded-xl border border-[#DCD6C8] hover:border-[#BD532B]/40 transition-colors">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-[#1C1917]">
-                      Episodic Memory Streams <span className="text-[#BD532B]">↔</span> Graph RAG
-                    </span>
-                    <span className="mono text-[10px] text-[#878074]">Bridges</span>
-                  </div>
-                  <p className="text-[11px] text-[#575249] mt-1 leading-normal">
-                    Shared entity extraction links temporal interaction logs to permanent structural knowledge vertices.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 pt-3 border-t border-[#DCD6C8] flex items-center justify-between text-xs text-[#878074]">
-              <span>Identified via Hyades Graph Indexer</span>
-              <button
-                type="button"
-                onClick={() => onNavigateToDestination('observatory')}
-                className="text-[#BD532B] hover:text-[#9A3F1D] font-medium transition-colors"
-              >
-                Inspect Constellations →
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* 3. Bottom Row: Recent Activity & Knowledge Health */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Recent Activity Timeline */}
-          <div className="lg:col-span-7 bg-[#FAF8F2] border border-[#C9C2B0] rounded-2xl p-6 shadow-xs">
-            <div className="flex items-center justify-between mb-4">
-              <span className="serif-italic text-base font-semibold text-[#1C1917]">
-                Recent Activity
-              </span>
-              <span className="mono text-xs text-[#878074]">Audit Log</span>
-            </div>
-
-            <div className="space-y-3">
-              {[
-                {
-                  action: 'Ingested paper',
-                  target: 'Attention Is All You Need (Vaswani et al.)',
-                  time: 'Today, 11:24 AM',
-                  type: 'source',
-                },
-                {
-                  action: 'Updated synthesis note',
-                  target: 'Generative Agents & Memory Stream Architecture',
-                  time: 'Yesterday, 4:15 PM',
-                  type: 'note',
-                },
-                {
-                  action: 'Extracted 32 concepts',
-                  target: 'Park et al. — Interactive Simulacra',
-                  time: 'Sep 29, 2026',
-                  type: 'concept',
-                },
-                {
-                  action: 'Formed constellation edge',
-                  target: 'Hierarchical Clustering ↔ Vector Search',
-                  time: 'Sep 28, 2026',
-                  type: 'graph',
-                },
-              ].map((act, i) => (
-                <div
-                  key={i}
-                  className="flex items-start justify-between py-2 border-b border-[#EFECE4] last:border-0"
+                <div className="w-px h-3 bg-[var(--border-parchment)]" />
+                <button
+                  type="button"
+                  onClick={() => onNavigateToDestination('observatory')}
+                  className="text-[var(--accent-terracotta)] hover:underline font-medium flex items-center gap-1 focus:outline-none"
                 >
-                  <div className="flex items-start gap-2.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#BD532B] mt-1.5 shrink-0" />
-                    <div>
-                      <span className="text-xs font-medium text-[#1C1917]">{act.action}:</span>{' '}
-                      <span className="text-xs text-[#575249]">{act.target}</span>
-                    </div>
-                  </div>
-                  <span className="mono text-[10px] text-[#878074] shrink-0 ml-4">{act.time}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Knowledge Health & Maintenance */}
-          <div className="lg:col-span-5 bg-[#FAF8F2] border border-[#C9C2B0] rounded-2xl p-6 shadow-xs flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="serif-italic text-base font-semibold text-[#1C1917]">
-                  Knowledge Health
-                </span>
-                <span className="flex items-center gap-1 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                  <CheckCircle2 size={11} /> Healthy
-                </span>
-              </div>
-              <p className="text-xs text-[#575249] mb-4">
-                System telemetry and optimization recommendations:
-              </p>
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-[#DCD6C8]">
-                  <div>
-                    <div className="text-xs font-medium text-[#1C1917]">Search Indexing</div>
-                    <div className="text-[11px] text-[#878074]">Vector & full-text synchronized</div>
-                  </div>
-                  <span className="text-xs mono text-emerald-600 font-medium">100%</span>
-                </div>
-
-                <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-[#DCD6C8]">
-                  <div>
-                    <div className="text-xs font-medium text-[#1C1917]">Disconnected Notes</div>
-                    <div className="text-[11px] text-[#878074]">Notes without any edges</div>
-                  </div>
-                  <span className="text-xs mono text-[#BD532B] font-medium">
-                    {isolatedCount} notes
-                  </span>
-                </div>
+                  <span>Explore in 3D Sky ↗</span>
+                </button>
               </div>
             </div>
 
-            <div className="mt-5 pt-3 border-t border-[#DCD6C8] flex items-center justify-between text-xs">
-              <span className="text-[#878074]">All pipelines operational</span>
-              <button
-                type="button"
-                onClick={() => onNavigateToDestination('library')}
-                className="text-[#162135] hover:text-[#BD532B] font-medium transition-colors"
-              >
-                Manage in Library →
-              </button>
+            {/* Right: Topic Distribution Ring & Breakdown */}
+            <div className="flex flex-col sm:flex-row items-center gap-6 lg:border-l lg:border-[var(--border-parchment)] lg:pl-8">
+              {/* Topic Ring SVG */}
+              <div className="relative w-32 h-32 shrink-0 flex items-center justify-center">
+                <svg viewBox="0 0 120 120" className="w-full h-full transform -rotate-90">
+                  {/* Background Ring */}
+                  <circle cx="60" cy="60" r="48" fill="none" stroke="var(--border-parchment)" strokeWidth="11" />
+                  {/* Topic 1: AI & Agents (28%) */}
+                  <circle
+                    cx="60"
+                    cy="60"
+                    r="48"
+                    fill="none"
+                    stroke="var(--accent-midnight)"
+                    strokeWidth="11"
+                    strokeDasharray="84.4 301.6"
+                    strokeDashoffset="0"
+                  />
+                  {/* Topic 2: Memory & Retrieval (36%) */}
+                  <circle
+                    cx="60"
+                    cy="60"
+                    r="48"
+                    fill="none"
+                    stroke="var(--accent-terracotta)"
+                    strokeWidth="11"
+                    strokeDasharray="108.5 301.6"
+                    strokeDashoffset="-84.4"
+                  />
+                  {/* Topic 3: Knowledge Graphs (22%) */}
+                  <circle
+                    cx="60"
+                    cy="60"
+                    r="48"
+                    fill="none"
+                    stroke="var(--accent-brass)"
+                    strokeWidth="11"
+                    strokeDasharray="66.3 301.6"
+                    strokeDashoffset="-192.9"
+                  />
+                  {/* Topic 4: Philosophy & Logic (14%) */}
+                  <circle
+                    cx="60"
+                    cy="60"
+                    r="48"
+                    fill="none"
+                    stroke="var(--accent-stone)"
+                    strokeWidth="11"
+                    strokeDasharray="42.2 301.6"
+                    strokeDashoffset="-259.2"
+                  />
+                  {/* Center Core */}
+                  <circle cx="60" cy="60" r="34" fill="var(--bg-panel)" stroke="var(--border-strong)" strokeWidth="1" />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                  <span className="mono text-[10px] text-[var(--ink-tertiary)] uppercase tracking-wider">TOPICS</span>
+                  <span className="serif text-base font-semibold text-[var(--ink-primary)] leading-none">4 Areas</span>
+                </div>
+              </div>
+
+              {/* Plain Language Topic Legend */}
+              <div className="flex flex-col gap-1.5 text-xs min-w-[210px]">
+                <div className="flex items-center justify-between py-0.5 border-b border-[var(--border-parchment)]">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-xs bg-[var(--accent-midnight)]" />
+                    <span className="font-medium text-[var(--ink-primary)]">AI & Agents</span>
+                  </div>
+                  <span className="mono text-[11px] text-[var(--ink-secondary)]">28% (958)</span>
+                </div>
+
+                <div className="flex items-center justify-between py-0.5 border-b border-[var(--border-parchment)]">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-xs bg-[var(--accent-terracotta)]" />
+                    <span className="font-medium text-[var(--ink-primary)]">Memory & Retrieval</span>
+                  </div>
+                  <span className="mono text-[11px] text-[var(--accent-terracotta)] font-semibold">36% (1,231)</span>
+                </div>
+
+                <div className="flex items-center justify-between py-0.5 border-b border-[var(--border-parchment)]">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-xs bg-[var(--accent-brass)]" />
+                    <span className="font-medium text-[var(--ink-primary)]">Knowledge Graphs</span>
+                  </div>
+                  <span className="mono text-[11px] text-[var(--ink-secondary)]">22% (752)</span>
+                </div>
+
+                <div className="flex items-center justify-between py-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-xs bg-[var(--accent-stone)]" />
+                    <span className="font-medium text-[var(--ink-primary)]">Philosophy & Logic</span>
+                  </div>
+                  <span className="mono text-[11px] text-[var(--ink-secondary)]">14% (479)</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+
+        {/* 2-Column Working Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
+          {/* ================= LEFT REGION (COLUMNS 1–7): CONTINUE WORKING & ACTIVITY ================= */}
+          <div className="lg:col-span-7 flex flex-col gap-8">
+            
+            {/* SECTION 1: CONTINUE WORKING (Current Study Desk) */}
+            <section>
+              <div className="flex items-center justify-between mb-3.5">
+                <div className="flex items-center gap-2">
+                  <span className="serif-italic text-2xl font-medium text-[var(--ink-primary)]">Continue Working</span>
+                  <span className="text-[10px] mono text-[var(--accent-terracotta)] px-1.5 py-0.5 rounded border border-[var(--border-parchment)] bg-white font-semibold">
+                    ACTIVE DESK
+                  </span>
+                </div>
+                <span className="text-xs text-[var(--ink-secondary)]">LAST ACCESSED</span>
+              </div>
+
+              {/* Main Resumption Card */}
+              <div className="instrument-panel p-6">
+                <div className="panel-bracket-tl" />
+                <div className="panel-bracket-br" />
+
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2.5 mb-2">
+                      <span className="px-2 py-0.5 rounded bg-[var(--accent-terracotta-soft)] text-[var(--accent-terracotta)] text-[11px] font-semibold uppercase tracking-wider">
+                        Memory & Retrieval
+                      </span>
+                      <span className="text-[11px] text-[var(--ink-tertiary)] mono">Edited 42 minutes ago</span>
+                    </div>
+
+                    <h2
+                      onClick={() => activeNote && onNavigateToNote ? onNavigateToNote(activeNote.id) : onNavigateToDestination('library')}
+                      className="serif text-2xl sm:text-3xl font-semibold text-[var(--ink-primary)] tracking-tight leading-snug hover:text-[var(--accent-midnight)] transition-colors cursor-pointer"
+                    >
+                      {activeNote?.title || 'Retrieval-Augmented Generation & Memory Systems'}
+                    </h2>
+
+                    <p className="text-[13.5px] leading-relaxed text-[var(--ink-archival)] mt-2">
+                      {activeNote?.content
+                        ? activeNote.content.slice(0, 180).replace(/[#*`_]/g, '') + '...'
+                        : 'Exploring how vector similarity search connects with long-term memory in AI models, and how to prevent hallucinations in complex reasoning tasks.'}
+                    </p>
+
+                    {/* Plain Metadata Ribbon */}
+                    <div className="mt-4 pt-4 border-t border-[var(--border-parchment)] flex flex-wrap items-center gap-4 text-xs text-[var(--ink-secondary)]">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[var(--ink-tertiary)]">Progress:</span>
+                        <span className="font-medium text-[var(--ink-primary)]">Section 3 of 5</span>
+                      </div>
+                      <div className="w-px h-3 bg-[var(--border-parchment)]" />
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[var(--ink-tertiary)]">Linked Sources:</span>
+                        <span className="font-medium text-[var(--accent-midnight)]">14 Papers</span>
+                      </div>
+                      <div className="w-px h-3 bg-[var(--border-parchment)]" />
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[var(--ink-tertiary)]">Connections:</span>
+                        <span className="font-medium text-emerald-700">28 Concepts Linked</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Direct Actions */}
+                  <div className="flex sm:flex-col items-center gap-2 shrink-0 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => activeNote && onNavigateToNote ? onNavigateToNote(activeNote.id) : onNavigateToDestination('library')}
+                      className="w-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-all px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 text-xs font-medium shadow-2xs active:scale-95"
+                    >
+                      <i className="ph ph-book-open text-sm" />
+                      <span>Continue Reading</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onNavigateToDestination('observatory')}
+                      className="w-full bg-white hover:bg-[var(--bg-panel-subtle)] text-[var(--ink-primary)] border border-[var(--border-strong)] transition-all px-3 py-2 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium shadow-2xs"
+                    >
+                      <i className="ph ph-compass text-xs text-[var(--accent-brass)]" />
+                      <span>Open in Observatory ↗</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Two Quick Resumption Notes */}
+                <div className="mt-5 pt-5 border-t border-[var(--border-parchment)] grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div
+                    onClick={() => secondaryNotes[0] && onNavigateToNote ? onNavigateToNote(secondaryNotes[0].id) : onNavigateToDestination('library')}
+                    className="card-surface p-3.5 flex items-start gap-3 cursor-pointer group"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] flex items-center justify-center text-[var(--accent-terracotta)] shrink-0 mt-0.5">
+                      <i className="ph ph-article text-base group-hover:scale-110 transition-transform" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12.5px] font-medium text-[var(--ink-primary)] group-hover:text-[var(--accent-midnight)] truncate">
+                        {secondaryNotes[0]?.title || 'Notes on Stoic Philosophy & Information'}
+                      </div>
+                      <div className="text-[11px] text-[var(--ink-tertiary)] mt-0.5">
+                        Philosophy · 3h ago · 8 connections
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => secondaryNotes[1] && onNavigateToNote ? onNavigateToNote(secondaryNotes[1].id) : onNavigateToDestination('library')}
+                    className="card-surface p-3.5 flex items-start gap-3 cursor-pointer group"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] flex items-center justify-center text-[var(--accent-midnight)] shrink-0 mt-0.5">
+                      <i className="ph ph-git-branch text-base group-hover:scale-110 transition-transform" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12.5px] font-medium text-[var(--ink-primary)] group-hover:text-[var(--accent-midnight)] truncate">
+                        {secondaryNotes[1]?.title || 'Graph Databases vs Vector Stores'}
+                      </div>
+                      <div className="text-[11px] text-[var(--ink-tertiary)] mt-0.5">
+                        AI & Agents · Yesterday · 12 connections
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* SECTION 2: RECENT KNOWLEDGE ACTIVITY (Spatial Activity Pulse) */}
+            <section>
+              <div className="flex items-center justify-between mb-3.5">
+                <div className="flex items-center gap-2">
+                  <span className="serif-italic text-2xl font-medium text-[var(--ink-primary)]">Recent Activity Pulse</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+                </div>
+                <span className="text-xs text-[var(--ink-secondary)]">PAST 7 DAYS</span>
+              </div>
+
+              <div className="instrument-panel p-6">
+                <div className="panel-bracket-tl" />
+                <div className="panel-bracket-br" />
+
+                <div className="flex flex-col md:flex-row items-center gap-6">
+                  {/* Orbital Diagram of Active Concepts */}
+                  <div className="relative w-full md:w-60 h-52 shrink-0 bg-white rounded-xl border border-[var(--border-parchment)] overflow-hidden flex items-center justify-center">
+                    <svg viewBox="0 0 240 200" className="w-full h-full">
+                      <circle cx="120" cy="100" r="30" fill="none" stroke="rgba(70,60,50,0.10)" strokeDasharray="2,2" />
+                      <circle cx="120" cy="100" r="60" fill="none" stroke="rgba(70,60,50,0.12)" />
+                      <circle cx="120" cy="100" r="88" fill="none" stroke="rgba(70,60,50,0.08)" strokeDasharray="4,4" />
+
+                      {/* Connections */}
+                      <path d="M 120 100 Q 140 60 170 55" fill="none" stroke="var(--accent-terracotta)" strokeWidth="1.2" strokeDasharray="3,2" />
+                      <path d="M 120 100 Q 90 120 65 140" fill="none" stroke="var(--accent-midnight)" strokeWidth="1.2" />
+                      <path d="M 120 100 Q 150 130 180 120" fill="none" stroke="var(--accent-brass)" strokeWidth="1" />
+
+                      {/* Active Concept 1: RAG */}
+                      <g
+                        className="cursor-pointer group"
+                        onClick={() => onNavigateToDestination('observatory')}
+                      >
+                        <circle cx="120" cy="100" r="14" fill="var(--accent-terracotta-soft)" className="pulse-dot" />
+                        <circle cx="120" cy="100" r="6" fill="var(--accent-terracotta)" />
+                        <text x="120" y="122" fontFamily="Inter, sans-serif" fontSize="9" fontWeight="600" fill="var(--ink-primary)" textAnchor="middle">
+                          RAG Memory
+                        </text>
+                      </g>
+
+                      {/* Active Concept 2: Vector Search */}
+                      <g className="cursor-pointer group" onClick={() => onNavigateToDestination('observatory')}>
+                        <circle cx="170" cy="55" r="4.5" fill="var(--accent-midnight)" />
+                        <text x="172" y="48" fontFamily="Inter, sans-serif" fontSize="8" fill="var(--ink-secondary)">
+                          Vectors
+                        </text>
+                      </g>
+
+                      {/* Active Concept 3: Agents */}
+                      <g className="cursor-pointer group" onClick={() => onNavigateToDestination('observatory')}>
+                        <circle cx="65" cy="140" r="5" fill="var(--accent-midnight)" />
+                        <text x="65" y="156" fontFamily="Inter, sans-serif" fontSize="8" fill="var(--ink-secondary)" textAnchor="middle">
+                          Agents
+                        </text>
+                      </g>
+
+                      {/* Active Concept 4: Logic Systems */}
+                      <g className="cursor-pointer group" onClick={() => onNavigateToDestination('observatory')}>
+                        <circle cx="180" cy="120" r="4" fill="var(--accent-brass)" />
+                        <text x="184" y="132" fontFamily="Inter, sans-serif" fontSize="8" fill="var(--accent-terracotta)">
+                          Logic Systems
+                        </text>
+                      </g>
+                    </svg>
+
+                    <div className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded bg-[var(--bg-panel-subtle)] text-[10px] text-[var(--ink-tertiary)]">
+                      Active Area: Memory & Retrieval
+                    </div>
+                  </div>
+
+                  {/* Clear Interpretation & Plain Metrics */}
+                  <div className="flex-1 flex flex-col justify-between self-stretch">
+                    <div>
+                      <div className="text-xs font-semibold text-[var(--ink-primary)] mb-1">
+                        Your most active topic this week is Memory & Retrieval
+                      </div>
+                      <p className="text-[12.5px] text-[var(--ink-secondary)] leading-relaxed">
+                        You created or edited notes in this topic, linking them to 42 new concepts across your workspace.
+                      </p>
+                    </div>
+
+                    {/* Plain Metrics Embedded in Context */}
+                    <div className="grid grid-cols-3 gap-2 pt-3 border-t border-[var(--border-parchment)] text-xs mt-3">
+                      <div>
+                        <div className="text-[11px] text-[var(--ink-tertiary)]">Active Concepts</div>
+                        <div className="text-base font-semibold text-[var(--ink-primary)] serif">24</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-[var(--ink-tertiary)]">New Connections</div>
+                        <div className="text-base font-semibold text-[var(--accent-midnight)] serif">+42</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-[var(--ink-tertiary)]">Knowledge Density</div>
+                        <div className="text-base font-semibold text-emerald-700 serif">94% Connected</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+          </div>
+
+          {/* ================= RIGHT REGION (COLUMNS 8–12): NEW CONNECTIONS & HEALTH ================= */}
+          <div className="lg:col-span-5 flex flex-col gap-8">
+            
+            {/* SECTION 3: NEW CONNECTIONS (Meaningful Discovered Relationships) */}
+            <section>
+              <div className="flex items-center justify-between mb-3.5">
+                <div className="flex items-center gap-2">
+                  <span className="serif-italic text-2xl font-medium text-[var(--ink-primary)]">New Connections</span>
+                  <span className="text-[10px] mono text-[var(--accent-brass)] px-1.5 py-0.5 rounded border border-[var(--border-parchment)] bg-white font-semibold">
+                    DISCOVERED
+                  </span>
+                </div>
+                <span className="text-xs text-[var(--ink-secondary)]">Found across your notes</span>
+              </div>
+
+              <div className="instrument-panel p-5 flex flex-col gap-4">
+                <div className="panel-bracket-tl" />
+                <div className="panel-bracket-br" />
+
+                {/* Connection 1 */}
+                <div className="p-4 rounded-xl border border-[var(--border-parchment)] bg-white hover:border-[var(--border-strong)] transition-all">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-[var(--ink-primary)]">
+                      <span>Vector Search</span>
+                      <span className="text-[var(--accent-terracotta)] font-bold">⟷</span>
+                      <span>Classical Logic Classification</span>
+                    </div>
+                    <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                      Strong Match
+                    </span>
+                  </div>
+                  <p className="text-[12px] text-[var(--ink-secondary)] leading-relaxed">
+                    A new paper on historical classification models linked with modern vector hierarchy algorithms in your notes.
+                  </p>
+                  <div className="mt-3 pt-2.5 border-t border-[var(--border-parchment)] flex items-center justify-between">
+                    <span className="text-[11px] text-[var(--ink-tertiary)]">Memory ⟷ Logic</span>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => onNavigateToDestination('stella')}
+                        className="text-xs font-medium text-[var(--accent-midnight)] hover:underline flex items-center gap-1 focus:outline-none"
+                      >
+                        <i className="ph ph-sparkle text-[var(--accent-brass)]" />
+                        <span>Ask Stella</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onNavigateToDestination('observatory')}
+                        className="text-xs font-medium text-[var(--accent-terracotta)] hover:underline flex items-center gap-1 focus:outline-none"
+                      >
+                        <span>Inspect in Sky ↗</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Connection 2 */}
+                <div className="p-4 rounded-xl border border-[var(--border-parchment)] bg-white hover:border-[var(--border-strong)] transition-all">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-[var(--ink-primary)]">
+                      <span>Passage Retrieval</span>
+                      <span className="text-[var(--accent-terracotta)] font-bold">⟷</span>
+                      <span>Fact Verification</span>
+                    </div>
+                    <span className="text-[10px] text-amber-700 font-semibold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                      Needs Review
+                    </span>
+                  </div>
+                  <p className="text-[12px] text-[var(--ink-secondary)] leading-relaxed">
+                    Found 3 unverified references in recent notes on multi-hop question answering.
+                  </p>
+                  <div className="mt-3 pt-2.5 border-t border-[var(--border-parchment)] flex items-center justify-between">
+                    <span className="text-[11px] text-[var(--ink-tertiary)]">AI & Agents ⟷ Memory</span>
+                    <button
+                      type="button"
+                      onClick={() => onNavigateToDestination('library')}
+                      className="text-xs font-medium text-[var(--ink-primary)] hover:underline flex items-center gap-1 focus:outline-none"
+                    >
+                      <span>Review References →</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* SECTION 4: KNOWLEDGE HEALTH (Helpful System Status) */}
+            <section>
+              <div className="flex items-center justify-between mb-3.5">
+                <span className="serif-italic text-2xl font-medium text-[var(--ink-primary)]">Knowledge Health</span>
+                <span className="text-[10px] mono text-[var(--ink-tertiary)]">STATUS</span>
+              </div>
+
+              <div className="instrument-panel p-5">
+                <div className="panel-bracket-tl" />
+                <div className="panel-bracket-br" />
+
+                <div className="flex flex-col divide-y divide-[var(--border-parchment)]">
+                  {/* Health Item 1 */}
+                  <div className="py-2.5 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-medium text-[var(--ink-primary)] flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                        <span>Search Indexing</span>
+                      </div>
+                      <div className="text-[11px] text-[var(--ink-secondary)]">All {totalSources} sources processed and searchable</div>
+                    </div>
+                    <span className="text-xs font-medium text-emerald-700">Up to Date</span>
+                  </div>
+
+                  {/* Health Item 2 */}
+                  <div className="py-2.5 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-medium text-[var(--ink-primary)] flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-[var(--accent-brass)]" />
+                        <span>Unconnected Notes</span>
+                      </div>
+                      <div className="text-[11px] text-[var(--ink-secondary)]">{unconnectedNotesCount} notes have no links to other concepts</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onNavigateToDestination('library')}
+                      className="text-xs font-medium text-[var(--accent-terracotta)] hover:underline"
+                    >
+                      Review {unconnectedNotesCount} Notes →
+                    </button>
+                  </div>
+
+                  {/* Health Item 3 */}
+                  <div className="py-2.5 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-medium text-[var(--ink-primary)] flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                        <span>Graph Synchronization</span>
+                      </div>
+                      <div className="text-[11px] text-[var(--ink-secondary)]">Knowledge graph updated 12m ago</div>
+                    </div>
+                    <span className="text-xs font-medium text-emerald-700">Synchronized</span>
+                  </div>
+
+                  {/* Health Item 4 */}
+                  <div className="py-2.5 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-medium text-[var(--ink-primary)] flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-[var(--accent-terracotta)]" />
+                        <span>Citation Consistency</span>
+                      </div>
+                      <div className="text-[11px] text-[var(--ink-secondary)]">3 citations need source verification</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onNavigateToDestination('library')}
+                      className="text-xs font-medium text-[var(--ink-primary)] hover:underline"
+                    >
+                      Check Sources →
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+          </div>
+        </div>
+
+      </main>
     </div>
   );
 };

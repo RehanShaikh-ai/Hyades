@@ -40,3 +40,5 @@ Thumbs.db
 # Coverage
 .coverage
 htmlcov/
+.hyades-reference/
+

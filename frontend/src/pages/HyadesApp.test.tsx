@@ -100,7 +100,7 @@ describe('HyadesApp Canonical UI', () => {
   it('renders primary Hyades destinations and navigates between them', async () => {
     render(<HyadesApp workspaceId={mockWorkspace.id} workspaceName={mockWorkspace.name} />);
 
-    expect(screen.getByText('HYADES')).toBeInTheDocument();
+    expect(screen.getByText(/hyades/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Overview$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Library$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Observatory$/i })).toBeInTheDocument();
