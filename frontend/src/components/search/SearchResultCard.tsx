@@ -25,13 +25,13 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({ result, onCl
   const getScoreIcon = () => {
     switch (result.search_mode) {
       case 'semantic':
-        return <Database size={13} className="text-teal-400" />;
+        return <Database size={12} className="text-[var(--accent-midnight)]" />;
       case 'lexical':
-        return <Hash size={13} className="text-blue-400" />;
+        return <Hash size={12} className="text-[var(--accent-brass)]" />;
       case 'hybrid':
-        return <Zap size={13} className="text-purple-400" />;
+        return <Zap size={12} className="text-[var(--accent-terracotta)]" />;
       default:
-        return <Database size={13} className="text-gray-400" />;
+        return <Database size={12} className="text-[var(--ink-tertiary)]" />;
     }
   };
 
@@ -50,7 +50,7 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({ result, onCl
 
   return (
     <div
-      className="note-card search-result-card group"
+      className="card-surface p-3.5 rounded-xl border border-[var(--border-parchment)] bg-white hover:border-[var(--border-strong)] hover:shadow-2xs transition-all cursor-pointer group"
       onClick={() => onClick(result.note_id)}
       role="button"
       tabIndex={0}
@@ -58,13 +58,13 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({ result, onCl
         if (e.key === 'Enter') onClick(result.note_id);
       }}
     >
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-2 text-text font-semibold text-[15px]">
-          <FileText size={16} className="text-blue-400 opacity-80" />
-          {result.title}
+      <div className="flex items-start justify-between mb-1.5">
+        <div className="flex items-center gap-2 text-[var(--ink-primary)] font-semibold text-[14.5px] serif">
+          <FileText size={15} className="text-[var(--accent-midnight)] opacity-80" />
+          <span className="group-hover:underline">{result.title}</span>
         </div>
         <div
-          className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-surface0 border border-surface1 text-[11px] font-mono text-overlay1 font-medium"
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-[10.5px] font-mono text-[var(--ink-secondary)] font-medium"
           title={getScoreTitle()}
         >
           {getScoreIcon()}
@@ -72,25 +72,25 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({ result, onCl
         </div>
       </div>
 
-      <p className="text-subtext0 text-[13px] leading-relaxed line-clamp-3 mb-3">
+      <p className="text-[var(--ink-secondary)] text-[12.5px] leading-relaxed line-clamp-3 mb-2.5">
         {result.excerpt}
       </p>
 
-      <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-overlay2">
+      <div className="flex items-center justify-between text-[10.5px] font-mono uppercase tracking-wider text-[var(--ink-tertiary)]">
         <span className="flex items-center gap-1.5">
           <span
             className={`w-1.5 h-1.5 rounded-full ${
               result.search_mode === 'semantic'
-                ? 'bg-teal-400 shadow-[0_0_8px_rgba(45,212,191,0.5)]'
+                ? 'bg-[var(--accent-midnight)]'
                 : result.search_mode === 'hybrid'
-                ? 'bg-purple-400 shadow-[0_0_8px_rgba(192,132,252,0.5)]'
-                : 'bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.5)]'
+                ? 'bg-[var(--accent-terracotta)]'
+                : 'bg-[var(--accent-brass)]'
             }`}
-          ></span>
+          />
           {result.search_mode} match
         </span>
         {result.is_archived && (
-          <span className="px-1.5 py-0.5 rounded bg-surface1 text-overlay1 border border-surface2">
+          <span className="px-1.5 py-0.2 rounded bg-[var(--bg-panel-subtle)] text-[var(--ink-tertiary)] border border-[var(--border-parchment)]">
             Archived
           </span>
         )}

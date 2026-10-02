@@ -6,7 +6,7 @@ import { SavedSearchesList } from './SavedSearchesList';
 import { createSavedSearch } from '@/api/saved_searches';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
-import { Search, Loader2, Database, Zap, Hash, X, BookmarkPlus } from 'lucide-react';
+import { Search, Loader2, Database, Zap, Hash, BookmarkPlus } from 'lucide-react';
 
 interface SearchPanelProps {
   workspaceId: string;
@@ -14,7 +14,7 @@ interface SearchPanelProps {
   onClose?: () => void;
 }
 
-export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onNoteSelect, onClose }) => {
+export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onNoteSelect, onClose: _onClose }) => {
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<SearchMode>('hybrid');
   const [results, setResults] = useState<SearchResultItem[]>([]);
@@ -76,63 +76,52 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onNoteSel
   };
 
   return (
-    <div className="workflow-panel flex flex-col h-full !p-0 overflow-hidden">
-      <div className="flex items-center justify-between p-5 border-b border-card-border bg-mantle/50">
-        <h2 className="flex items-center gap-2">
-          <Search size={18} className="text-blue-400" />
-          Semantic Search
-          <kbd className="ml-2 text-[10px] font-mono bg-surface1 px-1.5 py-0.5 rounded text-overlay0 border border-surface2">Mod+Space</kbd>
-        </h2>
-        {onClose && (
-          <button onClick={onClose} className="p-1.5 rounded-md hover:bg-surface1 text-overlay1 hover:text-text transition-colors">
-            <X size={16} />
-          </button>
-        )}
-      </div>
-
-      <div className="p-5 border-b border-card-border">
-        <div className="relative mb-4">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-overlay1" />
+    <div className="flex flex-col h-full !p-0 overflow-hidden bg-[#FAF8F2] text-[var(--ink-primary)]">
+      <div className="p-4 border-b border-[var(--border-parchment)] bg-white/70">
+        <div className="relative mb-3">
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--ink-tertiary)]" />
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search Hyades..."
-            className="w-full bg-surface0 border border-surface1 rounded-lg pl-10 pr-10 py-2.5 text-[14px] text-text outline-none focus:border-blue-400/50 focus:bg-surface1 focus:shadow-[0_0_0_2px_rgba(56,189,248,0.1)] transition-all"
+            className="w-full bg-white border border-[var(--border-strong)] rounded-xl pl-10 pr-10 py-2 text-[13.5px] text-[var(--ink-primary)] placeholder:text-[var(--ink-tertiary)] outline-none focus:border-[var(--accent-midnight)] focus:ring-1 focus:ring-[var(--accent-midnight)] shadow-xs transition-all"
             autoFocus
           />
           {isLoading && (
-            <Loader2 size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-blue-400 animate-spin" />
+            <Loader2 size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--accent-midnight)] animate-spin" />
           )}
         </div>
 
-        <div className="flex items-center justify-between mt-4">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-mono uppercase tracking-wider text-overlay1 mr-2">Mode</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--ink-tertiary)] mr-1">Mode</span>
             {(['hybrid', 'semantic', 'lexical'] as SearchMode[]).map((m) => (
               <button
                 key={m}
+                type="button"
                 onClick={() => setMode(m)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-[12px] capitalize transition-all ${
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11px] font-medium capitalize transition-all cursor-pointer ${
                   mode === m 
-                    ? 'bg-blue-400/10 border-blue-400/30 text-blue-400 shadow-[0_0_12px_rgba(56,189,248,0.15)]' 
-                    : 'bg-surface0 border-surface1 text-overlay1 hover:text-text hover:bg-surface1'
+                    ? 'bg-[var(--accent-midnight)] border-[var(--accent-midnight)] text-[#FAF8F2] shadow-xs' 
+                    : 'bg-white border-[var(--border-parchment)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:border-[var(--border-strong)]'
                 }`}
               >
-                {m === 'hybrid' && <Zap size={13} />}
-                {m === 'semantic' && <Database size={13} />}
-                {m === 'lexical' && <Hash size={13} />}
+                {m === 'hybrid' && <Zap size={11} className={mode === m ? 'text-[var(--accent-brass)]' : ''} />}
+                {m === 'semantic' && <Database size={11} className={mode === m ? 'text-[var(--accent-brass)]' : ''} />}
+                {m === 'lexical' && <Hash size={11} className={mode === m ? 'text-[var(--accent-brass)]' : ''} />}
                 {m}
               </button>
             ))}
           </div>
           
           <button
+            type="button"
             onClick={handleSaveSearch}
             disabled={!query.trim() || isSavingSearch}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 disabled:opacity-50 transition-colors border border-blue-500/20 hover:border-blue-500/30"
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] bg-white hover:bg-[var(--bg-panel-subtle)] disabled:opacity-50 transition-colors border border-[var(--border-strong)] cursor-pointer"
           >
-            {isSavingSearch ? <Loader2 size={14} className="animate-spin" /> : <BookmarkPlus size={14} />}
+            {isSavingSearch ? <Loader2 size={12} className="animate-spin text-[var(--accent-midnight)]" /> : <BookmarkPlus size={12} className="text-[var(--accent-terracotta)]" />}
             Save Search
           </button>
         </div>
