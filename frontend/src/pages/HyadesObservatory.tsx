@@ -27,6 +27,7 @@ export interface CelestialNode extends d3.SimulationNodeDatum {
   label: string;
   catalog: string;
   clusterKey: string;
+  clusterName?: string;
   clusterId?: string;
   group: number;
   type: 'hub' | 'concept' | 'entity';
@@ -99,6 +100,70 @@ function computeCelestialCoords(id: string): { coords: string; catalog: string }
     coords: `RA ${raHours}ʰ ${raMinutes}ᵐ ${raSeconds}ˢ · DEC +${decDeg}° ${decMin}′`,
     catalog,
   };
+}
+
+function computeClusterAnchors(
+  clusterKeys: string[],
+  centerX: number,
+  centerY: number
+): Map<string, { x: number; y: number }> {
+  const anchors = new Map<string, { x: number; y: number }>();
+  const n = clusterKeys.length;
+  if (n === 0) return anchors;
+  if (n === 1) {
+    anchors.set(clusterKeys[0], { x: centerX, y: centerY });
+    return anchors;
+  }
+  if (n <= 4) {
+    const r = 320;
+    clusterKeys.forEach((key, i) => {
+      const angle = (i / n) * 2 * Math.PI - Math.PI / 4;
+      anchors.set(key, {
+        x: centerX + Math.cos(angle) * r,
+        y: centerY + Math.sin(angle) * (r * 0.82),
+      });
+    });
+    return anchors;
+  }
+  if (n <= 7) {
+    anchors.set(clusterKeys[0], { x: centerX, y: centerY });
+    const outerKeys = clusterKeys.slice(1);
+    const r = 380;
+    outerKeys.forEach((key, i) => {
+      const angle = (i / outerKeys.length) * 2 * Math.PI - Math.PI / 2;
+      anchors.set(key, {
+        x: centerX + Math.cos(angle) * r,
+        y: centerY + Math.sin(angle) * (r * 0.82),
+      });
+    });
+    return anchors;
+  }
+  // 8+ clusters: center constellation + inner ring + interleaved outer ring
+  anchors.set(clusterKeys[0], { x: centerX, y: centerY });
+  const innerCount = Math.min(5, Math.floor((n - 1) * 0.40));
+  const innerKeys = clusterKeys.slice(1, 1 + innerCount);
+  const outerKeys = clusterKeys.slice(1 + innerCount);
+
+  const rInner = 380;
+  innerKeys.forEach((key, i) => {
+    const angle = (i / innerKeys.length) * 2 * Math.PI - Math.PI / 2;
+    anchors.set(key, {
+      x: centerX + Math.cos(angle) * rInner,
+      y: centerY + Math.sin(angle) * (rInner * 0.82),
+    });
+  });
+
+  const rOuter = 720;
+  outerKeys.forEach((key, i) => {
+    const offset = Math.PI / outerKeys.length;
+    const angle = (i / outerKeys.length) * 2 * Math.PI - Math.PI / 2 + offset;
+    anchors.set(key, {
+      x: centerX + Math.cos(angle) * rOuter,
+      y: centerY + Math.sin(angle) * (rOuter * 0.82),
+    });
+  });
+
+  return anchors;
 }
 
 export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
@@ -236,73 +301,146 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       }
     });
 
-    // 3. Cluster identification: use explicit cluster_id if available, otherwise component id
-    const clusterNodesMap = new Map<string, GraphNodeResponse[]>();
-    graphData.nodes.forEach((node) => {
-      const cKey = node.cluster_id || `comp_${nodeComponent.get(node.id) || 1}`;
-      const list = clusterNodesMap.get(cKey) || [];
-      list.push(node);
-      clusterNodesMap.set(cKey, list);
+    // 3. Cluster identification & Community Detection:
+    // If backend provides a specific small cluster (<= 35 members), preserve it.
+    // If a cluster is the generic "General Notes" or huge (> 35 members) or null,
+    // use Label Propagation on the connected graph to discover natural thematic constellations.
+    const specificClusterIds = new Set<string>();
+    const clusterMemberCounts = new Map<string, number>();
+    graphData.nodes.forEach((n) => {
+      if (n.cluster_id) {
+        clusterMemberCounts.set(n.cluster_id, (clusterMemberCounts.get(n.cluster_id) || 0) + 1);
+      }
     });
-
-    // 4. Structural Hierarchy Derivation:
-    // Core (Level 1): The highest-degree/central concept in each meaningful cluster (size >= 3).
-    // Subtopics (Level 2): Meaningful second-level concepts (connected to Core with degree >= 2, or secondary hubs with degree >= 3).
-    // Related (Level 3): Satellite / leaf / peripheral concepts.
-    const coreNodeIds = new Set<string>();
-    const subtopicNodeIds = new Set<string>();
-
-    clusterNodesMap.forEach((cNodes) => {
-      if (cNodes.length >= 3) {
-        // Sort cluster nodes by degree (descending), then note_count
-        const sorted = [...cNodes].sort(
-          (a, b) =>
-            (b.degree || 0) * 10 +
-            (b.note_count || 0) -
-            ((a.degree || 0) * 10 + (a.note_count || 0))
-        );
-
-        // Top node is Core
-        const primaryCore = sorted[0];
-        if ((primaryCore.degree || 0) > 0 || cNodes.length >= 4) {
-          coreNodeIds.add(primaryCore.id);
-        }
-
-        // Secondary Core ONLY if cluster is large (>= 10 nodes) and second node is a distinct major hub
-        if (
-          sorted.length >= 10 &&
-          (sorted[1]?.degree || 0) >= 4 &&
-          sorted[1].id !== primaryCore.id
-        ) {
-          coreNodeIds.add(sorted[1].id);
-        }
-
-        // Identify Subtopics in this cluster
-        sorted.forEach((n) => {
-          if (coreNodeIds.has(n.id)) return;
-          const deg = n.degree || 0;
-          const isDirectToCore =
-            adj.get(primaryCore.id)?.has(n.id) ||
-            (sorted[1] && coreNodeIds.has(sorted[1].id) && adj.get(sorted[1].id)?.has(n.id));
-
-          // Subtopic: directly connected to Core with degree >= 2, OR an internal hub with degree >= 3
-          if ((isDirectToCore && deg >= 2) || deg >= 3) {
-            subtopicNodeIds.add(n.id);
-          }
-        });
-      } else if (cNodes.length === 2) {
-        // Simple pair: one subtopic, one related
-        const sorted = [...cNodes].sort((a, b) => (b.degree || 0) - (a.degree || 0));
-        subtopicNodeIds.add(sorted[0].id);
+    clusterMemberCounts.forEach((count, cId) => {
+      const matchedCluster = clusters.find((c) => c.id === cId);
+      const isGeneral = matchedCluster?.label.toLowerCase().includes('general');
+      if (count <= 35 && !isGeneral) {
+        specificClusterIds.add(cId);
       }
     });
 
-    // Fallback: If graph has nodes but no core was picked, pick top node as Core
+    // Seed labels for Label Propagation
+    const communityLabels = new Map<string, string>();
+    graphData.nodes.forEach((n) => {
+      if (n.cluster_id && specificClusterIds.has(n.cluster_id)) {
+        communityLabels.set(n.id, `cluster_${n.cluster_id}`);
+      } else {
+        communityLabels.set(n.id, `seed_${n.id}`);
+      }
+    });
+
+    // Deterministic node ordering by degree descending
+    const nodesByDegree = [...graphData.nodes].sort((a, b) => (b.degree || 0) - (a.degree || 0));
+
+    // 5 rounds of Label Propagation
+    for (let round = 0; round < 5; round++) {
+      nodesByDegree.forEach((n) => {
+        if (n.cluster_id && specificClusterIds.has(n.cluster_id)) return;
+        const nbrs = adj.get(n.id);
+        if (!nbrs || nbrs.size === 0) return;
+
+        const labelCounts = new Map<string, number>();
+        nbrs.forEach((nbrId) => {
+          const lbl = communityLabels.get(nbrId);
+          if (lbl) {
+            labelCounts.set(lbl, (labelCounts.get(lbl) || 0) + 1);
+          }
+        });
+
+        let bestLabel = communityLabels.get(n.id)!;
+        let maxCount = -1;
+        labelCounts.forEach((cnt, lbl) => {
+          if (cnt > maxCount) {
+            maxCount = cnt;
+            bestLabel = lbl;
+          }
+        });
+
+        if (maxCount > 0) {
+          communityLabels.set(n.id, bestLabel);
+        }
+      });
+    }
+
+    // Group nodes into communities
+    const rawCommunities = new Map<string, GraphNodeResponse[]>();
+    graphData.nodes.forEach((n) => {
+      const lbl = communityLabels.get(n.id) || `comp_${nodeComponent.get(n.id) || 1}`;
+      const list = rawCommunities.get(lbl) || [];
+      list.push(n);
+      rawCommunities.set(lbl, list);
+    });
+
+    // Refine communities: split any community that still exceeds 38 nodes to keep constellations readable
+    const finalCommunities = new Map<string, GraphNodeResponse[]>();
+    let splitCounter = 0;
+    rawCommunities.forEach((cNodes, key) => {
+      if (cNodes.length <= 38) {
+        finalCommunities.set(key, cNodes);
+      } else {
+        const sorted = [...cNodes].sort((a, b) => (b.degree || 0) - (a.degree || 0));
+        while (sorted.length > 0) {
+          splitCounter++;
+          const chunk = sorted.splice(0, 28);
+          finalCommunities.set(`${key}_split_${splitCounter}`, chunk);
+        }
+      }
+    });
+
+    // For each community, establish the Primary Hub (Level 1 Core), Subtopics (Level 2), and Constellation Name
+    const nodeClusterKeyMap = new Map<string, string>();
+    const nodeClusterNameMap = new Map<string, string>();
+    const coreNodeIds = new Set<string>();
+    const subtopicNodeIds = new Set<string>();
+
+    finalCommunities.forEach((cNodes, cKey) => {
+      if (cNodes.length === 0) return;
+      const sorted = [...cNodes].sort(
+        (a, b) => (b.degree || 0) * 10 + (b.note_count || 0) - ((a.degree || 0) * 10 + (a.note_count || 0))
+      );
+
+      const primaryHub = sorted[0];
+      let constellationName = primaryHub.name;
+
+      const rawClusterId = primaryHub.cluster_id;
+      const matchedBackendCluster = clusters.find((c) => c.id === rawClusterId);
+      if (matchedBackendCluster && !matchedBackendCluster.label.toLowerCase().includes('general')) {
+        constellationName = matchedBackendCluster.label;
+      }
+
+      cNodes.forEach((n) => {
+        nodeClusterKeyMap.set(n.id, cKey);
+        nodeClusterNameMap.set(n.id, constellationName);
+      });
+
+      // Level 1 Core: Top hub of each meaningful constellation
+      if (cNodes.length >= 3 && (primaryHub.degree || 0) >= 1) {
+        coreNodeIds.add(primaryHub.id);
+        // Secondary Core if cluster is large and second hub is distinct
+        if (sorted.length >= 12 && (sorted[1]?.degree || 0) >= 5 && sorted[1].id !== primaryHub.id) {
+          coreNodeIds.add(sorted[1].id);
+        }
+      } else if (cNodes.length === 1 && (primaryHub.degree || 0) >= 4) {
+        coreNodeIds.add(primaryHub.id);
+      }
+
+      // Level 2 Subtopics: Hubs with degree >= 3 or direct core neighbors with degree >= 2
+      sorted.forEach((n) => {
+        if (coreNodeIds.has(n.id)) return;
+        const deg = n.degree || 0;
+        const isDirectToPrimary = adj.get(primaryHub.id)?.has(n.id);
+        if (deg >= 3 || (isDirectToPrimary && deg >= 2)) {
+          subtopicNodeIds.add(n.id);
+        }
+      });
+    });
+
+    // Fallback: If no core was picked, pick top node as Core
     if (coreNodeIds.size === 0 && graphData.nodes.length > 0) {
-      const sortedAll = [...graphData.nodes].sort((a, b) => (b.degree || 0) - (a.degree || 0));
-      coreNodeIds.add(sortedAll[0].id);
-      if (sortedAll.length > 1 && (sortedAll[1].degree || 0) >= 2) {
-        subtopicNodeIds.add(sortedAll[1].id);
+      coreNodeIds.add(nodesByDegree[0].id);
+      if (nodesByDegree.length > 1 && (nodesByDegree[1].degree || 0) >= 2) {
+        subtopicNodeIds.add(nodesByDegree[1].id);
       }
     }
 
@@ -355,7 +493,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
       // Restore cached layout coordinates if available
       const cached = nodePositionsRef.current.get(n.id);
-      const clusterKey = n.cluster_id || `comp_${nodeComponent.get(n.id) || 1}`;
+      const clusterKey = nodeClusterKeyMap.get(n.id) || n.cluster_id || `comp_${nodeComponent.get(n.id) || 1}`;
+      const clusterName = nodeClusterNameMap.get(n.id);
       const groupNum =
         n.cluster_id && clusterMap[n.cluster_id]
           ? clusterMap[n.cluster_id]
@@ -366,6 +505,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         label: n.name,
         catalog,
         clusterKey,
+        clusterName,
         clusterId: n.cluster_id || undefined,
         coords,
         group: groupNum,
@@ -592,24 +732,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       (a, b) => b[1].length - a[1].length
     );
 
-    const numClusters = sortedClusters.length;
-    const clusterAnchors = new Map<string, { x: number; y: number }>();
-
     // 3. Assign balanced constellation regions on canvas
-    if (numClusters === 1) {
-      clusterAnchors.set(sortedClusters[0][0], { x: centerX, y: centerY });
-    } else {
-      const orbitX = Math.min(width * 0.32, 380);
-      const orbitY = Math.min(height * 0.28, 260);
-
-      sortedClusters.forEach(([cKey], idx) => {
-        const angle = (idx / numClusters) * 2 * Math.PI - Math.PI / 2;
-        clusterAnchors.set(cKey, {
-          x: centerX + Math.cos(angle) * orbitX,
-          y: centerY + Math.sin(angle) * orbitY,
-        });
-      });
-    }
+    const clusterKeys = sortedClusters.map(([key]) => key);
+    const clusterAnchors = computeClusterAnchors(clusterKeys, centerX, centerY);
 
     // 4. Initial deterministic constellation placement:
     // Core at center -> Subtopics in inner orbit (r~80-105) -> Related around their subtopic (r~40-60)
@@ -1140,17 +1265,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     });
 
     const clusterIds = Array.from(clusterGroups.keys());
-    const numClusters = Math.max(1, clusterIds.length);
-    const orbitRadius = Math.min(width, height) * 0.28;
-    const clusterAnchors = new Map<string, { x: number; y: number }>();
-
-    clusterIds.forEach((cid, idx) => {
-      const angle = (idx / numClusters) * 2 * Math.PI - Math.PI / 2;
-      clusterAnchors.set(cid, {
-        x: width * 0.44 + Math.cos(angle) * orbitRadius,
-        y: height * 0.48 + Math.sin(angle) * (orbitRadius * 0.85),
-      });
-    });
+    const clusterAnchors = computeClusterAnchors(clusterIds, width * 0.44, height * 0.48);
 
     // Force Simulation with cluster-aware layout and radial bounding
     const simulation = d3
@@ -1187,6 +1302,10 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
     simulationRef.current = simulation;
 
+    // Node lookup map for fast link cluster checking
+    const nodeLookup = new Map<string, CelestialNode>();
+    filteredNodes.forEach((n) => nodeLookup.set(n.id, n));
+
     // Links Layer
     const linkGroup = g.append('g').attr('class', 'links-layer');
     const link = linkGroup
@@ -1196,9 +1315,38 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       .append('path')
       .attr('class', 'celestial-link')
       .attr('fill', 'none')
-      .attr('stroke', '#4A3E3D')
-      .attr('stroke-opacity', 0.28)
-      .attr('stroke-width', (d) => 0.8 + (d.weight || 0.8) * 1.2);
+      .attr('stroke', (d) => {
+        const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
+        const tId = typeof d.target === 'string' ? d.target : (d.target as any).id;
+        const sNode = nodeLookup.get(sId);
+        const tNode = nodeLookup.get(tId);
+        const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
+        return isSame ? '#544645' : '#8A7B79';
+      })
+      .attr('stroke-opacity', (d) => {
+        const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
+        const tId = typeof d.target === 'string' ? d.target : (d.target as any).id;
+        const sNode = nodeLookup.get(sId);
+        const tNode = nodeLookup.get(tId);
+        const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
+        return isSame ? 0.22 : 0.05;
+      })
+      .attr('stroke-width', (d) => {
+        const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
+        const tId = typeof d.target === 'string' ? d.target : (d.target as any).id;
+        const sNode = nodeLookup.get(sId);
+        const tNode = nodeLookup.get(tId);
+        const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
+        return isSame ? 0.95 + (d.weight || 0.8) * 0.5 : 0.6;
+      })
+      .attr('stroke-dasharray', (d) => {
+        const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
+        const tId = typeof d.target === 'string' ? d.target : (d.target as any).id;
+        const sNode = nodeLookup.get(sId);
+        const tNode = nodeLookup.get(tId);
+        const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
+        return isSame ? 'none' : '3,3';
+      });
 
     // Link Labels Layer
     const linkLabel = linkGroup
@@ -1431,7 +1579,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         .classed('is-dimmed', isDimmed)
         .transition()
         .duration(180)
-        .style('opacity', isDimmed ? 0.32 : 1);
+        .style('opacity', isDimmed ? 0.22 : 1);
 
       el.select('.selection-halo')
         .transition()
@@ -1439,7 +1587,10 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         .style('opacity', isSelected ? 1 : 0);
     });
 
-    // Update link highlights
+    const nodeLookup = new Map<string, CelestialNode>();
+    celestialNodes.forEach((n) => nodeLookup.set(n.id, n));
+
+    // Update link highlights with visual de-emphasis and cluster bundling
     svg.selectAll<SVGPathElement, CelestialLink>('.celestial-link').each(function (d) {
       const el = d3.select(this);
       const srcId = typeof d.source === 'string' ? d.source : (d.source as any).id;
@@ -1449,14 +1600,19 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         (tgtId === selectedId && connectedIds.has(srcId));
       const isDimmed = selectedId ? !isConnected : false;
 
+      const sNode = nodeLookup.get(srcId);
+      const tNode = nodeLookup.get(tgtId);
+      const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
+
       el.classed('is-active-link', isConnected)
         .transition()
         .duration(180)
-        .attr('stroke', isConnected ? '#BD532B' : '#4A3E3D')
-        .attr('stroke-opacity', isConnected ? 0.85 : isDimmed ? 0.08 : 0.28)
-        .attr('stroke-width', isConnected ? 2.0 : 0.8 + (d.weight || 0.8) * 1.2);
+        .attr('stroke', isConnected ? '#BD532B' : isSame ? '#544645' : '#8A7B79')
+        .attr('stroke-opacity', isConnected ? 0.92 : isDimmed ? 0.02 : isSame ? 0.22 : 0.05)
+        .attr('stroke-width', isConnected ? 2.2 : isSame ? 0.95 + (d.weight || 0.8) * 0.5 : 0.6)
+        .attr('stroke-dasharray', isConnected ? 'none' : isSame ? 'none' : '3,3');
     });
-  }, [selectedNode]);
+  }, [selectedNode, celestialNodes]);
 
   // ================= DEBOUNCED SEARCH HIGHLIGHT EFFECT =================
   // Highlights search matches in graph without re-running simulation
@@ -1670,7 +1826,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           const avgX = pts.reduce((a, b) => a + b.mx, 0) / pts.length;
           const avgY = pts.reduce((a, b) => a + b.my, 0) / pts.length;
           const matched = clusters.find((c) => c.id === key);
-          const label = matched?.label || key.replace(/^comp_/, 'Sector ');
+          const matchedNode = celestialNodes.find((n) => n.clusterKey === key);
+          const label = matchedNode?.clusterName || matched?.label || key.replace(/^comp_/, 'Sector ');
           clusterCentroids.push({ key, label, cx: avgX, cy: avgY });
         }
       });
