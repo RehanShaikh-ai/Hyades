@@ -636,33 +636,46 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                 <div className="w-full h-px bg-[var(--border-parchment)] mb-5" />
 
                 {/* Section: Topic Shelves */}
-                <div className="mb-5">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="serif-italic text-sm text-[var(--ink-secondary)]">Topic Shelves</span>
+                <div className="mb-5 flex flex-col min-h-0">
+                  <div className="flex items-center justify-between mb-2 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <span className="serif-italic text-sm text-[var(--ink-secondary)]">Topic Shelves</span>
+                      {topicShelves.length > 0 && (
+                        <span className="text-[10px] mono text-[var(--ink-tertiary)]">({topicShelves.length})</span>
+                      )}
+                    </div>
                     {activeTopic && (
                       <button
                         type="button"
                         onClick={() => setActiveTopic(null)}
-                        className="text-[10px] text-[var(--accent-terracotta)] hover:underline"
+                        className="text-[10px] text-[var(--accent-terracotta)] hover:underline cursor-pointer"
                       >
                         Clear
                       </button>
                     )}
                   </div>
 
-                  <div className="flex flex-col gap-1">
+                  <div
+                    data-testid="library-topic-shelves-container"
+                    className="flex flex-col gap-1 max-h-52 overflow-y-auto pr-1"
+                  >
                     {topicShelves.length > 0 ? (
                       topicShelves.map((topic) => (
                         <div
                           key={topic.key}
                           onClick={() => setActiveTopic(activeTopic === topic.label ? null : topic.label)}
-                          className={`shelf-item ${activeTopic === topic.label ? 'active' : ''}`}
+                          className={`shelf-item ${activeTopic === topic.label ? 'active' : ''} flex items-center justify-between gap-2`}
+                          title={`${topic.label} (${topic.count} items)`}
                         >
-                          <span className="flex items-center gap-2.5 truncate">
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
                             <span className={`w-2 h-2 rounded-full ${topic.color} shrink-0`} />
-                            <span className="truncate">{topic.label}</span>
+                            <span className="truncate text-xs font-medium text-[var(--ink-primary)]">
+                              {topic.label}
+                            </span>
+                          </div>
+                          <span className="mono text-[11px] text-[var(--ink-tertiary)] shrink-0 ml-1.5 px-1.5 py-0.5 rounded bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)]">
+                            {topic.count}
                           </span>
-                          <span className="mono text-[11px] text-[var(--ink-tertiary)]">{topic.count}</span>
                         </div>
                       ))
                     ) : (

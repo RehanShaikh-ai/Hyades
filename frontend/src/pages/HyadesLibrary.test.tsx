@@ -122,4 +122,32 @@ describe('HyadesLibrary Layout and Independent Scrolling (§16, §17)', () => {
       expect(screen.queryByText('Scriptorium Note Editor')).not.toBeInTheDocument();
     });
   });
+
+  it('contains Topic Shelves inside a bounded scroll container to prevent panel overflow', async () => {
+    vi.mocked(clustersApi.listClusters).mockResolvedValue([
+      { id: 'c1', label: 'Quantum Superposition & Qubits Architecture', member_count: 5, members: [] },
+      { id: 'c2', label: 'Transformers', member_count: 8, members: [] },
+      { id: 'c3', label: 'Vector Databases', member_count: 3, members: [] },
+      { id: 'c4', label: 'Data Engineering', member_count: 4, members: [] },
+      { id: 'c5', label: 'Machine Learning', member_count: 12, members: [] },
+      { id: 'c6', label: 'Astronomy & Astrophysics', member_count: 7, members: [] },
+      { id: 'c7', label: 'General Notes', member_count: 15, members: [] },
+    ] as any);
+
+    render(<HyadesLibrary workspaceId={mockWorkspaceId} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Quantum Superposition & Qubits Architecture/i)).toBeInTheDocument();
+    });
+
+    const shelvesContainer = screen.getByTestId('library-topic-shelves-container');
+    expect(shelvesContainer).toBeInTheDocument();
+    expect(shelvesContainer.className).toContain('max-h-52');
+    expect(shelvesContainer.className).toContain('overflow-y-auto');
+
+    // Verify all topics are rendered within the scrollable container with counts
+    expect(screen.getByText('15')).toBeInTheDocument();
+    expect(screen.getByText('12')).toBeInTheDocument();
+  });
 });
+
