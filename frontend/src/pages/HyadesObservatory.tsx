@@ -142,9 +142,19 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
   // Focus node & search state
   const [selectedNode, setSelectedNode] = useState<CelestialNode | null>(null);
+  const selectedNodeRef = useRef<CelestialNode | null>(null);
+  useEffect(() => {
+    selectedNodeRef.current = selectedNode;
+  }, [selectedNode]);
+
   const [targetResolutionNotice, setTargetResolutionNotice] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [activeCandidateIndex, setActiveCandidateIndex] = useState(0);
+
+  // Current camera zoom transform for semantic zoom & orientation inset
+  const [currentTransform, setCurrentTransform] = useState<d3.ZoomTransform>(d3.zoomIdentity);
 
   // Debounce search input to avoid any keystroke overhead
   useEffect(() => {
@@ -385,21 +395,25 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       setSelectedNode(matched);
       setIsRightSidebarOpen(true);
 
+      const targetX = nodePositionsRef.current.get(matched.id)?.x ?? matched.x;
+      const targetY = nodePositionsRef.current.get(matched.id)?.y ?? matched.y;
+
       if (
         zoomBehaviorRef.current &&
         svgRef.current &&
-        matched.x !== undefined &&
-        matched.y !== undefined
+        targetX !== undefined &&
+        targetY !== undefined
       ) {
         const width = containerRef.current?.clientWidth || window.innerWidth;
         const height = containerRef.current?.clientHeight || window.innerHeight;
         const scale = 1.35;
-        const x = width * 0.44 - matched.x * scale;
-        const y = height * 0.48 - matched.y * scale;
+        const x = width * 0.44 - targetX * scale;
+        const y = height * 0.48 - targetY * scale;
 
         svgRef.current
           .transition()
           .duration(700)
+          .ease(d3.easeCubicOut)
           .call(
             zoomBehaviorRef.current.transform,
             d3.zoomIdentity.translate(x, y).scale(scale)
@@ -412,39 +426,221 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     }
   }, [initialTarget, celestialNodes, graphData]);
 
-  // Escape key entity deselection (§3)
+  // Fit-to-content Reset / Fit View (§1.A)
+  // Calculates actual bounding box of visible nodes with generous padding and centers in usable viewport.
+  const handleFitView = useCallback(() => {
+    if (!svgRef.current || !zoomBehaviorRef.current || !containerRef.current) return;
+    const width = containerRef.current.clientWidth || window.innerWidth;
+    const height = containerRef.current.clientHeight || window.innerHeight;
+
+    const visibleNodes = celestialNodes.filter((n) => {
+      if (!filterHubs && n.hierarchy === 'core') return false;
+      if (!filterConcepts && n.hierarchy !== 'core') return false;
+      if (selectedClusterId && n.catalog !== selectedClusterId) return false;
+      return true;
+    });
+
+    const positions: Array<{ x: number; y: number }> = [];
+    visibleNodes.forEach((n) => {
+      const cached = nodePositionsRef.current.get(n.id);
+      const x = cached?.x ?? n.x;
+      const y = cached?.y ?? n.y;
+      if (x !== undefined && y !== undefined && !isNaN(x) && !isNaN(y)) {
+        positions.push({ x, y });
+      }
+    });
+
+    if (positions.length === 0) {
+      svgRef.current
+        .transition()
+        .duration(600)
+        .ease(d3.easeCubicOut)
+        .call(
+          zoomBehaviorRef.current.transform,
+          d3.zoomIdentity.translate(width * 0.44, height * 0.48).scale(1.0)
+        );
+      return;
+    }
+
+    if (positions.length === 1) {
+      const p = positions[0];
+      const scale = 1.35;
+      const tx = width * 0.44 - p.x * scale;
+      const ty = height * 0.48 - p.y * scale;
+      svgRef.current
+        .transition()
+        .duration(600)
+        .ease(d3.easeCubicOut)
+        .call(
+          zoomBehaviorRef.current.transform,
+          d3.zoomIdentity.translate(tx, ty).scale(scale)
+        );
+      return;
+    }
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    positions.forEach((p) => {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    });
+
+    const padding = 120;
+    const boxWidth = Math.max(100, maxX - minX + padding * 2);
+    const boxHeight = Math.max(100, maxY - minY + padding * 2);
+    const midX = (minX + maxX) / 2;
+    const midY = (minY + maxY) / 2;
+
+    const usableWidth = width * 0.82;
+    const usableHeight = height * 0.82;
+    const scaleX = usableWidth / boxWidth;
+    const scaleY = usableHeight / boxHeight;
+    const fitScale = Math.min(1.4, Math.max(0.38, Math.min(scaleX, scaleY)));
+
+    const tx = width * 0.44 - midX * fitScale;
+    const ty = height * 0.48 - midY * fitScale;
+
+    svgRef.current
+      .transition()
+      .duration(650)
+      .ease(d3.easeCubicOut)
+      .call(
+        zoomBehaviorRef.current.transform,
+        d3.zoomIdentity.translate(tx, ty).scale(fitScale)
+      );
+  }, [celestialNodes, filterHubs, filterConcepts, selectedClusterId]);
+
+  // Manual Untangle / Organize Graph Action with Bounded Cluster Layout (§1.B, §1.C)
+  const handleUntangle = useCallback(() => {
+    if (!simulationRef.current || !containerRef.current || celestialNodes.length === 0) return;
+    const width = containerRef.current.clientWidth || window.innerWidth;
+    const height = containerRef.current.clientHeight || window.innerHeight;
+
+    // Group active nodes by cluster/sector
+    const clusterMap = new Map<number | string, CelestialNode[]>();
+    celestialNodes.forEach((n) => {
+      const grp = n.catalog || n.group || 1;
+      const list = clusterMap.get(grp) || [];
+      list.push(n);
+      clusterMap.set(grp, list);
+    });
+
+    const clusterIds = Array.from(clusterMap.keys());
+    const numClusters = Math.max(1, clusterIds.length);
+    const orbitRadius = Math.min(width, height) * 0.26;
+    const clusterAnchors = new Map<number | string, { x: number; y: number }>();
+
+    clusterIds.forEach((cid, idx) => {
+      const angle = (idx / numClusters) * 2 * Math.PI - Math.PI / 2;
+      clusterAnchors.set(cid, {
+        x: width * 0.44 + Math.cos(angle) * orbitRadius,
+        y: height * 0.48 + Math.sin(angle) * (orbitRadius * 0.85),
+      });
+    });
+
+    // Clear individual node cache so new cluster positions settle deterministically
+    nodePositionsRef.current.clear();
+    try {
+      localStorage.removeItem(`hyades_graph_positions_${workspaceId}`);
+    } catch {
+      // Ignore storage errors
+    }
+
+    simulationRef.current
+      .force('center', d3.forceCenter(width * 0.44, height * 0.48))
+      .force('clusterX', d3.forceX((d: any) => clusterAnchors.get(d.catalog || d.group)?.x ?? width * 0.44).strength(0.22))
+      .force('clusterY', d3.forceY((d: any) => clusterAnchors.get(d.catalog || d.group)?.y ?? height * 0.48).strength(0.22))
+      .force('charge', d3.forceManyBody().strength(-280).distanceMax(450))
+      .force(
+        'collision',
+        d3.forceCollide().radius((d: any) => (d.size || 14) * 2.4 + 14)
+      )
+      .force(
+        'radialBound',
+        d3.forceRadial(Math.min(width, height) * 0.40, width * 0.44, height * 0.48).strength(0.08)
+      )
+      .alpha(0.4)
+      .alphaDecay(0.03)
+      .alphaTarget(0)
+      .restart();
+
+    // After untangling, frame the newly organized graph cleanly
+    setTimeout(() => {
+      handleFitView();
+    }, 450);
+  }, [celestialNodes, workspaceId, handleFitView]);
+
+  // Keyboard Shortcuts System across Hyades Observatory (§7)
+  // Global: Esc to deselect or cancel search
+  // Observatory: A (+Entity), C (Connect), F (Fit View), Shift+F (Fullscreen), U (Untangle)
+  // Protected: NEVER trigger while typing in inputs, textareas, or search boxes!
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement as HTMLElement | null;
+      const tagName = activeEl?.tagName?.toLowerCase();
+      const isInput =
+        tagName === 'input' ||
+        tagName === 'textarea' ||
+        tagName === 'select' ||
+        Boolean(activeEl?.isContentEditable);
+
       if (e.key === 'Escape') {
         if (isEntityEditorOpen || isRelationshipEditorOpen || isSuggestionsOpen) {
           return;
         }
+        if (searchQuery || isSearchFocused) {
+          setSearchQuery('');
+          setIsSearchFocused(false);
+          return;
+        }
+        if (selectedNode) {
+          e.preventDefault();
+          setSelectedNode(null);
+        }
+        return;
+      }
+
+      // Never trigger letter shortcuts while the user is typing in forms or inputs!
+      if (isInput) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key === 'a' || e.key === 'A') {
         e.preventDefault();
-        setSelectedNode(null);
+        setIsEntityEditorOpen(true);
+      } else if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        setIsRelationshipEditorOpen(true);
+      } else if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          onToggleFullscreen?.();
+        } else {
+          handleFitView();
+        }
+      } else if (e.key === 'u' || e.key === 'U') {
+        e.preventDefault();
+        handleUntangle();
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isEntityEditorOpen, isRelationshipEditorOpen, isSuggestionsOpen]);
-
-  // Manual Untangle / Organize Graph Action (§2)
-  const handleUntangle = useCallback(() => {
-    if (!simulationRef.current || !containerRef.current) return;
-    const width = containerRef.current.clientWidth || window.innerWidth;
-    const height = containerRef.current.clientHeight || window.innerHeight;
-
-    simulationRef.current
-      .force('center', d3.forceCenter(width * 0.44, height * 0.48))
-      .force('charge', d3.forceManyBody().strength(-460))
-      .force(
-        'collision',
-        d3.forceCollide().radius((d: any) => (d.size || 14) * 2.8 + 12)
-      )
-      .alpha(0.35)
-      .alphaDecay(0.035)
-      .alphaTarget(0)
-      .restart();
-  }, []);
+  }, [
+    isEntityEditorOpen,
+    isRelationshipEditorOpen,
+    isSuggestionsOpen,
+    searchQuery,
+    isSearchFocused,
+    selectedNode,
+    handleFitView,
+    handleUntangle,
+    onToggleFullscreen,
+  ]);
 
   // Render Celestial Graticule (Astronomical Atlas Lines)
   const renderCelestialGraticule = useCallback(() => {
@@ -656,16 +852,80 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       .scaleExtent([0.3, 3.5])
       .on('zoom', (event) => {
         g.attr('transform', event.transform);
+        setCurrentTransform(event.transform);
+
+        const k = event.transform.k;
+        const currentSelectedId = selectedNodeRef.current?.id;
+        const currentConnectedIds = new Set<string>();
+        if (selectedNodeRef.current) {
+          selectedNodeRef.current.connections.forEach((c) => currentConnectedIds.add(c.id));
+        }
+
+        // Semantic zoom label density control (§1.F)
+        g.selectAll<SVGGElement, CelestialNode>('.celestial-node').each(function (d) {
+          const isSelected = d.id === currentSelectedId;
+          const isConnected = currentConnectedIds.has(d.id);
+          const labelGroup = d3.select(this).select('.node-label-group');
+
+          if (isSelected || isConnected) {
+            // Selected node and its direct neighbors ALWAYS show label
+            labelGroup.style('display', 'block');
+          } else if (k < 0.55) {
+            // Low zoom (overview): only core concepts show labels
+            labelGroup.style('display', d.hierarchy === 'core' ? 'block' : 'none');
+          } else if (k < 0.92) {
+            // Mid zoom: core and subtopics show labels
+            labelGroup.style('display', d.hierarchy === 'core' || d.hierarchy === 'subtopic' ? 'block' : 'none');
+          } else {
+            // High zoom: all labels visible
+            labelGroup.style('display', 'block');
+          }
+        });
+
+        // Link labels hide at lower zoom to avoid clutter
+        g.selectAll('.link-label').style('display', k < 0.8 ? 'none' : 'block');
       });
 
     svg.call(zoom);
     zoomBehaviorRef.current = zoom;
 
-    // Center view
-    svg.call(
-      zoom.transform,
-      d3.zoomIdentity.translate(width * 0.05, height * 0.03).scale(0.95)
-    );
+    // Check if nodes already have established positions (§4, §5)
+    const hasEstablishedPositions =
+      filteredNodes.length > 0 &&
+      filteredNodes.filter((n) => n.x !== undefined && n.y !== undefined).length / filteredNodes.length >= 0.75;
+
+    // Initial camera positioning:
+    // If initialTarget exists, let target centering handle camera (§4, §6).
+    // Otherwise, if positions exist, fit to actual content bounds (§1.A).
+    const targetMatched = initialTarget
+      ? filteredNodes.find(
+          (n) =>
+            (initialTarget.entityId && n.id === initialTarget.entityId) ||
+            (initialTarget.entityName &&
+              n.label.toLowerCase() === initialTarget.entityName.trim().toLowerCase())
+        )
+      : null;
+
+    if (targetMatched) {
+      const px = nodePositionsRef.current.get(targetMatched.id)?.x ?? targetMatched.x;
+      const py = nodePositionsRef.current.get(targetMatched.id)?.y ?? targetMatched.y;
+      if (px !== undefined && py !== undefined) {
+        const scale = 1.35;
+        svg.call(
+          zoom.transform,
+          d3.zoomIdentity.translate(width * 0.44 - px * scale, height * 0.48 - py * scale).scale(scale)
+        );
+      }
+    } else if (hasEstablishedPositions) {
+      setTimeout(() => {
+        handleFitView();
+      }, 60);
+    } else {
+      svg.call(
+        zoom.transform,
+        d3.zoomIdentity.translate(width * 0.05, height * 0.03).scale(0.95)
+      );
+    }
 
     // Background blank click catcher for entity deselection (§3)
     g.append('rect')
@@ -692,12 +952,29 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       }
     });
 
-    // Check if nodes already have established positions (§4, §5)
-    const hasEstablishedPositions =
-      filteredNodes.length > 0 &&
-      filteredNodes.filter((n) => n.x !== undefined && n.y !== undefined).length / filteredNodes.length >= 0.75;
+    // Calculate cluster anchor points in celestial orbital ring (§1.B, §1.C)
+    const clusterGroups = new Map<number | string, CelestialNode[]>();
+    filteredNodes.forEach((n) => {
+      const grp = n.catalog || n.group || 1;
+      const list = clusterGroups.get(grp) || [];
+      list.push(n);
+      clusterGroups.set(grp, list);
+    });
 
-    // Force Simulation with fast alphaDecay to stabilize and consume 0% idle CPU
+    const clusterIds = Array.from(clusterGroups.keys());
+    const numClusters = Math.max(1, clusterIds.length);
+    const orbitRadius = Math.min(width, height) * 0.26;
+    const clusterAnchors = new Map<number | string, { x: number; y: number }>();
+
+    clusterIds.forEach((cid, idx) => {
+      const angle = (idx / numClusters) * 2 * Math.PI - Math.PI / 2;
+      clusterAnchors.set(cid, {
+        x: width * 0.44 + Math.cos(angle) * orbitRadius,
+        y: height * 0.48 + Math.sin(angle) * (orbitRadius * 0.85),
+      });
+    });
+
+    // Force Simulation with cluster-aware layout and radial bounding
     const simulation = d3
       .forceSimulation<CelestialNode>(filteredNodes)
       .force(
@@ -705,12 +982,18 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         d3
           .forceLink<CelestialNode, CelestialLink>(filteredLinks)
           .id((d) => d.id)
-          .distance((d) => 125 + (1 - (d.weight || 0.8)) * 95)
-          .strength(0.3)
+          .distance((d) => 100 + (1 - (d.weight || 0.8)) * 60)
+          .strength(0.32)
       )
-      .force('charge', d3.forceManyBody().strength(-360))
+      .force('clusterX', d3.forceX((d: any) => clusterAnchors.get(d.catalog || d.group)?.x ?? width * 0.44).strength(0.18))
+      .force('clusterY', d3.forceY((d: any) => clusterAnchors.get(d.catalog || d.group)?.y ?? height * 0.48).strength(0.18))
+      .force('charge', d3.forceManyBody().strength(-280).distanceMax(450))
       .force('center', d3.forceCenter(width * 0.44, height * 0.48))
-      .force('collision', d3.forceCollide().radius((d: any) => (d.size || 14) * 2.2))
+      .force('collision', d3.forceCollide().radius((d: any) => (d.size || 14) * 2.2 + 12))
+      .force(
+        'radialBound',
+        d3.forceRadial(Math.min(width, height) * 0.42, width * 0.44, height * 0.48).strength(0.06)
+      )
       .alphaDecay(0.04); // Cooldown fast (~70 ticks)
 
     if (hasEstablishedPositions) {
@@ -758,6 +1041,22 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       .on('click', (event, d) => {
         event.stopPropagation();
         setSelectedNode(d);
+        // Smoothly center viewport on clicked entity (§1.D)
+        if (svgRef.current && zoomBehaviorRef.current && d.x !== undefined && d.y !== undefined) {
+          const w = containerRef.current?.clientWidth || window.innerWidth;
+          const h = containerRef.current?.clientHeight || window.innerHeight;
+          const scale = 1.35;
+          const tx = w * 0.44 - d.x * scale;
+          const ty = h * 0.48 - d.y * scale;
+          svgRef.current
+            .transition()
+            .duration(550)
+            .ease(d3.easeCubicOut)
+            .call(
+              zoomBehaviorRef.current.transform,
+              d3.zoomIdentity.translate(tx, ty).scale(scale)
+            );
+        }
       });
 
     // If positions are established, position elements immediately without waiting for simulation
@@ -772,6 +1071,14 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     // Render Node Shapes according to approved astronomical hierarchy
     node.each(function (d) {
       const el = d3.select(this);
+
+      // Forgiving Invisible Interaction Hitbox (§3)
+      // Generous hit target radius so clicking is effortless without enlarging visual star
+      el.append('circle')
+        .attr('class', 'star-hitbox')
+        .attr('r', Math.max(26, d.size + 14))
+        .attr('fill', 'transparent')
+        .style('cursor', 'pointer');
 
       // Selection Halo (toggle visibility via class without simulation recalculation)
       el.append('circle')
@@ -1000,38 +1307,188 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     svgRef.current.transition().duration(300).call(zoomBehaviorRef.current.scaleBy, factor);
   };
 
-  const handleRecenter = () => {
-    if (!svgRef.current || !zoomBehaviorRef.current) return;
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    svgRef.current.transition().duration(500).call(
-      zoomBehaviorRef.current.transform,
-      d3.zoomIdentity.translate(width * 0.05, height * 0.03).scale(0.95)
-    );
-  };
+  // Search candidate ranking (Exact > Prefix > Word-prefix > Substring > Catalog) (§2)
+  const searchCandidates = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q || celestialNodes.length === 0) return [];
 
-  // Search commit: center camera on target node WITHOUT recreating simulation
+    interface ScoredCandidate {
+      node: CelestialNode;
+      score: number;
+      matchType: 'exact' | 'prefix' | 'word-prefix' | 'substring' | 'catalog';
+    }
+
+    const scored: ScoredCandidate[] = [];
+
+    celestialNodes.forEach((n) => {
+      const labelLower = n.label.toLowerCase();
+      let score = 0;
+      let matchType: ScoredCandidate['matchType'] = 'substring';
+
+      if (labelLower === q) {
+        score = 100;
+        matchType = 'exact';
+      } else if (labelLower.startsWith(q)) {
+        score = 80;
+        matchType = 'prefix';
+      } else if (labelLower.split(/\s+/).some((w) => w.startsWith(q))) {
+        score = 65;
+        matchType = 'word-prefix';
+      } else if (labelLower.includes(q)) {
+        score = 50;
+        matchType = 'substring';
+      } else if (n.catalog.toLowerCase().includes(q)) {
+        score = 35;
+        matchType = 'catalog';
+      }
+
+      if (score > 0) {
+        // Hierarchy and degree bonus for ranking
+        const bonus =
+          (n.hierarchy === 'core' ? 6 : n.hierarchy === 'subtopic' ? 3 : 0) +
+          Math.min(4, (n.degree || 0) * 0.4);
+        scored.push({ node: n, score: score + bonus, matchType });
+      }
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, 6).map((s) => s.node);
+  }, [searchQuery, celestialNodes]);
+
+  // Search commit: center camera on target node WITHOUT recreating simulation (§2)
   const handleSearchCommit = (targetNode?: CelestialNode) => {
     const target =
       targetNode ||
+      searchCandidates[0] ||
       celestialNodes.find((n) =>
         n.label.toLowerCase().includes(searchQuery.trim().toLowerCase())
       );
     if (!target) return;
     setSelectedNode(target);
+    setIsRightSidebarOpen(true);
 
     const pos = nodePositionsRef.current.get(target.id) || { x: target.x, y: target.y };
     if (svgRef.current && zoomBehaviorRef.current && pos.x !== undefined && pos.y !== undefined) {
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-      svgRef.current.transition().duration(600).call(
-        zoomBehaviorRef.current.transform,
-        d3.zoomIdentity
-          .translate(width * 0.44 - pos.x * 1.35, height * 0.48 - pos.y * 1.35)
-          .scale(1.35)
-      );
+      const width = containerRef.current?.clientWidth || window.innerWidth;
+      const height = containerRef.current?.clientHeight || window.innerHeight;
+      const scale = 1.35;
+      svgRef.current
+        .transition()
+        .duration(600)
+        .ease(d3.easeCubicOut)
+        .call(
+          zoomBehaviorRef.current.transform,
+          d3.zoomIdentity
+            .translate(width * 0.44 - pos.x * scale, height * 0.48 - pos.y * scale)
+            .scale(scale)
+        );
     }
   };
+
+  // Miniature Orientation Map calculations (§1.E)
+  const miniMapData = useMemo(() => {
+    const W = 126;
+    const H = 74;
+
+    const positions: Array<{ id: string; x: number; y: number; hierarchy: string; isSelected: boolean }> = [];
+    celestialNodes.forEach((n) => {
+      const cached = nodePositionsRef.current.get(n.id);
+      const x = cached?.x ?? n.x;
+      const y = cached?.y ?? n.y;
+      if (x !== undefined && y !== undefined && !isNaN(x) && !isNaN(y)) {
+        positions.push({
+          id: n.id,
+          x,
+          y,
+          hierarchy: n.hierarchy,
+          isSelected: selectedNode?.id === n.id,
+        });
+      }
+    });
+
+    if (positions.length === 0) {
+      return { nodes: [], viewport: null, bounds: null };
+    }
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    positions.forEach((p) => {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    });
+
+    const pad = 120;
+    const graphMinX = minX - pad;
+    const graphMaxX = maxX + pad;
+    const graphMinY = minY - pad;
+    const graphMaxY = maxY + pad;
+    const spanX = Math.max(10, graphMaxX - graphMinX);
+    const spanY = Math.max(10, graphMaxY - graphMinY);
+
+    const mappedNodes = positions.map((p) => {
+      const mx = ((p.x - graphMinX) / spanX) * W;
+      const my = ((p.y - graphMinY) / spanY) * H;
+      const color =
+        p.hierarchy === 'core'
+          ? '#BD532B'
+          : p.hierarchy === 'subtopic'
+          ? '#C08D38'
+          : '#645A50';
+      const r = p.isSelected ? 3.0 : p.hierarchy === 'core' ? 2.5 : p.hierarchy === 'subtopic' ? 1.8 : 1.2;
+      const opacity = p.isSelected ? 1.0 : p.hierarchy === 'core' ? 0.95 : 0.75;
+      return { id: p.id, mx, my, r, color, opacity };
+    });
+
+    // Viewport rect calculation
+    const containerW = containerRef.current?.clientWidth || window.innerWidth;
+    const containerH = containerRef.current?.clientHeight || window.innerHeight;
+    const k = currentTransform.k || 1;
+    const tx = currentTransform.x || 0;
+    const ty = currentTransform.y || 0;
+
+    const visibleLeft = (0 - tx) / k;
+    const visibleTop = (0 - ty) / k;
+    const visibleRight = (containerW - tx) / k;
+    const visibleBottom = (containerH - ty) / k;
+
+    const vx = Math.max(0, ((visibleLeft - graphMinX) / spanX) * W);
+    const vy = Math.max(0, ((visibleTop - graphMinY) / spanY) * H);
+    const vw = Math.min(W - vx, Math.max(8, ((visibleRight - visibleLeft) / spanX) * W));
+    const vh = Math.min(H - vy, Math.max(6, ((visibleBottom - visibleTop) / spanY) * H));
+
+    return {
+      nodes: mappedNodes,
+      viewport: { x: vx, y: vy, w: vw, h: vh },
+      bounds: { graphMinX, spanX, graphMinY, spanY },
+    };
+  }, [celestialNodes, selectedNode, currentTransform]);
+
+  const handleMiniMapClick = useCallback(
+    (clickX: number, clickY: number, width: number, height: number) => {
+      if (!miniMapData.bounds || !svgRef.current || !zoomBehaviorRef.current) return;
+      const { graphMinX, spanX, graphMinY, spanY } = miniMapData.bounds;
+      const targetGraphX = graphMinX + (clickX / width) * spanX;
+      const targetGraphY = graphMinY + (clickY / height) * spanY;
+
+      const containerW = containerRef.current?.clientWidth || window.innerWidth;
+      const containerH = containerRef.current?.clientHeight || window.innerHeight;
+      const k = currentTransform.k || 1;
+      const tx = containerW * 0.44 - targetGraphX * k;
+      const ty = containerH * 0.48 - targetGraphY * k;
+
+      svgRef.current
+        .transition()
+        .duration(500)
+        .ease(d3.easeCubicOut)
+        .call(zoomBehaviorRef.current.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
+    },
+    [miniMapData.bounds, currentTransform]
+  );
 
   return (
     <div
@@ -1158,7 +1615,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
               type="button"
               onClick={() => setIsEntityEditorOpen(true)}
               className="px-2.5 py-1 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer"
-              title="Add Entity to Knowledge Sky"
+              title="Add Entity to Knowledge Sky (A)"
             >
               <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
               <span>+ Entity</span>
@@ -1168,7 +1625,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
               type="button"
               onClick={() => setIsRelationshipEditorOpen(true)}
               className="px-2.5 py-1 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer"
-              title="Connect Two Entities"
+              title="Connect Two Entities (C)"
             >
               <i className="ph ph-arrows-split text-xs text-[var(--accent-terracotta)]" />
               <span>Connect</span>
@@ -1196,7 +1653,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                     className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
                   >
                     <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
-                    <span>Untangle / Organize</span>
+                    <span>Untangle / Organize (U)</span>
                   </button>
                   <button
                     type="button"
@@ -1579,18 +2036,19 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           onClick={handleUntangle}
           data-testid="untangle-graph-btn"
           className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--accent-terracotta)] transition-colors cursor-pointer"
-          title="Untangle / Organize Graph"
+          title="Untangle / Organize (U)"
         >
           <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
         </button>
 
         <button
           type="button"
-          onClick={handleRecenter}
+          onClick={handleFitView}
+          data-testid="fit-view-btn"
           className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
-          title="Recenter Constellation"
+          title="Fit View to Content (F)"
         >
-          <i className="ph-bold ph-crosshair text-xs" />
+          <i className="ph-bold ph-corners-out text-xs" />
         </button>
 
         <button
@@ -1818,38 +2276,179 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         </aside>
       )}
 
-      {/* ================= BOTTOM SEARCH / FILTER BAR (OPTIMIZED) ================= */}
+      {/* ================= ASTRONOMICAL ORIENTATION AID (MINI CHART INSET) (§1.E) ================= */}
+      {celestialNodes.length > 0 && (
+        <div
+          id="celestial-orientation-inset"
+          className={`absolute bottom-6 z-20 pointer-events-auto transition-all duration-300 ${
+            isLeftSidebarOpen ? 'left-[304px]' : 'left-6'
+          }`}
+        >
+          <div className="instrument-panel bg-[#FAF8F2]/95 backdrop-blur-md border border-[var(--border-strong)] rounded-xl p-2 shadow-sm flex flex-col gap-1.5 w-[142px]">
+            <div className="flex items-center justify-between text-[9px] mono uppercase tracking-[0.16em] text-[var(--ink-tertiary)]">
+              <span className="flex items-center gap-1">
+                <i className="ph ph-compass text-[var(--accent-midnight)]" />
+                Chart Inset
+              </span>
+              <span className="text-[8px] opacity-75">{celestialNodes.length}★</span>
+            </div>
+
+            <svg
+              className="w-full h-[74px] rounded border border-[var(--border-parchment)] bg-[#F5F2E9]/60 cursor-crosshair"
+              viewBox="0 0 126 74"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+                handleMiniMapClick(clickX, clickY, 126, 74);
+              }}
+            >
+              {/* Subtle astronomical grid rings */}
+              <circle cx="63" cy="37" r="30" fill="none" stroke="#4A3E3D" strokeOpacity="0.08" strokeDasharray="2,2" />
+              <circle cx="63" cy="37" r="16" fill="none" stroke="#4A3E3D" strokeOpacity="0.08" strokeDasharray="2,2" />
+
+              {/* Plotted miniature nodes */}
+              {miniMapData.nodes.map((n) => (
+                <circle
+                  key={n.id}
+                  cx={n.mx}
+                  cy={n.my}
+                  r={n.r}
+                  fill={n.color}
+                  opacity={n.opacity}
+                />
+              ))}
+
+              {/* Viewport Boundary Frame */}
+              {miniMapData.viewport && (
+                <rect
+                  x={miniMapData.viewport.x}
+                  y={miniMapData.viewport.y}
+                  width={miniMapData.viewport.w}
+                  height={miniMapData.viewport.h}
+                  fill="rgba(189, 83, 43, 0.08)"
+                  stroke="#BD532B"
+                  strokeWidth="0.85"
+                  strokeDasharray="2,1.5"
+                  rx="1"
+                />
+              )}
+            </svg>
+          </div>
+        </div>
+      )}
+
+      {/* ================= BOTTOM SEARCH / FILTER BAR WITH PARTIAL MATCH CANDIDATES (§2) ================= */}
       <div
         id="search-bar-container"
         className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-auto w-full max-w-md px-4"
       >
-        <div className="instrument-panel bg-white/95 backdrop-blur-md px-3.5 py-2 shadow-lg border border-[var(--border-strong)] rounded-xl flex items-center gap-2.5">
-          <i className="ph ph-magnifying-glass text-sm text-[var(--accent-midnight)]" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleSearchCommit();
-              }
-            }}
-            placeholder="Search celestial constellation... (Press Enter to focus)"
-            className="flex-1 bg-transparent border-none outline-none text-xs text-[var(--ink-primary)] placeholder:text-[var(--ink-tertiary)]"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchQuery('');
-                setDebouncedSearchQuery('');
-              }}
-              className="text-xs text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] cursor-pointer"
-            >
-              ✕
-            </button>
+        <div className="relative">
+          {/* Matching Candidates Popup */}
+          {(isSearchFocused || searchQuery.trim().length > 0) && searchCandidates.length > 0 && (
+            <div className="absolute bottom-full mb-2 left-0 right-0 bg-[#FAF8F2] border border-[var(--border-strong)] rounded-xl shadow-xl overflow-hidden z-30 animate-fade-in">
+              <div className="px-3 py-1.5 border-b border-[var(--border-parchment)] bg-[var(--bg-panel-subtle)] text-[10px] mono text-[var(--ink-tertiary)] flex items-center justify-between">
+                <span>{searchCandidates.length} candidate{searchCandidates.length > 1 ? 's' : ''} matched</span>
+                <span>↑↓ navigate · ↵ select</span>
+              </div>
+              <div className="max-h-56 overflow-y-auto p-1 flex flex-col gap-0.5">
+                {searchCandidates.map((candidate, idx) => (
+                  <button
+                    key={candidate.id}
+                    type="button"
+                    onMouseDown={(e) => {
+                      // onMouseDown fires before input onBlur
+                      e.preventDefault();
+                      handleSearchCommit(candidate);
+                      setIsSearchFocused(false);
+                    }}
+                    onMouseEnter={() => setActiveCandidateIndex(idx)}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors cursor-pointer ${
+                      activeCandidateIndex === idx
+                        ? 'bg-[var(--accent-midnight)] text-[#FAF8F2]'
+                        : 'hover:bg-white text-[var(--ink-primary)]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 ${
+                          candidate.hierarchy === 'core'
+                            ? 'bg-[var(--accent-terracotta)]'
+                            : candidate.hierarchy === 'subtopic'
+                            ? 'bg-[var(--accent-brass)]'
+                            : 'bg-[var(--ink-tertiary)]'
+                        }`}
+                      />
+                      <span className="serif text-xs font-medium truncate">
+                        {candidate.label}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mono text-[10px] shrink-0 opacity-80">
+                      <span>{candidate.catalog}</span>
+                      <span>d:{candidate.degree}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
+
+          <div className="instrument-panel bg-white/95 backdrop-blur-md px-3.5 py-2 shadow-lg border border-[var(--border-strong)] rounded-xl flex items-center gap-2.5">
+            <i className="ph ph-magnifying-glass text-sm text-[var(--accent-midnight)]" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setActiveCandidateIndex(0);
+              }}
+              onFocus={() => setIsSearchFocused(true)}
+              onBlur={() => {
+                // Delay so click on candidate registers
+                setTimeout(() => setIsSearchFocused(false), 200);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  if (searchCandidates.length > 0) {
+                    setActiveCandidateIndex((prev) => (prev + 1) % searchCandidates.length);
+                  }
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  if (searchCandidates.length > 0) {
+                    setActiveCandidateIndex((prev) => (prev - 1 + searchCandidates.length) % searchCandidates.length);
+                  }
+                } else if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (searchCandidates.length > 0 && searchCandidates[activeCandidateIndex]) {
+                    handleSearchCommit(searchCandidates[activeCandidateIndex]);
+                    setIsSearchFocused(false);
+                  } else {
+                    handleSearchCommit();
+                    setIsSearchFocused(false);
+                  }
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setIsSearchFocused(false);
+                  setSearchQuery('');
+                }
+              }}
+              placeholder="Search celestial constellation... (Type to explore, Enter to focus)"
+              className="flex-1 bg-transparent border-none outline-none text-xs text-[var(--ink-primary)] placeholder:text-[var(--ink-tertiary)]"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setDebouncedSearchQuery('');
+                }}
+                className="text-xs text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] cursor-pointer"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
