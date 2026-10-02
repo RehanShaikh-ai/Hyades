@@ -6,6 +6,7 @@ import { getWorkspaceGraph } from '@/api/graph';
 import { DashboardStats } from '@/types/dashboard';
 import { Note } from '@/types/note';
 import { GraphClusterSummary, GraphResponse, ObservatoryTarget } from '@/types/graph';
+import { StellaContext } from '@/types/navigation';
 import classicalElevation from '@/assets/plates/classical-elevation.jpg';
 import classicalAtrium from '@/assets/plates/classical-atrium.jpg';
 import classicalColonnade from '@/assets/plates/classical-colonnade.jpg';
@@ -14,6 +15,7 @@ interface HyadesOverviewProps {
   workspaceId: string;
   onNavigateToDestination: (dest: 'overview' | 'library' | 'observatory' | 'stella') => void;
   onNavigateToObservatory?: (target?: ObservatoryTarget) => void;
+  onNavigateToStella?: (context: StellaContext) => void;
   onNavigateToNote?: (noteId: string) => void;
   environmentIndex?: number;
 }
@@ -24,6 +26,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
   workspaceId,
   onNavigateToDestination,
   onNavigateToObservatory,
+  onNavigateToStella,
   onNavigateToNote,
   environmentIndex = 0,
 }) => {
@@ -370,7 +373,16 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onNavigateToDestination('observatory')}
+                        onClick={() => {
+                          if (onNavigateToObservatory) {
+                            onNavigateToObservatory({
+                              noteId: activeNote.id,
+                              entityName: activeNote.title,
+                            });
+                          } else {
+                            onNavigateToDestination('observatory');
+                          }
+                        }}
                         className="w-full bg-white hover:bg-[var(--bg-panel-subtle)] text-[var(--ink-primary)] border border-[var(--border-strong)] transition-all px-3 py-2 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium shadow-2xs cursor-pointer"
                       >
                         <i className="ph ph-compass text-xs text-[var(--accent-brass)]" />
@@ -623,7 +635,24 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                           <div className="flex items-center gap-3">
                             <button
                               type="button"
-                              onClick={() => onNavigateToDestination('stella')}
+                              onClick={() => {
+                                if (onNavigateToStella) {
+                                  onNavigateToStella({
+                                    prompt: `Explain why the connection between "${sourceName}" and "${targetName}" (${edge.relationship_type.replace(/_/g, ' ')}) appears in my knowledge base.`,
+                                    entityIds: [edge.source_entity_id, edge.target_entity_id],
+                                    entityNames: [sourceName, targetName],
+                                    relationshipId: edge.id,
+                                    relationshipType: edge.relationship_type,
+                                    connectionSummary: {
+                                      sourceEntityName: sourceName,
+                                      targetEntityName: targetName,
+                                      relationshipType: edge.relationship_type,
+                                    },
+                                  });
+                                } else {
+                                  onNavigateToDestination('stella');
+                                }
+                              }}
                               className="text-xs font-medium text-[var(--accent-midnight)] hover:underline flex items-center gap-1 focus:outline-none cursor-pointer"
                             >
                               <i className="ph ph-sparkle text-[var(--accent-brass)]" />
@@ -631,7 +660,17 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                             </button>
                             <button
                               type="button"
-                              onClick={() => onNavigateToDestination('observatory')}
+                              onClick={() => {
+                                if (onNavigateToObservatory) {
+                                  onNavigateToObservatory({
+                                    relationshipId: edge.id,
+                                    entityId: edge.source_entity_id,
+                                    entityName: sourceName,
+                                  });
+                                } else {
+                                  onNavigateToDestination('observatory');
+                                }
+                              }}
                               className="text-xs font-medium text-[var(--accent-terracotta)] hover:underline flex items-center gap-1 focus:outline-none cursor-pointer"
                             >
                               <span>Inspect in Observatory ↗</span>

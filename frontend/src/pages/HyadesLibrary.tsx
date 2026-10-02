@@ -9,14 +9,14 @@ import { Source } from '@/types/source';
 import { ClusterResponse } from '@/types/cluster';
 import libraryScriptorium from '@/assets/plates/library-scriptorium.jpg';
 import libraryCatalogFolio from '@/assets/plates/library-catalog-folio.jpg';
-import { ObservatoryTarget } from '@/types/graph';
+import { ObservatoryTarget, StellaContext } from '@/types/navigation';
 
 interface HyadesLibraryProps {
   workspaceId: string;
   userId?: string;
   initialNoteId?: string;
   onNavigateToObservatory?: (target?: ObservatoryTarget) => void;
-  onNavigateToStella?: (context?: string) => void;
+  onNavigateToStella?: (context?: StellaContext) => void;
   environmentIndex?: number;
 }
 
@@ -1039,8 +1039,14 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                   </div>
 
                   <div className="flex flex-wrap gap-1.5">
-                    {['Vector Quantization', 'Cosine Similarity', 'Dense Embeddings', 'Hallucination Bounds'].map(
-                      (concept) => (
+                    {(() => {
+                      const tags = (selectedItem.rawNote?.tags || []).map((t: any) =>
+                        typeof t === 'string' ? t : t.name
+                      );
+                      const concepts = tags.length > 0
+                        ? tags
+                        : [selectedItem.topic, 'Active Knowledge'].filter(Boolean);
+                      return concepts.slice(0, 5).map((concept: string) => (
                         <button
                           key={concept}
                           type="button"
@@ -1053,11 +1059,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                         >
                           {concept}
                         </button>
-                      )
-                    )}
-                    <span className="px-2 py-1 rounded bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-xs text-[var(--ink-tertiary)]">
-                      +{Math.max(0, selectedItem.conceptCount - 4)} more
-                    </span>
+                      ));
+                    })()}
                   </div>
                 </div>
 
@@ -1128,12 +1131,24 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => onNavigateToStella && onNavigateToStella(selectedItem.title)}
-                    className="w-full py-1.5 px-3 border border-[var(--border-strong)] bg-white hover:bg-[var(--bg-panel-subtle)] rounded-lg text-xs font-medium text-[var(--ink-primary)] flex items-center justify-center gap-1.5 transition-colors"
-                    title="Ask Stella about this paper"
+                    onClick={() => {
+                      if (onNavigateToStella) {
+                        onNavigateToStella({
+                          prompt: selectedItem.type === 'note'
+                            ? `Summarize and analyze the key arguments in note "${selectedItem.title}".`
+                            : `Synthesize the findings and core concepts from source "${selectedItem.title}".`,
+                          noteId: selectedItem.type === 'note' ? selectedItem.id : undefined,
+                          noteTitle: selectedItem.type === 'note' ? selectedItem.title : undefined,
+                          sourceId: selectedItem.type === 'source' ? selectedItem.id : (selectedItem as any).source_id,
+                          sourceTitle: selectedItem.type === 'source' ? selectedItem.title : undefined,
+                        });
+                      }
+                    }}
+                    className="w-full py-1.5 px-3 border border-[var(--border-strong)] bg-white hover:bg-[var(--bg-panel-subtle)] rounded-lg text-xs font-medium text-[var(--ink-primary)] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    title={selectedItem.type === 'note' ? 'Consult Stella on this note' : 'Consult Stella on this source'}
                   >
                     <i className="ph ph-chat-circle-dots text-xs text-[var(--accent-midnight)]" />
-                    <span>Consult Stella on this Source</span>
+                    <span>{selectedItem.type === 'note' ? 'Consult Stella on this Note' : 'Consult Stella on this Source'}</span>
                   </button>
                 </div>
 

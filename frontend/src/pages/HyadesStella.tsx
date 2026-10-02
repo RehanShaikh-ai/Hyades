@@ -15,12 +15,14 @@ import { Conversation } from '@/types/conversation';
 import { Message, MessageCitation } from '@/types/message';
 import { DashboardStats } from '@/types/dashboard';
 import { GraphResponse, ObservatoryTarget } from '@/types/graph';
+import { StellaContext } from '@/types/navigation';
 import { RAGStatusResponse } from '@/types/rag';
 import stellaStudiolum from '@/assets/plates/stella-studiolum.jpg';
 
 interface HyadesStellaProps {
   workspaceId: string;
   initialQuery?: string;
+  initialContext?: StellaContext | null;
   onNavigateToObservatory?: (target?: ObservatoryTarget) => void;
   onNavigateToLibrary?: () => void;
   environmentIndex?: number;
@@ -57,6 +59,7 @@ const WELCOME_MESSAGE: LocalDisplayMessage = {
 export const HyadesStella: React.FC<HyadesStellaProps> = ({
   workspaceId,
   initialQuery,
+  initialContext,
   onNavigateToObservatory,
 }) => {
   // Conversation threads state
@@ -70,7 +73,8 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
 
   // Composer & Streaming state
-  const [inputPrompt, setInputPrompt] = useState(initialQuery || '');
+  const [inputPrompt, setInputPrompt] = useState(initialContext?.prompt || initialQuery || '');
+  const [activeScope, setActiveScope] = useState<StellaContext | null>(initialContext || null);
   const [isStreaming, setIsStreaming] = useState(false);
 
   // Sidebars & Drawers
@@ -93,6 +97,17 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
       dialogueContainerRef.current.scrollTop = dialogueContainerRef.current.scrollHeight;
     }
   }, [messages, isStreaming]);
+
+  // Contextual Prompt & Carried Context Handler (§12, §13, §14)
+  // Prefills the prompt and structured context for user review, but does NOT auto-submit.
+  useEffect(() => {
+    if (initialContext) {
+      setActiveScope(initialContext);
+      if (initialContext.prompt) {
+        setInputPrompt(initialContext.prompt);
+      }
+    }
+  }, [initialContext]);
 
   // Fetch workspace scope statistics & graph
   const fetchWorkspaceContext = useCallback(async () => {
@@ -909,6 +924,37 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
 
           {/* ================= COMPOSER: ANCHORED RESEARCH DESK INPUT ================= */}
           <div className="mt-auto pt-3 border-t border-[var(--border-parchment)] shrink-0">
+            {/* Carried Context Banner (§12, §14) */}
+            {activeScope && (
+              <div className="mb-2 px-3 py-1.5 rounded-lg bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] flex items-center justify-between text-xs text-[var(--ink-secondary)] animate-fade-in">
+                <div className="flex items-center gap-2 truncate">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)] shrink-0" />
+                  <span className="font-semibold text-[var(--ink-primary)] shrink-0">Carried Context:</span>
+                  {activeScope.connectionSummary ? (
+                    <span className="truncate">
+                      Connection: <strong>{activeScope.connectionSummary.sourceEntityName}</strong> ⟷ <strong>{activeScope.connectionSummary.targetEntityName}</strong> ({activeScope.connectionSummary.relationshipType.replace(/_/g, ' ')})
+                    </span>
+                  ) : activeScope.noteTitle ? (
+                    <span className="truncate">Note: <strong>{activeScope.noteTitle}</strong></span>
+                  ) : activeScope.sourceTitle ? (
+                    <span className="truncate">Source: <strong>{activeScope.sourceTitle}</strong></span>
+                  ) : activeScope.entityNames ? (
+                    <span className="truncate">Concepts: <strong>{activeScope.entityNames.join(', ')}</strong></span>
+                  ) : (
+                    <span>Structured Workspace Context</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveScope(null)}
+                  className="text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] p-0.5 rounded transition-colors ml-2 shrink-0 cursor-pointer"
+                  title="Clear carried context"
+                >
+                  <i className="ph ph-x text-xs" />
+                </button>
+              </div>
+            )}
+
             <div className="instrument-panel p-2.5 shadow-md flex flex-col gap-2 bg-white/95">
               <div className="panel-bracket-tl" />
               <div className="panel-bracket-br" />
