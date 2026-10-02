@@ -8,12 +8,14 @@ import { EntityEditor } from '@/components/EntityEditor';
 import { RelationshipEditor } from '@/components/RelationshipEditor';
 import { LinkSuggestionPanel } from '@/components/LinkSuggestionPanel';
 import { GraphResponse, GraphNodeResponse, ObservatoryTarget } from '@/types/graph';
+import { StellaContext } from '@/types/navigation';
 import { ClusterResponse } from '@/types/cluster';
 
 interface HyadesObservatoryProps {
   workspaceId: string;
   initialTarget?: ObservatoryTarget | null;
   onNavigateToDestination?: (dest: 'overview' | 'library' | 'observatory' | 'stella') => void;
+  onNavigateToStella?: (context: StellaContext) => void;
   onNavigateToNote?: (noteId: string) => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
@@ -101,6 +103,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   workspaceId,
   initialTarget,
   onNavigateToDestination,
+  onNavigateToStella,
   onNavigateToNote,
   isFullscreen = false,
   onToggleFullscreen,
@@ -139,6 +142,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
   // Focus node & search state
   const [selectedNode, setSelectedNode] = useState<CelestialNode | null>(null);
+  const [targetResolutionNotice, setTargetResolutionNotice] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
@@ -347,13 +351,21 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     }
   }, [celestialNodes, selectedNode, initialTarget]);
 
-  // Deep Link Navigation Target Handler (§9, §10)
+  // Deep Link Navigation Target Handler (§9, §10, §16)
   useEffect(() => {
     if (!initialTarget || celestialNodes.length === 0) return;
 
     let matched: CelestialNode | undefined;
     if (initialTarget.entityId) {
       matched = celestialNodes.find((n) => n.id === initialTarget.entityId);
+    }
+    if (!matched && initialTarget.relationshipId && graphData?.edges) {
+      const edge = graphData.edges.find((e) => e.id === initialTarget.relationshipId);
+      if (edge) {
+        matched = celestialNodes.find(
+          (n) => n.id === edge.source_entity_id || n.id === edge.target_entity_id
+        );
+      }
     }
     if (!matched && initialTarget.entityName) {
       const q = initialTarget.entityName.trim().toLowerCase();
@@ -369,6 +381,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     }
 
     if (matched) {
+      setTargetResolutionNotice(null);
       setSelectedNode(matched);
       setIsRightSidebarOpen(true);
 
@@ -392,8 +405,12 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             d3.zoomIdentity.translate(x, y).scale(scale)
           );
       }
+    } else {
+      setSelectedNode(null);
+      const targetDesc = initialTarget.entityName || initialTarget.entityId || initialTarget.noteId || initialTarget.sourceId || 'requested item';
+      setTargetResolutionNotice(`Target "${targetDesc}" could not be located in the visible knowledge graph.`);
     }
-  }, [initialTarget, celestialNodes]);
+  }, [initialTarget, celestialNodes, graphData]);
 
   // Escape key entity deselection (§3)
   useEffect(() => {
@@ -1043,6 +1060,26 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
       {/* D3 Observatory Knowledge Constellation Graph */}
       <div ref={containerRef} className="absolute inset-0 w-full h-full z-0" />
+
+      {/* Honest Target Resolution Notification Banner (§10) */}
+      {targetResolutionNotice && (
+        <div className="absolute top-18 left-1/2 -translate-x-1/2 z-40 pointer-events-auto max-w-lg w-full px-4 animate-fade-in">
+          <div className="card-surface p-3 border border-[var(--border-terracotta)] bg-[#FAF8F2] shadow-lg rounded-xl flex items-center justify-between gap-3 text-xs text-[var(--ink-primary)]">
+            <div className="flex items-center gap-2.5">
+              <i className="ph ph-warning-circle text-[var(--accent-terracotta)] text-base shrink-0" />
+              <span>{targetResolutionNotice}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTargetResolutionNotice(null)}
+              className="p-1 rounded text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] hover:bg-[var(--bg-panel-subtle)] transition-colors cursor-pointer"
+              title="Dismiss notice"
+            >
+              <i className="ph ph-x text-xs" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ================= FLOATING MINIMAL SEGMENTED TOP NAVIGATION (APPROVED DESIGN) ================= */}
       <header className="absolute top-4 left-6 right-6 z-30 flex items-center justify-between pointer-events-none select-none transition-all">
@@ -1752,7 +1789,17 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             <div className="p-4 border-t border-[var(--border-parchment)] bg-white flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => onNavigateToDestination?.('stella')}
+                onClick={() => {
+                  if (onNavigateToStella) {
+                    onNavigateToStella({
+                      prompt: `Explain how the concept "${selectedNode.label}" connects to other topics in my knowledge base and what key insights are associated with it.`,
+                      entityIds: [selectedNode.id],
+                      entityNames: [selectedNode.label],
+                    });
+                  } else {
+                    onNavigateToDestination?.('stella');
+                  }
+                }}
                 className="flex-1 bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-colors py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
               >
                 <i className="ph ph-sparkle text-[var(--accent-brass)]" />

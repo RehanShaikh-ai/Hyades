@@ -1,13 +1,21 @@
 import React from 'react';
 import { SearchResultItem } from '@/types/search';
+import { ObservatoryTarget, StellaContext } from '@/types/navigation';
 import { FileText, Database, Zap, Hash } from 'lucide-react';
 
 interface SearchResultCardProps {
   result: SearchResultItem;
   onClick: (noteId: string) => void;
+  onViewInObservatory?: (target: ObservatoryTarget) => void;
+  onAskStella?: (context: StellaContext) => void;
 }
 
-export const SearchResultCard: React.FC<SearchResultCardProps> = ({ result, onClick }) => {
+export const SearchResultCard: React.FC<SearchResultCardProps> = ({
+  result,
+  onClick,
+  onViewInObservatory,
+  onAskStella,
+}) => {
   const formatScore = () => {
     const s = result.score;
     if (result.search_mode === 'semantic') {
@@ -76,8 +84,8 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({ result, onCl
         {result.excerpt}
       </p>
 
-      <div className="flex items-center justify-between text-[10.5px] font-mono uppercase tracking-wider text-[var(--ink-tertiary)]">
-        <span className="flex items-center gap-1.5">
+      <div className="mt-2.5 pt-2 border-t border-[var(--border-parchment)] flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-[10.5px] font-mono uppercase tracking-wider text-[var(--ink-tertiary)]">
           <span
             className={`w-1.5 h-1.5 rounded-full ${
               result.search_mode === 'semantic'
@@ -87,13 +95,50 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({ result, onCl
                 : 'bg-[var(--accent-brass)]'
             }`}
           />
-          {result.search_mode} match
-        </span>
-        {result.is_archived && (
-          <span className="px-1.5 py-0.2 rounded bg-[var(--bg-panel-subtle)] text-[var(--ink-tertiary)] border border-[var(--border-parchment)]">
-            Archived
-          </span>
-        )}
+          <span>{result.search_mode} match</span>
+          {result.is_archived && (
+            <span className="ml-1 px-1.5 py-0.2 rounded bg-[var(--bg-panel-subtle)] text-[var(--ink-tertiary)] border border-[var(--border-parchment)]">
+              Archived
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {onViewInObservatory && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewInObservatory({
+                  noteId: result.note_id,
+                  entityName: result.title,
+                });
+              }}
+              className="text-[11px] font-medium text-[var(--accent-terracotta)] hover:underline flex items-center gap-1 focus:outline-none cursor-pointer"
+              title="Locate this note's concepts in Observatory"
+            >
+              <span>View in Observatory ↗</span>
+            </button>
+          )}
+          {onAskStella && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAskStella({
+                  prompt: `Explain the key concepts and findings in note "${result.title}" and how they connect with other topics in my research.`,
+                  noteId: result.note_id,
+                  noteTitle: result.title,
+                });
+              }}
+              className="text-[11px] font-medium text-[var(--accent-midnight)] hover:underline flex items-center gap-1 focus:outline-none cursor-pointer ml-1"
+              title="Consult Stella about this note"
+            >
+              <i className="ph ph-sparkle text-[var(--accent-brass)] text-xs" />
+              <span>Ask Stella</span>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

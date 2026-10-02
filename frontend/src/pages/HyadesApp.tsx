@@ -12,7 +12,7 @@ import { HyadesObservatory } from './HyadesObservatory';
 import { HyadesStella } from './HyadesStella';
 import { HyadesGlobalSearchModal } from '@/components/search/HyadesGlobalSearchModal';
 import { HyadesAccountModal } from '@/components/navigation/HyadesAccountModal';
-import { ObservatoryTarget } from '@/types/graph';
+import { ObservatoryTarget, StellaContext } from '@/types/navigation';
 
 export interface HyadesAppProps {
   workspaceId?: string;
@@ -35,6 +35,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
 }) => {
   const [currentDestination, setCurrentDestination] = useState<HyadesDestination>('overview');
   const [observatoryTarget, setObservatoryTarget] = useState<ObservatoryTarget | null>(null);
+  const [stellaContext, setStellaContext] = useState<StellaContext | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [isFullscreenObservatory, setIsFullscreenObservatory] = useState(false);
@@ -44,6 +45,11 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
   const handleNavigateToObservatory = (target?: ObservatoryTarget) => {
     setObservatoryTarget(target || null);
     setCurrentDestination('observatory');
+  };
+
+  const handleNavigateToStella = (context?: StellaContext) => {
+    setStellaContext(context || null);
+    setCurrentDestination('stella');
   };
 
   // Health telemetry hook
@@ -192,6 +198,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
             workspaceId={effectiveWorkspaceId}
             onNavigateToDestination={(dest) => setCurrentDestination(dest)}
             onNavigateToObservatory={handleNavigateToObservatory}
+            onNavigateToStella={handleNavigateToStella}
             onNavigateToNote={handleNavigateToNote}
             environmentIndex={environmentIndex}
           />
@@ -203,7 +210,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
             userId={initialUserId}
             initialNoteId={activeNoteId}
             onNavigateToObservatory={handleNavigateToObservatory}
-            onNavigateToStella={() => setCurrentDestination('stella')}
+            onNavigateToStella={handleNavigateToStella}
             environmentIndex={environmentIndex}
           />
         )}
@@ -213,6 +220,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
             workspaceId={effectiveWorkspaceId}
             initialTarget={observatoryTarget}
             onNavigateToDestination={(dest) => setCurrentDestination(dest)}
+            onNavigateToStella={handleNavigateToStella}
             onNavigateToNote={handleNavigateToNote}
             isFullscreen={isFullscreenObservatory}
             onToggleFullscreen={() => setIsFullscreenObservatory((prev) => !prev)}
@@ -223,6 +231,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
         {currentDestination === 'stella' && (
           <HyadesStella
             workspaceId={effectiveWorkspaceId}
+            initialContext={stellaContext}
             onNavigateToObservatory={handleNavigateToObservatory}
             onNavigateToLibrary={() => setCurrentDestination('library')}
             environmentIndex={environmentIndex}
@@ -257,6 +266,8 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
         onClose={() => setIsSearchOpen(false)}
         workspaceId={effectiveWorkspaceId}
         onSelectNote={handleNavigateToNote}
+        onNavigateToObservatory={handleNavigateToObservatory}
+        onNavigateToStella={handleNavigateToStella}
       />
 
       {/* Account & Workspace Administration Modal */}

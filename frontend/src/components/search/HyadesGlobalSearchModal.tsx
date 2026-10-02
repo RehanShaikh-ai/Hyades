@@ -1,12 +1,15 @@
 import React, { useEffect } from 'react';
 import { X, Search } from 'lucide-react';
 import { SearchPanel } from './SearchPanel';
+import { ObservatoryTarget, StellaContext } from '@/types/navigation';
 
 interface HyadesGlobalSearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   workspaceId: string;
   onSelectNote: (noteId: string) => void;
+  onNavigateToObservatory?: (target: ObservatoryTarget) => void;
+  onNavigateToStella?: (context: StellaContext) => void;
 }
 
 export const HyadesGlobalSearchModal: React.FC<HyadesGlobalSearchModalProps> = ({
@@ -14,6 +17,8 @@ export const HyadesGlobalSearchModal: React.FC<HyadesGlobalSearchModalProps> = (
   onClose,
   workspaceId,
   onSelectNote,
+  onNavigateToObservatory,
+  onNavigateToStella,
 }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -64,6 +69,18 @@ export const HyadesGlobalSearchModal: React.FC<HyadesGlobalSearchModalProps> = (
             onNoteSelect={(noteId) => {
               onSelectNote(noteId);
               onClose();
+            }}
+            onViewInObservatory={(target) => {
+              if (onNavigateToObservatory) {
+                onNavigateToObservatory(target);
+                onClose();
+              }
+            }}
+            onAskStella={(context) => {
+              if (onNavigateToStella) {
+                onNavigateToStella(context);
+                onClose();
+              }
             }}
             onClose={onClose}
           />

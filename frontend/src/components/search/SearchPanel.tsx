@@ -6,15 +6,24 @@ import { SavedSearchesList } from './SavedSearchesList';
 import { createSavedSearch } from '@/api/saved_searches';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
+import { ObservatoryTarget, StellaContext } from '@/types/navigation';
 import { Search, Loader2, Database, Zap, Hash, BookmarkPlus } from 'lucide-react';
 
 interface SearchPanelProps {
   workspaceId: string;
   onNoteSelect: (noteId: string) => void;
   onClose?: () => void;
+  onViewInObservatory?: (target: ObservatoryTarget) => void;
+  onAskStella?: (context: StellaContext) => void;
 }
 
-export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onNoteSelect, onClose: _onClose }) => {
+export const SearchPanel: React.FC<SearchPanelProps> = ({
+  workspaceId,
+  onNoteSelect,
+  onClose: _onClose,
+  onViewInObservatory,
+  onAskStella,
+}) => {
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<SearchMode>('hybrid');
   const [results, setResults] = useState<SearchResultItem[]>([]);
@@ -161,6 +170,8 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ workspaceId, onNoteSel
                 key={result.chunk_id || result.note_id} 
                 result={result} 
                 onClick={onNoteSelect} 
+                onViewInObservatory={onViewInObservatory}
+                onAskStella={onAskStella}
               />
             ))}
           </div>
