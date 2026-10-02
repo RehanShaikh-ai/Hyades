@@ -13,6 +13,7 @@ import { HyadesStella } from './HyadesStella';
 import { HyadesGlobalSearchModal } from '@/components/search/HyadesGlobalSearchModal';
 import { HyadesAccountModal } from '@/components/navigation/HyadesAccountModal';
 import { ObservatoryTarget, StellaContext } from '@/types/navigation';
+import { StellaSessionProvider } from '@/context/StellaSessionContext';
 
 export interface HyadesAppProps {
   workspaceId?: string;
@@ -156,7 +157,8 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-screen w-full overflow-hidden bg-[var(--bg-base)] text-[var(--ink-primary)] select-none">
+    <StellaSessionProvider>
+      <div className="flex flex-col h-screen w-full overflow-hidden bg-[var(--bg-base)] text-[var(--ink-primary)] select-none">
       {/* Subtle paper grain texture */}
       <div className="paper-grain" />
 
@@ -296,6 +298,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
         onRefreshWorkspaces={refreshWorkspaces}
       />
     </div>
+    </StellaSessionProvider>
   );
 };
 

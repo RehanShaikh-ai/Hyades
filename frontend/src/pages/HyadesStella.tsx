@@ -1,22 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import {
-  listConversations,
-  createConversation,
-  deleteConversation,
-} from '@/api/conversations';
-import { listMessages } from '@/api/messages';
-import { streamAssistantResponse } from '@/api/assistant';
 import { getRAGStatus } from '@/api/rag';
 import { getWorkspaceDashboard } from '@/api/dashboard';
 import { getWorkspaceGraph } from '@/api/graph';
 import { renderMarkdown } from '@/lib/markdown';
-import { Conversation } from '@/types/conversation';
-import { Message, MessageCitation } from '@/types/message';
 import { DashboardStats } from '@/types/dashboard';
 import { GraphResponse, ObservatoryTarget } from '@/types/graph';
 import { StellaContext } from '@/types/navigation';
 import { RAGStatusResponse } from '@/types/rag';
+import { useStellaSession } from '@/context/StellaSessionContext';
 import stellaStudiolum from '@/assets/plates/stella-studiolum.jpg';
 
 interface HyadesStellaProps {
@@ -28,59 +20,37 @@ interface HyadesStellaProps {
   environmentIndex?: number;
 }
 
-export interface CitedSourceItem {
-  chunk_id: string;
-  note_id?: string | null;
-  source_id?: string | null;
-  title: string;
-  excerpt: string;
-  score: number;
-}
-
-interface LocalDisplayMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: string;
-  citations?: CitedSourceItem[];
-  latencyMs?: number;
-  model?: string;
-  error?: string;
-}
-
-const WELCOME_MESSAGE: LocalDisplayMessage = {
-  id: 'stella-welcome',
-  role: 'assistant',
-  content:
-    '### Welcome to Stella\n\nI am your scholarly research assistant connected directly to your active workspace knowledge graph and archival sources.\n\nAsk me any inquiry to synthesize concepts, surface grounded citations, or explore relationships across your notes.',
-  timestamp: 'Just now',
-};
-
 export const HyadesStella: React.FC<HyadesStellaProps> = ({
   workspaceId,
   initialQuery,
   initialContext,
   onNavigateToObservatory,
 }) => {
-  // Conversation threads state
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const {
+    conversations,
+    activeConversationId,
+    messages,
+    isStreaming,
+    isLoadingConversations,
+    isLoadingMessages,
+    activeCitations,
+    setActiveCitations,
+    isEvidenceOpen,
+    activeScope,
+    inputPrompt,
+    setInputPrompt,
+    setActiveScope,
+    setIsEvidenceOpen,
+    fetchConversations,
+    selectConversation,
+    sendMessage,
+    cancelGeneration,
+    newChat,
+    deleteConversationById,
+  } = useStellaSession();
 
-  // Messages in current active conversation
-  const [messages, setMessages] = useState<LocalDisplayMessage[]>([WELCOME_MESSAGE]);
-  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-
-  // Composer & Streaming state
-  const [inputPrompt, setInputPrompt] = useState(initialContext?.prompt || initialQuery || '');
-  const [activeScope, setActiveScope] = useState<StellaContext | null>(initialContext || null);
-  const [isStreaming, setIsStreaming] = useState(false);
-
-  // Sidebars & Drawers
   const [isInquiriesOpen, setIsInquiriesOpen] = useState(true);
-  const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
-  const [activeCitations, setActiveCitations] = useState<CitedSourceItem[]>([]);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // Workspace metadata & Scope
   const [selectedModel, setSelectedModel] = useState('auto');
@@ -89,7 +59,6 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
   const [graphData, setGraphData] = useState<GraphResponse | null>(null);
 
   const dialogueContainerRef = useRef<HTMLDivElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Auto-scroll on new message
   useEffect(() => {
@@ -106,8 +75,10 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
       if (initialContext.prompt) {
         setInputPrompt(initialContext.prompt);
       }
+    } else if (initialQuery) {
+      setInputPrompt(initialQuery);
     }
-  }, [initialContext]);
+  }, [initialContext, initialQuery, setActiveScope, setInputPrompt]);
 
   // Fetch workspace scope statistics & graph
   const fetchWorkspaceContext = useCallback(async () => {
@@ -135,108 +106,9 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
     fetchWorkspaceContext();
   }, [fetchWorkspaceContext]);
 
-  // Fetch real persistent conversations list for the active workspace
-  const fetchConversations = useCallback(async () => {
-    if (!workspaceId) return;
-    setIsLoadingConversations(true);
-    try {
-      const res = await listConversations(workspaceId);
-      const items = res.items || [];
-      setConversations(items);
-
-      // If activeConversationId is not set and conversations exist, select the first thread
-      if (items.length > 0 && !activeConversationId) {
-        setActiveConversationId(items[0].id);
-      }
-    } catch {
-      // Handle gracefully
-    } finally {
-      setIsLoadingConversations(false);
-    }
-  }, [workspaceId, activeConversationId]);
-
   useEffect(() => {
-    fetchConversations();
-  }, [workspaceId]); // only run when workspaceId changes
-
-  // Load message history when active conversation changes
-  // CRITICAL: Switching conversation NEVER submits a prompt or sends to LLM!
-  useEffect(() => {
-    if (!activeConversationId) {
-      setMessages([WELCOME_MESSAGE]);
-      setActiveCitations([]);
-      return;
-    }
-
-    let isMounted = true;
-    const loadConversationMessages = async () => {
-      setIsLoadingMessages(true);
-      try {
-        const rawRes = await listMessages(activeConversationId);
-        if (!isMounted) return;
-
-        const rawList: Message[] = Array.isArray(rawRes) ? rawRes : rawRes.items || [];
-        if (rawList.length === 0) {
-          setMessages([WELCOME_MESSAGE]);
-          setActiveCitations([]);
-          return;
-        }
-
-        const mapped: LocalDisplayMessage[] = rawList.map((m) => {
-          const cites: CitedSourceItem[] = (m.citations || []).map((c: MessageCitation) => ({
-            chunk_id: c.chunk_id,
-            note_id: c.note_id,
-            source_id: c.source_id,
-            title: c.source_title || c.note_title || c.title || 'Referenced Source',
-            excerpt: c.excerpt || '',
-            score: c.similarity_score || 0.8,
-          }));
-
-          return {
-            id: m.id,
-            role: m.role,
-            content: m.content,
-            timestamp: m.created_at
-              ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-              : 'Recently',
-            citations: cites,
-            latencyMs: m.latency_ms || undefined,
-            model: m.model || undefined,
-          };
-        });
-
-        setMessages(mapped);
-
-        // Populate active citations from the last assistant message
-        const lastAssistant = [...mapped].reverse().find((msg) => msg.role === 'assistant' && msg.citations && msg.citations.length > 0);
-        if (lastAssistant && lastAssistant.citations) {
-          setActiveCitations(lastAssistant.citations);
-        } else {
-          setActiveCitations([]);
-        }
-      } catch {
-        if (isMounted) {
-          setMessages([
-            {
-              id: 'load-error',
-              role: 'assistant',
-              content: 'Failed to load conversation messages from the database.',
-              timestamp: 'Just now',
-              error: 'Could not retrieve message history for this conversation thread.',
-            },
-          ]);
-        }
-      } finally {
-        if (isMounted) setIsLoadingMessages(false);
-      }
-    };
-
-    loadConversationMessages();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [activeConversationId]);
+    fetchConversations(workspaceId);
+  }, [workspaceId, fetchConversations]);
 
   // Suggested inquiries derived from actual workspace entities
   const suggestedInquiries = useMemo(() => {
@@ -290,176 +162,26 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
 
   // New Chat action: Creates a fresh clean session without submitting anything
   const handleNewChat = useCallback(() => {
-    if (isStreaming) {
-      abortControllerRef.current?.abort();
-      setIsStreaming(false);
-    }
-    setActiveConversationId(null);
-    setMessages([WELCOME_MESSAGE]);
-    setActiveCitations([]);
-    setInputPrompt('');
-  }, [isStreaming]);
+    newChat();
+  }, [newChat]);
 
   // Delete Conversation action with CASCADE cleanup
   const handleDeleteConversation = useCallback(
     async (convId: string, e: React.MouseEvent) => {
       e.stopPropagation();
-      try {
-        await deleteConversation(convId);
-        setConversations((prev) => prev.filter((c) => c.id !== convId));
-        setDeleteConfirmId(null);
-
-        // If the deleted conversation was active, switch to next available or new chat
-        if (activeConversationId === convId) {
-          const remaining = conversations.filter((c) => c.id !== convId);
-          if (remaining.length > 0) {
-            setActiveConversationId(remaining[0].id);
-          } else {
-            handleNewChat();
-          }
-        }
-      } catch {
-        // Handle error gracefully
-      }
+      await deleteConversationById(convId);
+      setDeleteConfirmId(null);
     },
-    [activeConversationId, conversations, handleNewChat]
+    [deleteConversationById]
   );
 
-  // Send Message: One submission produces one backend request and one response.
+  // Send Message: Delegate to persistent session store (survives page switching)
   const handleSendMessage = useCallback(
     async (textToSend?: string) => {
-      const userText = (textToSend !== undefined ? textToSend : inputPrompt).trim();
-      if (!userText || isStreaming || !workspaceId) return;
-
-      setInputPrompt('');
-      setIsStreaming(true);
-
-      let targetConvId = activeConversationId;
-
-      // 1. If this is a new conversation thread, create it in the database first
-      if (!targetConvId) {
-        try {
-          const convTitle = userText.length > 45 ? `${userText.slice(0, 45)}...` : userText;
-          const createdConv = await createConversation(workspaceId, { title: convTitle });
-          targetConvId = createdConv.id;
-          setActiveConversationId(createdConv.id);
-          setConversations((prev) => [createdConv, ...prev]);
-        } catch {
-          // If creation fails, show error
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `err-${Date.now()}`,
-              role: 'assistant',
-              content: 'Failed to initialize a persistent conversation thread in this workspace.',
-              timestamp: 'Just now',
-              error: 'Unable to create conversation thread on server.',
-            },
-          ]);
-          setIsStreaming(false);
-          return;
-        }
-      }
-
-      // Add user message to UI
-      const userMsgId = `user-${Date.now()}`;
-      const userDisplayMsg: LocalDisplayMessage = {
-        id: userMsgId,
-        role: 'user',
-        content: userText,
-        timestamp: 'Just now',
-      };
-
-      const assistantMsgId = `assistant-${Date.now()}`;
-      const initialAssistantMsg: LocalDisplayMessage = {
-        id: assistantMsgId,
-        role: 'assistant',
-        content: '',
-        timestamp: 'Just now',
-      };
-
-      setMessages((prev) => [...prev, userDisplayMsg, initialAssistantMsg]);
-
-      // Prepare AbortController
-      abortControllerRef.current = new AbortController();
-
-      let accumulatedContent = '';
-      const gatheredCitations: CitedSourceItem[] = [];
-
-      try {
-        await streamAssistantResponse(
-          targetConvId,
-          userText,
-          (event) => {
-            if (event.type === 'chunk' && event.content) {
-              accumulatedContent += event.content;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMsgId ? { ...m, content: accumulatedContent } : m
-                )
-              );
-            } else if (event.type === 'done') {
-              const cites: CitedSourceItem[] = (event.citations || []).map((c: MessageCitation) => ({
-                chunk_id: c.chunk_id,
-                note_id: c.note_id,
-                source_id: c.source_id,
-                title: c.source_title || c.note_title || c.title || 'Referenced Source',
-                excerpt: c.excerpt || '',
-                score: c.similarity_score || 0.8,
-              }));
-
-              gatheredCitations.push(...cites);
-              setActiveCitations(cites);
-              if (cites.length > 0) {
-                setIsEvidenceOpen(true);
-              }
-
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMsgId
-                    ? {
-                        ...m,
-                        content:
-                          accumulatedContent ||
-                          'Stella retrieved knowledge citations, but no text response was synthesized.',
-                        citations: cites,
-                        latencyMs: event.latency_ms,
-                        model: event.model || event.provider,
-                      }
-                    : m
-                )
-              );
-            } else if (event.type === 'error') {
-              throw new Error(event.message || 'Error occurred during streaming.');
-            }
-          },
-          (err) => {
-            throw err;
-          },
-          abortControllerRef.current.signal
-        );
-      } catch (err: unknown) {
-        const errorMsg =
-          err instanceof Error
-            ? err.message
-            : 'Failed to communicate with the assistant reasoning service.';
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMsgId
-              ? {
-                  ...m,
-                  content: accumulatedContent,
-                  error: errorMsg,
-                }
-              : m
-          )
-        );
-      } finally {
-        setIsStreaming(false);
-        abortControllerRef.current = null;
-      }
+      const userText = textToSend !== undefined ? textToSend : inputPrompt;
+      await sendMessage(workspaceId, userText);
     },
-    [activeConversationId, inputPrompt, isStreaming, workspaceId]
+    [inputPrompt, sendMessage, workspaceId]
   );
 
   // Active conversation title for the masthead
@@ -573,7 +295,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                         key={conv.id}
                         onClick={() => {
                           if (activeConversationId !== conv.id) {
-                            setActiveConversationId(conv.id);
+                            selectConversation(conv.id);
                           }
                         }}
                         className={`p-2.5 rounded-lg border transition-all flex flex-col gap-1 cursor-pointer group relative ${
@@ -992,6 +714,18 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {isStreaming && (
+                    <button
+                      type="button"
+                      onClick={cancelGeneration}
+                      className="px-3 py-1.5 rounded-lg bg-[var(--accent-terracotta)] text-[#FAF8F2] hover:bg-[#8F3819] text-xs font-medium flex items-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer"
+                      title="Stop inquiry generation (explicit cancel)"
+                    >
+                      <i className="ph-bold ph-stop text-xs" />
+                      <span>Stop</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => handleSendMessage()}
