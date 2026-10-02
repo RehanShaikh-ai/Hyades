@@ -55,6 +55,20 @@ export const LinkSuggestionPanel: React.FC<LinkSuggestionPanelProps> = ({
     }
   }, [isOpen, fetchSuggestions]);
 
+  // Handle Escape key to close suggestions panel
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isOpen, onClose]);
+
   const handleAccept = async (suggestionId: string) => {
     if (activeRequestsRef.current.has(suggestionId)) return;
     activeRequestsRef.current.add(suggestionId);

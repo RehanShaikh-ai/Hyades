@@ -60,6 +60,20 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
 
   const dialogueContainerRef = useRef<HTMLDivElement>(null);
 
+  // Handle Escape key to cancel delete confirmation dialog
+  useEffect(() => {
+    if (!deleteConfirmId) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        setDeleteConfirmId(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [deleteConfirmId]);
+
   // Auto-scroll on new message
   useEffect(() => {
     if (dialogueContainerRef.current) {

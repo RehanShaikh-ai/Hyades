@@ -1,16 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
-import { StellaSessionProvider, useStellaSession } from '@/context/StellaSessionContext';
+import { StellaSessionProvider } from '@/context/StellaSessionContext';
 import { HyadesStella } from './HyadesStella';
 import * as conversationsApi from '@/api/conversations';
+import * as messagesApi from '@/api/messages';
 import * as assistantApi from '@/api/assistant';
 
 vi.mock('@/api/conversations', () => ({
   listConversations: vi.fn(),
   createConversation: vi.fn(),
-  getConversationMessages: vi.fn(),
   deleteConversation: vi.fn(),
+}));
+
+vi.mock('@/api/messages', () => ({
+  listMessages: vi.fn(),
 }));
 
 vi.mock('@/api/assistant', () => ({
@@ -47,7 +51,7 @@ describe('Stella Session Persistence Across Navigation', () => {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     } as any);
-    vi.mocked(conversationsApi.getConversationMessages).mockResolvedValue({ items: [] } as any);
+    vi.mocked(messagesApi.listMessages).mockResolvedValue({ items: [] } as any);
   });
 
   it('keeps active generation alive when navigating between pages and restores it upon return', async () => {
@@ -61,7 +65,7 @@ describe('Stella Session Persistence Across Navigation', () => {
     );
 
     render(
-      <StellaSessionProvider workspaceId={mockWorkspaceId}>
+      <StellaSessionProvider>
         <NavContainer />
       </StellaSessionProvider>
     );
@@ -134,7 +138,7 @@ describe('Stella Session Persistence Across Navigation', () => {
     );
 
     render(
-      <StellaSessionProvider workspaceId={mockWorkspaceId}>
+      <StellaSessionProvider>
         <NavContainer />
       </StellaSessionProvider>
     );

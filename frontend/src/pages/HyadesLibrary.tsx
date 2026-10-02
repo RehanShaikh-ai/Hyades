@@ -79,6 +79,20 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   const [editContent, setEditContent] = useState('');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 
+  // Handle Escape key to close note editor dialog
+  useEffect(() => {
+    if (!isEditingNote) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsEditingNote(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isEditingNote]);
+
   const activePlate = LIBRARY_PLATES[environmentIndex % LIBRARY_PLATES.length];
 
   // Fetch real data
@@ -428,7 +442,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   }
 
   return (
-    <div className="relative flex-1 h-full overflow-y-auto w-full select-none text-[13px] leading-relaxed pb-28">
+    <div className="relative flex-1 h-[calc(100vh-57px)] flex flex-col overflow-hidden w-full select-none text-[13px] leading-relaxed">
       {/* Archival paper grain texture */}
       <div className="paper-grain" />
 
@@ -496,10 +510,10 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
       )}
 
       {/* Main Library Layout */}
-      <main className="relative z-10 max-w-[1560px] mx-auto px-6 sm:px-8 pt-7">
+      <main className="relative z-10 max-w-[1560px] w-full mx-auto px-6 sm:px-8 pt-5 pb-5 flex-1 min-h-0 flex flex-col overflow-hidden">
         
         {/* Top Archive Header */}
-        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 pb-5 border-b border-[var(--border-parchment)] mb-7">
+        <div className="shrink-0 flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 pb-4 border-b border-[var(--border-parchment)] mb-4">
           <div>
             <div className="flex items-center gap-2 text-[11px] mono uppercase tracking-wider text-[var(--accent-terracotta)] font-semibold mb-1">
               <span className="w-2 h-2 rounded-full bg-[var(--accent-terracotta)]" />
@@ -533,19 +547,19 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
         {/* Action feedback toast */}
         {actionFeedback && (
-          <div className="mb-4 p-3 rounded-xl bg-white border border-[var(--accent-brass)] text-xs font-medium text-[var(--ink-primary)] shadow-sm flex items-center gap-2 animate-fade-in">
+          <div className="shrink-0 mb-3 p-3 rounded-xl bg-white border border-[var(--accent-brass)] text-xs font-medium text-[var(--ink-primary)] shadow-sm flex items-center gap-2 animate-fade-in">
             <i className="ph ph-info text-[var(--accent-terracotta)] text-sm" />
             <span>{actionFeedback}</span>
           </div>
         )}
 
         {/* 3-Column Working Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-start">
+        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch overflow-hidden">
           
           {/* ================= LEFT FLANK: THE CATALOG SHELVES & TOPICS (COLUMNS 1–3) ================= */}
           {isLeftShelfOpen && (
-            <aside className="lg:col-span-3 flex flex-col gap-6 transition-all duration-300">
-              <div className="instrument-panel p-5">
+            <aside className="lg:col-span-3 flex flex-col h-full min-h-0 overflow-y-auto pr-1 transition-all duration-300">
+              <div className="instrument-panel p-5 min-h-full">
                 <div className="panel-bracket-tl" />
                 <div className="panel-bracket-br" />
 
@@ -757,10 +771,10 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                 : !isLeftShelfOpen && !isRightDossierOpen
                 ? 'lg:col-span-12'
                 : 'lg:col-span-8'
-            } flex flex-col gap-4 transition-all duration-300`}
+            } flex flex-col h-full min-h-0 gap-3 transition-all duration-300`}
           >
             {/* Filter & Search Toolbar */}
-            <div className="instrument-panel p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="shrink-0 instrument-panel p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
               {/* Type Filter Tabs */}
               <div className="flex items-center gap-1 bg-[var(--bg-panel-subtle)] p-1 rounded-lg border border-[var(--border-parchment)] w-full sm:w-auto">
                 <button
@@ -817,12 +831,12 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
             </div>
 
             {/* Catalog Ledger Table */}
-            <div className="instrument-panel overflow-hidden">
+            <div className="instrument-panel flex-1 min-h-0 flex flex-col overflow-hidden">
               <div className="panel-bracket-tl" />
               <div className="panel-bracket-br" />
 
               {/* Header bar */}
-              <div className="px-5 py-2.5 border-b border-[var(--border-parchment)] bg-[var(--bg-panel-subtle)] flex items-center justify-between text-[11px] mono uppercase text-[var(--ink-tertiary)] font-medium">
+              <div className="shrink-0 px-5 py-2.5 border-b border-[var(--border-parchment)] bg-[var(--bg-panel-subtle)] flex items-center justify-between text-[11px] mono uppercase text-[var(--ink-tertiary)] font-medium">
                 <div className="flex-1">Title & Source Metadata</div>
                 <div className="w-24 text-right hidden sm:block">Concepts</div>
                 <div className="w-20 text-right">Modified</div>
@@ -830,7 +844,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
               {/* Rows List */}
               {filteredItems.length === 0 ? (
-                <div className="p-12 text-center flex flex-col items-center justify-center">
+                <div className="flex-1 min-h-0 p-12 text-center flex flex-col items-center justify-center">
                   <i className="ph ph-books text-3xl text-[var(--ink-tertiary)] mb-2" />
                   <p className="serif text-base font-semibold text-[var(--ink-primary)]">
                     No items in library
@@ -849,7 +863,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="divide-y divide-[var(--border-parchment)]">
+                <div data-testid="library-ledger-scroll-container" className="flex-1 min-h-0 overflow-y-auto divide-y divide-[var(--border-parchment)]">
                   {filteredItems.map((item, index) => {
                     const isSelected = selectedIndex === index;
                     return (
@@ -930,7 +944,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
               )}
 
               {/* Bottom Pagination / Ledger Info */}
-              <div className="px-5 py-3 border-t border-[var(--border-parchment)] bg-[var(--bg-panel-subtle)] flex items-center justify-between text-xs text-[var(--ink-secondary)]">
+              <div className="shrink-0 px-5 py-3 border-t border-[var(--border-parchment)] bg-[var(--bg-panel-subtle)] flex items-center justify-between text-xs text-[var(--ink-secondary)]">
                 <span>
                   Showing {filteredItems.length} of {unifiedItems.length} library items
                 </span>
@@ -955,8 +969,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
           {/* ================= RIGHT FLANK: ITEM INSPECTOR & READING DOSSIER (COLUMNS 9–12) ================= */}
           {isRightDossierOpen && selectedItem && (
-            <aside className="lg:col-span-4 flex flex-col gap-6 transition-all duration-300">
-              <div className="instrument-panel p-6 relative">
+            <aside className="lg:col-span-4 flex flex-col h-full min-h-0 overflow-y-auto pl-1 transition-all duration-300">
+              <div className="instrument-panel p-6 relative min-h-full">
                 <div className="panel-bracket-tl" />
                 <div className="panel-bracket-br" />
 
