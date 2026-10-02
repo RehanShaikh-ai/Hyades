@@ -531,8 +531,69 @@ body {
   margin: 1rem 0;
 }
 
+.markdown-content ul, .markdown-body ul {
+  list-style-type: disc;
+  padding-left: 1.4rem;
+  margin-bottom: 0.9em;
+}
+
+.markdown-content ol, .markdown-body ol {
+  list-style-type: decimal;
+  padding-left: 1.4rem;
+  margin-bottom: 0.9em;
+}
+
+.markdown-content li, .markdown-body li {
+  margin-bottom: 0.35em;
+}
+
+.markdown-content table, .markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.9em;
+}
+
+.markdown-content th, .markdown-body th {
+  background: var(--bg-panel-subtle);
+  border: 1px solid var(--border-strong);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-family: "Newsreader", Georgia, serif;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.markdown-content td, .markdown-body td {
+  border: 1px solid var(--border-parchment);
+  padding: 0.5rem 0.75rem;
+  color: var(--ink-primary);
+}
+
+.markdown-content tr:nth-child(even), .markdown-body tr:nth-child(even) {
+  background: rgba(250, 248, 242, 0.6);
+}
+
+/* Celestial Graph Highlight Classes */
+.celestial-node {
+  transition: opacity 0.25s ease;
+}
+.celestial-node.is-dimmed {
+  opacity: 0.28 !important;
+}
+.celestial-node.is-selected {
+  opacity: 1 !important;
+}
+.celestial-node.is-connected {
+  opacity: 1 !important;
+}
+.celestial-link {
+  transition: stroke 0.25s ease, stroke-opacity 0.25s ease, stroke-width 0.25s ease;
+}
+
 /* Scrollbars */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--ink-secondary); }
+

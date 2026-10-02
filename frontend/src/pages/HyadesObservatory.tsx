@@ -25,6 +25,7 @@ export interface CelestialNode extends d3.SimulationNodeDatum {
   catalog: string;
   group: number;
   type: 'hub' | 'concept' | 'entity';
+  hierarchy: 'core' | 'subtopic' | 'related';
   size: number;
   coords: string;
   desc: string;
@@ -75,6 +76,10 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   const svgRef = useRef<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null);
   const graticuleRef = useRef<SVGSVGElement>(null);
   const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const simulationRef = useRef<d3.Simulation<CelestialNode, CelestialLink> | null>(null);
+
+  // Persistent node position cache to prevent layout resets and explosions
+  const nodePositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
   // Real backend graph state
   const [graphData, setGraphData] = useState<GraphResponse | null>(null);
@@ -98,9 +103,18 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   const [filterConcepts, setFilterConcepts] = useState(true);
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null);
 
-  // Focus node
+  // Focus node & search state
   const [selectedNode, setSelectedNode] = useState<CelestialNode | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+
+  // Debounce search input to avoid any keystroke overhead
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 250);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
 
   // Fetch real workspace graph & clusters
   const fetchGraph = useCallback(async () => {
@@ -124,7 +138,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     fetchGraph();
   }, [fetchGraph]);
 
-  // Transform backend entities & edges into Celestial nodes & links
+  // Transform backend entities & edges into Celestial nodes & links with authentic hierarchy
   const { celestialNodes, celestialLinks } = useMemo(() => {
     if (!graphData || !graphData.nodes || graphData.nodes.length === 0) {
       return { celestialNodes: [], celestialLinks: [] };
@@ -139,10 +153,51 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       clusterMap[c.id] = (idx % 6) + 1;
     });
 
+    // 1. Determine graph hierarchy from degrees and connectivity
+    let maxDegree = 1;
+    graphData.nodes.forEach((n) => {
+      const d = n.degree || 0;
+      if (d > maxDegree) maxDegree = d;
+    });
+
+    // Sort nodes descending by degree to identify rare, meaningful Core concepts
+    const sortedByDegree = [...graphData.nodes].sort(
+      (a, b) => (b.degree || 0) - (a.degree || 0)
+    );
+
+    const coreNodeIds = new Set<string>();
+    // Pick the top 1 or 2 highest degree nodes as Core (degree >= 3 or absolute highest)
+    sortedByDegree.forEach((n, idx) => {
+      const deg = n.degree || 0;
+      if (idx === 0 && deg > 0) {
+        coreNodeIds.add(n.id);
+      } else if (idx < 2 && deg >= Math.max(3, Math.floor(maxDegree * 0.75))) {
+        coreNodeIds.add(n.id);
+      }
+    });
+
+    // Subtopics: nodes directly linked to a Core node OR having degree >= 2
+    const subtopicNodeIds = new Set<string>();
+    graphData.edges.forEach((e) => {
+      if (coreNodeIds.has(e.source_entity_id)) subtopicNodeIds.add(e.target_entity_id);
+      if (coreNodeIds.has(e.target_entity_id)) subtopicNodeIds.add(e.source_entity_id);
+    });
+
     const nodes: CelestialNode[] = graphData.nodes.map((n) => {
       const { coords, catalog } = computeCelestialCoords(n.id);
-      const isHub = n.degree >= 3;
-      const size = isHub ? 16 + Math.min(8, n.degree) : 10 + Math.min(6, n.degree);
+      const deg = n.degree || 0;
+
+      let hierarchy: 'core' | 'subtopic' | 'related' = 'related';
+      if (coreNodeIds.has(n.id)) {
+        hierarchy = 'core';
+      } else if (subtopicNodeIds.has(n.id) || deg >= 2) {
+        hierarchy = 'subtopic';
+      } else {
+        hierarchy = 'related';
+      }
+
+      // Proportional visual scale: Core (24), Subtopic (16), Related (9)
+      const size = hierarchy === 'core' ? 24 : hierarchy === 'subtopic' ? 16 : 9;
 
       // Find connections from edges
       const connections: Array<{ id: string; name: string; type: string; corr: string }> = [];
@@ -170,24 +225,29 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         }
       });
 
+      // Restore cached layout coordinates if available
+      const cached = nodePositionsRef.current.get(n.id);
+
       return {
         id: n.id,
         label: n.name,
         catalog,
         coords,
         group: n.cluster_id && clusterMap[n.cluster_id] ? clusterMap[n.cluster_id] : 1,
-        type: isHub ? 'hub' : 'concept',
+        type: hierarchy === 'core' ? 'hub' : 'concept',
+        hierarchy,
         size,
-        degree: n.degree,
+        degree: deg,
         noteCount: n.note_count || 0,
         desc:
           n.description ||
-          `Extracted ${n.entity_type} concept with ${n.degree} connections in your active research graph.`,
+          `Extracted ${n.entity_type} concept with ${deg} active relationships in the Hyades knowledge sky.`,
         connections,
+        x: cached ? cached.x : undefined,
+        y: cached ? cached.y : undefined,
       };
     });
 
-    // Valid node IDs set
     const validNodeIds = new Set(nodes.map((n) => n.id));
 
     const links: CelestialLink[] = graphData.edges
@@ -202,16 +262,15 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     return { celestialNodes: nodes, celestialLinks: links };
   }, [graphData, clusters]);
 
-  // Set default selected node once graph loads
+  // Set default selected node once graph loads (without triggering simulation reset)
   useEffect(() => {
     if (celestialNodes.length > 0 && !selectedNode) {
-      // Pick node with highest degree or first node
       const sorted = [...celestialNodes].sort((a, b) => b.degree - a.degree);
       setSelectedNode(sorted[0]);
     }
   }, [celestialNodes, selectedNode]);
 
-  // 1. Render Celestial Graticule (Astronomical Atlas Lines)
+  // Render Celestial Graticule (Astronomical Atlas Lines)
   const renderCelestialGraticule = useCallback(() => {
     if (!graticuleRef.current) return;
     const svg = d3.select(graticuleRef.current);
@@ -283,7 +342,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       .attr('stroke-dasharray', '6,4');
   }, []);
 
-  // 2. Astronomical Starburst Path Generator
+  // Astronomical 8-Point Starburst Path Generator
   const createStarburstPath = (outerR: number, midR: number, innerR: number) => {
     let path = '';
     const points = 8;
@@ -298,18 +357,21 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     return path;
   };
 
-  // 3. Symmetrical 4-Point Concept Star Generator
+  // Symmetrical 4-Point Concept Star Generator
   const createSymmetricalConceptStar = (r: number) => {
     const p = r;
     const w = r * 0.28;
     return `M 0 ${-p} Q ${w} ${-w} ${p} 0 Q ${w} ${w} 0 ${p} Q ${-w} ${w} ${-p} 0 Q ${-w} ${-w} 0 ${-p} Z`;
   };
 
-  // 4. Cubic Constellation Link Path Generator
+  // Cubic Constellation Link Path Generator
   const linkCubicPath = (d: any) => {
-    const x1 = d.source.x, y1 = d.source.y;
-    const x2 = d.target.x, y2 = d.target.y;
-    const dx = x2 - x1, dy = y2 - y1;
+    const x1 = d.source.x,
+      y1 = d.source.y;
+    const x2 = d.target.x,
+      y2 = d.target.y;
+    const dx = x2 - x1,
+      dy = y2 - y1;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist === 0) return `M ${x1} ${y1} L ${x2} ${y2}`;
 
@@ -319,7 +381,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     return `M ${x1} ${y1} Q ${mx} ${my} ${x2} ${y2}`;
   };
 
-  // D3 Knowledge Constellation Graph Initializer
+  // ================= STABLE D3 FORCE SIMULATION INITIALIZER =================
+  // Strictly calculated ONCE when graph data or structural filters change.
+  // NEVER recreated or restarted when selectedNode or searchQuery changes!
   useEffect(() => {
     if (!containerRef.current || celestialNodes.length === 0) return;
 
@@ -331,22 +395,19 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     const height = containerRef.current.clientHeight || window.innerHeight;
 
     // Filter nodes based on user toggle
-    const filteredNodes: CelestialNode[] = JSON.parse(JSON.stringify(
-      celestialNodes.filter((n) => {
-        if (!filterHubs && n.type === 'hub') return false;
-        if (!filterConcepts && n.type === 'concept') return false;
-        if (selectedClusterId && n.catalog !== selectedClusterId) return false;
-        return true;
-      })
-    ));
+    const filteredNodes: CelestialNode[] = celestialNodes.filter((n) => {
+      if (!filterHubs && n.hierarchy === 'core') return false;
+      if (!filterConcepts && n.hierarchy !== 'core') return false;
+      if (selectedClusterId && n.catalog !== selectedClusterId) return false;
+      return true;
+    });
 
     const activeNodeIds = new Set(filteredNodes.map((n) => n.id));
-    const filteredLinks: CelestialLink[] = JSON.parse(JSON.stringify(
-      celestialLinks.filter(
-        (l) => activeNodeIds.has(typeof l.source === 'string' ? l.source : l.source.id) &&
-               activeNodeIds.has(typeof l.target === 'string' ? l.target : l.target.id)
-      )
-    ));
+    const filteredLinks: CelestialLink[] = celestialLinks.filter(
+      (l) =>
+        activeNodeIds.has(typeof l.source === 'string' ? l.source : (l.source as any).id) &&
+        activeNodeIds.has(typeof l.target === 'string' ? l.target : (l.target as any).id)
+    );
 
     const svg = d3
       .select(containerRef.current)
@@ -361,32 +422,55 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     // SVG Defs: Astrolabe Gradients & Glow Filters
     const defs = svg.append('defs');
 
-    // Deep Midnight Starburst Radial Gradient
-    const hubGrad = defs
+    // 1. Core Primary Concept Radiant Gradient (Terracotta / Red starburst)
+    const coreGrad = defs
       .append('radialGradient')
-      .attr('id', 'hub-radial-grad')
+      .attr('id', 'core-starburst-grad')
       .attr('cx', '50%')
       .attr('cy', '50%')
       .attr('r', '50%');
-    hubGrad.append('stop').attr('offset', '0%').attr('stop-color', '#FAF8F2');
-    hubGrad.append('stop').attr('offset', '45%').attr('stop-color', '#2D3F5E');
-    hubGrad.append('stop').attr('offset', '100%').attr('stop-color', '#162135');
+    coreGrad.append('stop').attr('offset', '0%').attr('stop-color', '#FFF2EB');
+    coreGrad.append('stop').attr('offset', '45%').attr('stop-color', '#E0693E');
+    coreGrad.append('stop').attr('offset', '100%').attr('stop-color', '#BD532B');
 
-    // Terracotta Concept Star Radial Gradient
-    const conceptGrad = defs
+    // 2. Subtopic Starburst Gradient (Medium Yellow / Gold starburst)
+    const subtopicGrad = defs
       .append('radialGradient')
-      .attr('id', 'concept-radial-grad')
+      .attr('id', 'subtopic-starburst-grad')
       .attr('cx', '50%')
       .attr('cy', '50%')
       .attr('r', '50%');
-    conceptGrad.append('stop').attr('offset', '0%').attr('stop-color', '#FFF4ED');
-    conceptGrad.append('stop').attr('offset', '50%').attr('stop-color', '#D9653B');
-    conceptGrad.append('stop').attr('offset', '100%').attr('stop-color', '#BD532B');
+    subtopicGrad.append('stop').attr('offset', '0%').attr('stop-color', '#FFFDF0');
+    subtopicGrad.append('stop').attr('offset', '45%').attr('stop-color', '#E8B854');
+    subtopicGrad.append('stop').attr('offset', '100%').attr('stop-color', '#C08D38');
+
+    // 3. Related Sub-subtopic Gradient (Smaller Terracotta / Orange star)
+    const relatedGrad = defs
+      .append('radialGradient')
+      .attr('id', 'related-concept-grad')
+      .attr('cx', '50%')
+      .attr('cy', '50%')
+      .attr('r', '50%');
+    relatedGrad.append('stop').attr('offset', '0%').attr('stop-color', '#FFF4ED');
+    relatedGrad.append('stop').attr('offset', '55%').attr('stop-color', '#D9653B');
+    relatedGrad.append('stop').attr('offset', '100%').attr('stop-color', '#BD532B');
 
     // Celestial Halo Filter
-    const filter = defs.append('filter').attr('id', 'celestial-halo').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%');
-    filter.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'blur');
-    filter.append('feMerge').selectAll('feMergeNode').data(['blur', 'SourceGraphic']).enter().append('feMergeNode').attr('in', (d) => d);
+    const filter = defs
+      .append('filter')
+      .attr('id', 'celestial-halo')
+      .attr('x', '-50%')
+      .attr('y', '-50%')
+      .attr('width', '200%')
+      .attr('height', '200%');
+    filter.append('feGaussianBlur').attr('stdDeviation', '3.5').attr('result', 'blur');
+    filter
+      .append('feMerge')
+      .selectAll('feMergeNode')
+      .data(['blur', 'SourceGraphic'])
+      .enter()
+      .append('feMergeNode')
+      .attr('in', (d) => d);
 
     // Root Group with Zoom & Pan
     const g = svg.append('g').attr('class', 'observatory-viewport');
@@ -407,7 +491,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       d3.zoomIdentity.translate(width * 0.05, height * 0.03).scale(0.95)
     );
 
-    // D3 Force Simulation
+    // Force Simulation with fast alphaDecay to stabilize and consume 0% idle CPU
     const simulation = d3
       .forceSimulation<CelestialNode>(filteredNodes)
       .force(
@@ -415,17 +499,20 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         d3
           .forceLink<CelestialNode, CelestialLink>(filteredLinks)
           .id((d) => d.id)
-          .distance((d) => 120 + (1 - (d.weight || 0.8)) * 100)
-          .strength(0.35)
+          .distance((d) => 125 + (1 - (d.weight || 0.8)) * 95)
+          .strength(0.3)
       )
-      .force('charge', d3.forceManyBody().strength(-450))
+      .force('charge', d3.forceManyBody().strength(-360))
       .force('center', d3.forceCenter(width * 0.44, height * 0.48))
-      .force('collision', d3.forceCollide().radius((d: any) => (d.size || 16) * 2.8));
+      .force('collision', d3.forceCollide().radius((d: any) => (d.size || 14) * 2.2))
+      .alphaDecay(0.04); // Cooldown fast (~70 ticks)
+
+    simulationRef.current = simulation;
 
     // Links Layer
     const linkGroup = g.append('g').attr('class', 'links-layer');
     const link = linkGroup
-      .selectAll('path')
+      .selectAll<SVGPathElement, CelestialLink>('path')
       .data(filteredLinks)
       .enter()
       .append('path')
@@ -433,8 +520,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       .attr('fill', 'none')
       .attr('stroke', '#4A3E3D')
       .attr('stroke-opacity', 0.28)
-      .attr('stroke-width', (d) => 0.8 + (d.weight || 0.8) * 1.2)
-      .attr('stroke-dasharray', 'none');
+      .attr('stroke-width', (d) => 0.8 + (d.weight || 0.8) * 1.2);
 
     // Link Labels Layer
     const linkLabel = linkGroup
@@ -442,7 +528,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       .data(filteredLinks)
       .enter()
       .append('text')
-      .attr('class', 'link-label')
+      .attr('class', 'link-label pointer-events-none select-none')
       .attr('font-family', 'JetBrains Mono, monospace')
       .attr('font-size', '8px')
       .attr('fill', 'rgba(100, 90, 80, 0.45)')
@@ -453,77 +539,100 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     const nodeGroup = g.append('g').attr('class', 'nodes-layer');
     const node = nodeGroup
       .selectAll<SVGGElement, CelestialNode>('.celestial-node')
-      .data(filteredNodes)
+      .data(filteredNodes, (d) => d.id)
       .enter()
       .append('g')
       .attr('class', 'celestial-node cursor-pointer')
+      .attr('data-id', (d) => d.id)
       .on('click', (_event, d) => {
         setSelectedNode(d);
       });
 
-    // Node Visual Geometry: Radiant Starburst vs Concept Star
+    // Render Node Shapes according to approved astronomical hierarchy
     node.each(function (d) {
       const el = d3.select(this);
-      const isSelected = selectedNode?.id === d.id;
 
-      // Selection Halo
-      if (isSelected) {
-        el.append('circle')
-          .attr('r', d.size * 2.1)
-          .attr('fill', 'none')
-          .attr('stroke', 'rgba(189, 83, 43, 0.45)')
-          .attr('stroke-width', 1.2)
-          .attr('stroke-dasharray', '3,3');
-      }
+      // Selection Halo (toggle visibility via class without simulation recalculation)
+      el.append('circle')
+        .attr('class', 'selection-halo pointer-events-none')
+        .attr('r', d.size * 2.0)
+        .attr('fill', 'none')
+        .attr('stroke', 'rgba(189, 83, 43, 0.55)')
+        .attr('stroke-width', 1.2)
+        .attr('stroke-dasharray', '3,3')
+        .style('opacity', 0);
 
-      if (d.type === 'hub') {
-        // Celestial Starburst for Major Hubs
+      if (d.hierarchy === 'core') {
+        // Large Red/Terracotta Starburst for Core Concepts
         el.append('path')
-          .attr('d', createStarburstPath(d.size * 1.7, d.size * 1.05, d.size * 0.45))
-          .attr('fill', 'url(#hub-radial-grad)')
+          .attr('d', createStarburstPath(24, 15, 6))
+          .attr('fill', 'url(#core-starburst-grad)')
           .attr('filter', 'url(#celestial-halo)')
-          .attr('stroke', '#C08D38')
-          .attr('stroke-width', 0.85);
+          .attr('stroke', '#8F3819')
+          .attr('stroke-width', 1.1);
 
-        // Radiant Core Pip
-        el.append('circle').attr('r', 3.2).attr('fill', '#FAF8F2').attr('stroke', '#162135').attr('stroke-width', 0.8);
-      } else {
-        // Symmetrical 4-point Concept Star
+        el.append('circle')
+          .attr('r', 3.5)
+          .attr('fill', '#FAF8F2')
+          .attr('stroke', '#BD532B')
+          .attr('stroke-width', 0.9);
+      } else if (d.hierarchy === 'subtopic') {
+        // Medium Yellow/Gold Starburst for Subtopics
         el.append('path')
-          .attr('d', createSymmetricalConceptStar(d.size * 1.2))
-          .attr('fill', 'url(#concept-radial-grad)')
+          .attr('d', createStarburstPath(16, 10, 4.5))
+          .attr('fill', 'url(#subtopic-starburst-grad)')
+          .attr('filter', 'url(#celestial-halo)')
+          .attr('stroke', '#8F6418')
+          .attr('stroke-width', 0.9);
+
+        el.append('circle')
+          .attr('r', 2.5)
+          .attr('fill', '#FAF8F2')
+          .attr('stroke', '#C08D38')
+          .attr('stroke-width', 0.8);
+      } else {
+        // Smaller Terracotta/Orange Concept Star for Related/Lower concepts
+        el.append('path')
+          .attr('d', createSymmetricalConceptStar(9))
+          .attr('fill', 'url(#related-concept-grad)')
           .attr('stroke', '#BD532B')
           .attr('stroke-width', 0.7);
 
-        el.append('circle').attr('r', 2.2).attr('fill', '#FAF8F2');
+        el.append('circle').attr('r', 1.8).attr('fill', '#FAF8F2');
       }
 
       // Elegant Astronomical Label
-      const textGroup = el.append('g').attr('class', 'node-label-group').attr('transform', `translate(0, ${d.size + 14})`);
+      const textGroup = el
+        .append('g')
+        .attr('class', 'node-label-group pointer-events-none select-none')
+        .attr('transform', `translate(0, ${d.size + 13})`);
 
       textGroup
         .append('text')
         .attr('text-anchor', 'middle')
         .attr('class', 'serif font-semibold')
-        .attr('font-size', d.type === 'hub' ? '12.5px' : '11px')
+        .attr(
+          'font-size',
+          d.hierarchy === 'core' ? '12.5px' : d.hierarchy === 'subtopic' ? '11px' : '10px'
+        )
         .attr('fill', '#1A2130')
         .text(d.label);
 
       textGroup
         .append('text')
         .attr('text-anchor', 'middle')
-        .attr('y', 11)
+        .attr('y', 10.5)
         .attr('font-family', 'JetBrains Mono, monospace')
         .attr('font-size', '8px')
         .attr('fill', 'rgba(100, 90, 80, 0.65)')
         .text(`${d.catalog} · d:${d.degree}`);
     });
 
-    // Drag behavior
+    // Drag behavior with cache updates
     const drag = d3
       .drag<SVGGElement, CelestialNode>()
       .on('start', (event) => {
-        if (!event.active) simulation.alphaTarget(0.2).restart();
+        if (!event.active) simulation.alphaTarget(0.15).restart();
         event.subject.fx = event.subject.x;
         event.subject.fy = event.subject.y;
       })
@@ -535,11 +644,17 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         if (!event.active) simulation.alphaTarget(0);
         event.subject.fx = null;
         event.subject.fy = null;
+        if (event.subject.x !== undefined && event.subject.y !== undefined) {
+          nodePositionsRef.current.set(event.subject.id, {
+            x: event.subject.x,
+            y: event.subject.y,
+          });
+        }
       });
 
     node.call(drag);
 
-    // Simulation Tick
+    // Simulation Tick: Update positions and persist to coordinate cache
     simulation.on('tick', () => {
       link.attr('d', (d: any) => linkCubicPath(d));
 
@@ -548,6 +663,20 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         .attr('y', (d: any) => (d.source.y + d.target.y) / 2 - 3);
 
       node.attr('transform', (d) => `translate(${d.x || 0}, ${d.y || 0})`);
+
+      filteredNodes.forEach((n) => {
+        if (n.x !== undefined && n.y !== undefined) {
+          nodePositionsRef.current.set(n.id, { x: n.x, y: n.y });
+        }
+      });
+    });
+
+    simulation.on('end', () => {
+      filteredNodes.forEach((n) => {
+        if (n.x !== undefined && n.y !== undefined) {
+          nodePositionsRef.current.set(n.id, { x: n.x, y: n.y });
+        }
+      });
     });
 
     return () => {
@@ -559,9 +688,87 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     filterHubs,
     filterConcepts,
     selectedClusterId,
-    selectedNode?.id,
     renderCelestialGraticule,
   ]);
+
+  // ================= STABLE SELECTION & HIGHLIGHTING EFFECT =================
+  // Updates visual attributes purely in DOM without restarting force simulation!
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const svg = d3.select(containerRef.current).select('svg');
+    if (svg.empty()) return;
+
+    const selectedId = selectedNode?.id;
+    const connectedIds = new Set<string>();
+    if (selectedNode) {
+      selectedNode.connections.forEach((c) => connectedIds.add(c.id));
+    }
+
+    // Update node styles & selection halo
+    svg.selectAll<SVGGElement, CelestialNode>('.celestial-node').each(function (d) {
+      const el = d3.select(this);
+      const isSelected = d.id === selectedId;
+      const isConnected = connectedIds.has(d.id);
+      const isDimmed = selectedId ? !isSelected && !isConnected : false;
+
+      el.classed('is-selected', isSelected)
+        .classed('is-connected', isConnected)
+        .classed('is-dimmed', isDimmed)
+        .transition()
+        .duration(180)
+        .style('opacity', isDimmed ? 0.32 : 1);
+
+      el.select('.selection-halo')
+        .transition()
+        .duration(180)
+        .style('opacity', isSelected ? 1 : 0);
+    });
+
+    // Update link highlights
+    svg.selectAll<SVGPathElement, CelestialLink>('.celestial-link').each(function (d) {
+      const el = d3.select(this);
+      const srcId = typeof d.source === 'string' ? d.source : (d.source as any).id;
+      const tgtId = typeof d.target === 'string' ? d.target : (d.target as any).id;
+      const isConnected =
+        (srcId === selectedId && connectedIds.has(tgtId)) ||
+        (tgtId === selectedId && connectedIds.has(srcId));
+      const isDimmed = selectedId ? !isConnected : false;
+
+      el.classed('is-active-link', isConnected)
+        .transition()
+        .duration(180)
+        .attr('stroke', isConnected ? '#BD532B' : '#4A3E3D')
+        .attr('stroke-opacity', isConnected ? 0.85 : isDimmed ? 0.08 : 0.28)
+        .attr('stroke-width', isConnected ? 2.0 : 0.8 + (d.weight || 0.8) * 1.2);
+    });
+  }, [selectedNode]);
+
+  // ================= DEBOUNCED SEARCH HIGHLIGHT EFFECT =================
+  // Highlights search matches in graph without re-running simulation
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const svg = d3.select(containerRef.current).select('svg');
+    if (svg.empty()) return;
+
+    const query = debouncedSearchQuery.trim().toLowerCase();
+    if (!query) {
+      if (selectedNode) {
+        svg.selectAll('.celestial-node').style('opacity', null);
+      } else {
+        svg.selectAll('.celestial-node').style('opacity', 1);
+      }
+      return;
+    }
+
+    svg.selectAll<SVGGElement, CelestialNode>('.celestial-node').each(function (d) {
+      const match =
+        d.label.toLowerCase().includes(query) || d.catalog.toLowerCase().includes(query);
+      d3.select(this)
+        .transition()
+        .duration(150)
+        .style('opacity', match ? 1 : 0.22);
+    });
+  }, [debouncedSearchQuery, selectedNode]);
 
   // Zoom controls
   const handleZoom = (factor: number) => {
@@ -579,25 +786,26 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     );
   };
 
-  // Search in graph
-  const handleSearchSelect = (query: string) => {
-    setSearchQuery(query);
-    if (!query.trim()) return;
-    const match = celestialNodes.find((n) =>
-      n.label.toLowerCase().includes(query.toLowerCase())
-    );
-    if (match) {
-      setSelectedNode(match);
-      if (svgRef.current && zoomBehaviorRef.current && match.x !== undefined && match.y !== undefined) {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        svgRef.current.transition().duration(600).call(
-          zoomBehaviorRef.current.transform,
-          d3.zoomIdentity
-            .translate(width / 2 - match.x * 1.5, height / 2 - match.y * 1.5)
-            .scale(1.5)
-        );
-      }
+  // Search commit: center camera on target node WITHOUT recreating simulation
+  const handleSearchCommit = (targetNode?: CelestialNode) => {
+    const target =
+      targetNode ||
+      celestialNodes.find((n) =>
+        n.label.toLowerCase().includes(searchQuery.trim().toLowerCase())
+      );
+    if (!target) return;
+    setSelectedNode(target);
+
+    const pos = nodePositionsRef.current.get(target.id) || { x: target.x, y: target.y };
+    if (svgRef.current && zoomBehaviorRef.current && pos.x !== undefined && pos.y !== undefined) {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      svgRef.current.transition().duration(600).call(
+        zoomBehaviorRef.current.transform,
+        d3.zoomIdentity
+          .translate(width * 0.44 - pos.x * 1.35, height * 0.48 - pos.y * 1.35)
+          .scale(1.35)
+      );
     }
   };
 
@@ -629,10 +837,10 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       {/* D3 Observatory Knowledge Constellation Graph */}
       <div ref={containerRef} className="absolute inset-0 w-full h-full z-0" />
 
-      {/* ================= FLOATING MINIMAL TOP NAVIGATION (APPROVED DESIGN) ================= */}
-      <header className="absolute top-0 left-0 right-0 z-30 h-12 px-6 flex items-center justify-between bg-[#FAF8F2]/80 backdrop-blur-md border-b border-[var(--border-parchment)] pointer-events-auto transition-all select-none">
-        {/* LEFT: Hyades Logo + Destination Links + Graph Actions */}
-        <div className="flex items-center gap-5">
+      {/* ================= FLOATING MINIMAL SEGMENTED TOP NAVIGATION (APPROVED DESIGN) ================= */}
+      <header className="absolute top-4 left-6 right-6 z-30 flex items-center justify-between pointer-events-none select-none transition-all">
+        {/* SEGMENT 1 (LEFT): Brand + Nav Links + Real Graph Actions */}
+        <div className="flex items-center gap-2.5 bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-3.5 py-1.5 pointer-events-auto">
           {/* Logo & Identity */}
           <button
             type="button"
@@ -640,10 +848,10 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             className="flex items-center gap-2 group text-left focus:outline-none cursor-pointer"
             title="Hyades Overview"
           >
-            <div className="w-7 h-7 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] flex items-center justify-center shadow-xs border border-[#2D3F5E] group-hover:bg-[var(--accent-midnight-light)] transition-colors">
+            <div className="w-6 h-6 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] flex items-center justify-center shadow-xs border border-[#2D3F5E] group-hover:bg-[var(--accent-midnight-light)] transition-colors">
               <svg
-                width="16"
-                height="16"
+                width="14"
+                height="14"
                 viewBox="0 0 24 24"
                 fill="none"
                 className="transition-transform duration-700 group-hover:rotate-90"
@@ -655,18 +863,19 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
               </svg>
             </div>
             <div className="flex items-baseline gap-1.5">
-              <span className="serif text-lg font-semibold tracking-tight text-[var(--ink-primary)] leading-none">
+              <span className="serif text-base font-semibold tracking-tight text-[var(--ink-primary)] leading-none">
                 Hyades
               </span>
-              <div className="w-px h-2.5 bg-[var(--border-strong)]" />
-              <span className="text-[9.5px] tracking-[0.2em] font-medium text-[var(--ink-secondary)] uppercase">
+              <span className="text-[9px] tracking-[0.2em] font-medium text-[var(--ink-secondary)] uppercase">
                 Observatory
               </span>
             </div>
           </button>
 
-          {/* Nav Destination Links */}
-          <nav aria-label="Main navigation" className="hidden lg:flex items-center gap-4 ml-1">
+          <div className="w-px h-3.5 bg-[var(--border-parchment)] mx-1" />
+
+          {/* Navigation Links */}
+          <nav aria-label="Main navigation" className="hidden md:flex items-center gap-3">
             <button
               type="button"
               onClick={() => onNavigateToDestination?.('overview')}
@@ -683,10 +892,10 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             </button>
             <button
               type="button"
-              className="text-xs font-semibold text-[var(--accent-midnight)] flex items-center gap-1.5 cursor-pointer"
+              className="text-xs font-semibold text-[var(--accent-midnight)] flex items-center gap-1 cursor-pointer"
             >
               <span>Observatory</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-brass)]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)]" />
             </button>
             <button
               type="button"
@@ -697,14 +906,14 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             </button>
           </nav>
 
-          <div className="w-px h-4 bg-[var(--border-parchment)]" />
+          <div className="w-px h-3.5 bg-[var(--border-parchment)] mx-1" />
 
-          {/* Actions: + Entity & Connect & More */}
-          <div className="flex items-center gap-2">
+          {/* Real Actions: + Entity & Connect & More */}
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={() => setIsEntityEditorOpen(true)}
-              className="px-2.5 py-1 rounded-md bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
+              className="px-2.5 py-1 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer"
               title="Add Entity to Knowledge Sky"
             >
               <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
@@ -714,26 +923,26 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             <button
               type="button"
               onClick={() => setIsRelationshipEditorOpen(true)}
-              className="px-2.5 py-1 rounded-md bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
+              className="px-2.5 py-1 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer"
               title="Connect Two Entities"
             >
               <i className="ph ph-arrows-split text-xs text-[var(--accent-terracotta)]" />
               <span>Connect</span>
             </button>
 
-            {/* More Menu Dropdown */}
+            {/* Compact More Menu */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setIsMoreMenuOpen((prev) => !prev)}
-                className="w-7 h-7 rounded-md bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+                className="w-6 h-6 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
                 title="More Graph Actions"
               >
                 <i className="ph-bold ph-dots-three-vertical text-xs" />
               </button>
 
               {isMoreMenuOpen && (
-                <div className="absolute left-0 mt-1 w-48 bg-white border border-[var(--border-strong)] rounded-lg shadow-lg py-1 z-50 text-xs">
+                <div className="absolute left-0 mt-2 w-48 bg-white border border-[var(--border-strong)] rounded-xl shadow-lg py-1.5 z-50 text-xs animate-fade-in">
                   <button
                     type="button"
                     onClick={() => {
@@ -773,41 +982,49 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           </div>
         </div>
 
-        {/* CENTER: Compact Focused Coordinate HUD Bar */}
-        <div className="flex items-center justify-center">
+        {/* SEGMENT 2 (CENTER): Compact Focused Coordinate HUD Capsule */}
+        <div className="hidden lg:flex items-center pointer-events-auto">
           {selectedNode ? (
-            <div className="bg-white/95 border border-[var(--border-strong)] rounded-full px-3.5 py-1 shadow-2xs flex items-center gap-2.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)] animate-pulse" />
-              <span className="serif text-xs font-semibold text-[var(--ink-primary)] leading-none max-w-[180px] truncate">
+            <div className="bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-3.5 py-1.5 flex items-center gap-2.5">
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  selectedNode.hierarchy === 'core'
+                    ? 'bg-[var(--accent-terracotta)] animate-pulse'
+                    : selectedNode.hierarchy === 'subtopic'
+                    ? 'bg-[var(--accent-brass)]'
+                    : 'bg-[var(--accent-midnight)]'
+                }`}
+              />
+              <span className="serif text-xs font-semibold text-[var(--ink-primary)] leading-none max-w-[170px] truncate">
                 {selectedNode.label}
               </span>
               <span className="w-px h-2.5 bg-[var(--border-parchment)]" />
-              <span className="mono text-[10px] text-[var(--ink-tertiary)] hidden sm:inline">
+              <span className="mono text-[10px] text-[var(--ink-tertiary)]">
                 {selectedNode.coords}
               </span>
-              <span className="mono text-[9px] text-[var(--accent-brass)] bg-[var(--bg-panel-subtle)] px-1.5 py-0.5 rounded border border-[var(--border-parchment)] font-medium">
+              <span className="mono text-[9px] text-[var(--accent-midnight)] bg-white px-1.5 py-0.5 rounded-full border border-[var(--border-parchment)] font-medium">
                 {selectedNode.catalog}
               </span>
             </div>
           ) : (
-            <div className="bg-white/80 border border-[var(--border-parchment)] rounded-full px-3 py-1 text-xs text-[var(--ink-tertiary)] mono">
+            <div className="bg-[#FAF8F2]/80 backdrop-blur-md border border-[var(--border-parchment)] rounded-full px-3 py-1 text-xs text-[var(--ink-tertiary)] mono">
               Click a star to focus coordinates
             </div>
           )}
         </div>
 
-        {/* RIGHT: Search Trigger & View Utilities */}
-        <div className="flex items-center gap-3">
+        {/* SEGMENT 3 (RIGHT): Search Trigger & Fullscreen Controls */}
+        <div className="flex items-center gap-2 bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-2.5 py-1.5 pointer-events-auto">
           {onOpenSearch && (
             <button
               type="button"
               onClick={onOpenSearch}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-[var(--border-strong)] text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[var(--bg-panel-subtle)] transition-colors shadow-2xs cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full hover:bg-white text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
               title="Global Search (⌘K)"
             >
               <i className="ph ph-magnifying-glass text-xs" />
               <span className="hidden sm:inline">Search</span>
-              <kbd className="mono text-[10px] text-[var(--ink-tertiary)] ml-1">⌘K</kbd>
+              <kbd className="mono text-[9.5px] text-[var(--ink-tertiary)] ml-0.5">⌘K</kbd>
             </button>
           )}
 
@@ -815,10 +1032,14 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             <button
               type="button"
               onClick={onToggleFullscreen}
-              className="w-7 h-7 rounded-md bg-white border border-[var(--border-strong)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+              className="w-6 h-6 rounded-full hover:bg-white text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors cursor-pointer"
               title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen / Focused View'}
             >
-              <i className={`ph-bold ${isFullscreen ? 'ph-corners-in' : 'ph-corners-out'} text-xs text-[var(--accent-terracotta)]`} />
+              <i
+                className={`ph-bold ${
+                  isFullscreen ? 'ph-corners-in' : 'ph-corners-out'
+                } text-xs text-[var(--accent-terracotta)]`}
+              />
             </button>
           )}
         </div>
@@ -837,7 +1058,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
               The Knowledge Sky is Uncharted
             </h3>
             <p className="text-xs text-[var(--ink-secondary)] leading-relaxed">
-              No concepts or relationships have been extracted yet in this workspace. Ingest notes or trigger extraction in the Library to illuminate the celestial atlas.
+              No concepts or relationships have been extracted yet in this workspace. Ingest notes or
+              trigger extraction in the Library to illuminate the celestial atlas.
             </p>
             <div className="flex items-center gap-3 mt-2">
               <button
@@ -861,9 +1083,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         </div>
       )}
 
-      {/* Persistent Reopen Left Edge Tab (PanelLeftOpen style icon) */}
+      {/* Persistent Reopen Left Edge Tab */}
       {!isLeftSidebarOpen && (
-        <div id="reopen-left-sidebar" className="fixed top-16 left-0 z-30 pointer-events-auto">
+        <div id="reopen-left-sidebar" className="fixed top-18 left-0 z-30 pointer-events-auto">
           <button
             type="button"
             onClick={() => setIsLeftSidebarOpen(true)}
@@ -888,9 +1110,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         </div>
       )}
 
-      {/* Persistent Reopen Right Edge Tab (PanelRightOpen style icon) */}
+      {/* Persistent Reopen Right Edge Tab */}
       {!isRightSidebarOpen && selectedNode && (
-        <div id="reopen-right-sidebar" className="fixed top-16 right-0 z-30 pointer-events-auto">
+        <div id="reopen-right-sidebar" className="fixed top-18 right-0 z-30 pointer-events-auto">
           <button
             type="button"
             onClick={() => setIsRightSidebarOpen(true)}
@@ -919,7 +1141,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       {isLeftSidebarOpen && (
         <aside
           id="left-sidebar"
-          className="sidebar-transition absolute top-16 left-6 w-[280px] max-h-[calc(100vh-140px)] z-10 flex flex-col pointer-events-none"
+          className="sidebar-transition absolute top-18 left-6 w-[280px] max-h-[calc(100vh-140px)] z-10 flex flex-col pointer-events-none"
         >
           <div className="instrument-panel flex-1 flex flex-col pointer-events-auto overflow-hidden">
             <div className="panel-bracket-tl" />
@@ -972,7 +1194,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                       <button
                         key={cl.id}
                         type="button"
-                        onClick={() => setSelectedClusterId(selectedClusterId === cl.id ? null : cl.id)}
+                        onClick={() =>
+                          setSelectedClusterId(selectedClusterId === cl.id ? null : cl.id)
+                        }
                         className={`w-full text-left p-2 rounded-lg border transition-all flex items-center justify-between cursor-pointer ${
                           selectedClusterId === cl.id
                             ? 'bg-white border-[var(--accent-terracotta)] shadow-2xs'
@@ -991,7 +1215,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                       </button>
                     ))
                   ) : (
-                    celestialNodes.slice(0, 6).map((n) => (
+                    celestialNodes.slice(0, 8).map((n) => (
                       <button
                         key={n.id}
                         type="button"
@@ -1003,7 +1227,15 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                         }`}
                       >
                         <div className="flex items-center gap-2 truncate">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)]" />
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              n.hierarchy === 'core'
+                                ? 'bg-[var(--accent-terracotta)]'
+                                : n.hierarchy === 'subtopic'
+                                ? 'bg-[var(--accent-brass)]'
+                                : 'bg-[var(--ink-secondary)]'
+                            }`}
+                          />
                           <span className="text-xs font-medium text-[var(--ink-primary)] truncate">
                             {n.label}
                           </span>
@@ -1017,7 +1249,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                 </div>
               </div>
 
-              {/* Filters */}
+              {/* Constellation Filters */}
               <div className="pt-3 border-t border-[var(--border-parchment)]">
                 <span className="text-[10px] uppercase tracking-[0.18em] font-medium text-[var(--ink-secondary)] mb-2 block">
                   Constellation Filters
@@ -1026,10 +1258,10 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                 <div className="flex flex-col gap-1.5">
                   <label className="flex items-center justify-between py-1 cursor-pointer">
                     <span className="flex items-center gap-2 text-xs font-medium text-[var(--ink-primary)]">
-                      <svg width="12" height="12" viewBox="-8 -8 16 16" fill="var(--accent-midnight)">
+                      <svg width="12" height="12" viewBox="-8 -8 16 16" fill="var(--accent-terracotta)">
                         <path d="M 0 -8 L 2 -2 L 8 0 L 2 2 L 0 8 L -2 2 L -8 0 L -2 -2 Z" />
                       </svg>
-                      Major Starbursts (Hubs)
+                      Core Concepts
                     </span>
                     <input
                       type="checkbox"
@@ -1041,10 +1273,10 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
                   <label className="flex items-center justify-between py-1 cursor-pointer">
                     <span className="flex items-center gap-2 text-xs font-medium text-[var(--ink-primary)]">
-                      <svg width="10" height="10" viewBox="-5 -5 10 10" fill="var(--accent-terracotta)">
+                      <svg width="10" height="10" viewBox="-5 -5 10 10" fill="var(--accent-brass)">
                         <path d="M 0 -4 Q 1 -1 4 0 Q 1 1 0 4 Q -1 1 -4 0 Q -1 -1 0 -4 Z" />
                       </svg>
-                      Concept Stars
+                      Subtopics & Concepts
                     </span>
                     <input
                       type="checkbox"
@@ -1100,7 +1332,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           type="button"
           onClick={() => setShowAtlasPlate((prev) => !prev)}
           className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
-            showAtlasPlate ? 'text-[var(--accent-midnight)] bg-[var(--bg-panel-subtle)]' : 'text-[var(--ink-tertiary)]'
+            showAtlasPlate
+              ? 'text-[var(--accent-midnight)] bg-[var(--bg-panel-subtle)]'
+              : 'text-[var(--ink-tertiary)]'
           }`}
           title="Toggle Archival Atlas Plate"
         >
@@ -1111,7 +1345,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           type="button"
           onClick={() => setShowGraticule((prev) => !prev)}
           className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
-            showGraticule ? 'text-[var(--accent-midnight)] bg-[var(--bg-panel-subtle)]' : 'text-[var(--ink-tertiary)]'
+            showGraticule
+              ? 'text-[var(--accent-midnight)] bg-[var(--bg-panel-subtle)]'
+              : 'text-[var(--ink-tertiary)]'
           }`}
           title="Toggle Celestial Coordinates"
         >
@@ -1127,23 +1363,27 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
               className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
               title={isFullscreen ? 'Exit Focus View' : 'Focus / Fullscreen View'}
             >
-              <i className={`ph-bold ${isFullscreen ? 'ph-corners-in' : 'ph-corners-out'} text-xs text-[var(--accent-terracotta)]`} />
+              <i
+                className={`ph-bold ${
+                  isFullscreen ? 'ph-corners-in' : 'ph-corners-out'
+                } text-xs text-[var(--accent-terracotta)]`}
+              />
             </button>
           </>
         )}
       </div>
 
-      {/* ================= RIGHT KNOWLEDGE DOSSIER PANEL ================= */}
+      {/* ================= RIGHT KNOWLEDGE DOSSIER PANEL (EXTENDS UPWARD) ================= */}
       {isRightSidebarOpen && selectedNode && (
         <aside
           id="right-sidebar"
-          className="sidebar-transition absolute top-16 right-6 bottom-6 w-[390px] z-10 flex flex-col pointer-events-none"
+          className="sidebar-transition absolute top-4 right-6 bottom-6 w-[390px] z-20 flex flex-col pointer-events-none"
         >
-          <div className="instrument-panel flex-1 flex flex-col pointer-events-auto overflow-hidden">
+          <div className="instrument-panel flex-1 flex flex-col pointer-events-auto overflow-hidden shadow-lg border border-[var(--border-strong)] bg-white/95">
             <div className="panel-bracket-tl" />
             <div className="panel-bracket-br" />
 
-            {/* Panel Header with PanelRightClose icon */}
+            {/* Panel Header */}
             <div className="p-6 border-b border-[var(--border-parchment)] bg-white relative">
               <button
                 type="button"
@@ -1158,9 +1398,23 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                 </svg>
               </button>
 
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded border border-[var(--border-strong)] bg-[var(--bg-panel-subtle)] text-[10px] text-[var(--ink-secondary)] font-semibold tracking-wider uppercase mono mb-3">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)]" />
-                <span>{selectedNode.type === 'hub' ? 'Knowledge Hub Dossier' : 'Concept Star Dossier'}</span>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border border-[var(--border-strong)] bg-[var(--bg-panel-subtle)] text-[10px] text-[var(--ink-secondary)] font-semibold tracking-wider uppercase mono mb-3">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    selectedNode.hierarchy === 'core'
+                      ? 'bg-[var(--accent-terracotta)]'
+                      : selectedNode.hierarchy === 'subtopic'
+                      ? 'bg-[var(--accent-brass)]'
+                      : 'bg-[var(--accent-midnight)]'
+                  }`}
+                />
+                <span>
+                  {selectedNode.hierarchy === 'core'
+                    ? 'Primary Core Concept'
+                    : selectedNode.hierarchy === 'subtopic'
+                    ? 'Subtopic Dossier'
+                    : 'Concept Star Dossier'}
+                </span>
               </div>
 
               {/* Node Title */}
@@ -1171,10 +1425,15 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
               {/* Context & Classification */}
               <div className="flex items-center gap-3 text-xs text-[var(--ink-secondary)]">
                 <span className="flex items-center gap-1.5">
-                  <i className="ph ph-compass" /> {selectedNode.type === 'hub' ? 'Central Hub' : 'Concept'}
+                  <i className="ph ph-compass text-[var(--accent-terracotta)]" />{' '}
+                  {selectedNode.hierarchy === 'core'
+                    ? 'Central Core'
+                    : selectedNode.hierarchy === 'subtopic'
+                    ? 'Subtopic Node'
+                    : 'Concept Star'}
                 </span>
                 <span className="w-1 h-1 rounded-full bg-[var(--border-strong)]" />
-                <span className="mono text-[11px] text-[var(--accent-brass)]">
+                <span className="mono text-[11px] text-[var(--accent-midnight)] font-medium">
                   {selectedNode.degree} Connections
                 </span>
               </div>
@@ -1217,7 +1476,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                             <div className="text-xs font-medium text-[var(--ink-primary)] group-hover:underline">
                               {conn.name}
                             </div>
-                            <div className="text-[10px] text-[var(--ink-tertiary)] mono">{conn.type}</div>
+                            <div className="text-[10px] text-[var(--ink-tertiary)] mono">
+                              {conn.type}
+                            </div>
                           </div>
                         </div>
                         <span className="mono text-[10px] text-[var(--ink-secondary)]">
@@ -1282,7 +1543,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         </aside>
       )}
 
-      {/* ================= BOTTOM SEARCH / FILTER BAR ================= */}
+      {/* ================= BOTTOM SEARCH / FILTER BAR (OPTIMIZED) ================= */}
       <div
         id="search-bar-container"
         className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-auto w-full max-w-md px-4"
@@ -1292,14 +1553,23 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => handleSearchSelect(e.target.value)}
-            placeholder="Search celestial constellation..."
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSearchCommit();
+              }
+            }}
+            placeholder="Search celestial constellation... (Press Enter to focus)"
             className="flex-1 bg-transparent border-none outline-none text-xs text-[var(--ink-primary)] placeholder:text-[var(--ink-tertiary)]"
           />
           {searchQuery && (
             <button
               type="button"
-              onClick={() => handleSearchSelect('')}
+              onClick={() => {
+                setSearchQuery('');
+                setDebouncedSearchQuery('');
+              }}
               className="text-xs text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] cursor-pointer"
             >
               ✕
