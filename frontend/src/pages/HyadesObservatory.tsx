@@ -7,11 +7,12 @@ import { listClusters } from '@/api/clusters';
 import { EntityEditor } from '@/components/EntityEditor';
 import { RelationshipEditor } from '@/components/RelationshipEditor';
 import { LinkSuggestionPanel } from '@/components/LinkSuggestionPanel';
-import { GraphResponse, GraphNodeResponse } from '@/types/graph';
+import { GraphResponse, GraphNodeResponse, ObservatoryTarget } from '@/types/graph';
 import { ClusterResponse } from '@/types/cluster';
 
 interface HyadesObservatoryProps {
   workspaceId: string;
+  initialTarget?: ObservatoryTarget | null;
   onNavigateToDestination?: (dest: 'overview' | 'library' | 'observatory' | 'stella') => void;
   onNavigateToNote?: (noteId: string) => void;
   isFullscreen?: boolean;
@@ -45,6 +46,38 @@ export interface CelestialLink extends d3.SimulationLinkDatum<CelestialNode> {
   type: string;
 }
 
+function getStoredPositions(wsId: string): Map<string, { x: number; y: number }> {
+  const map = new Map<string, { x: number; y: number }>();
+  if (!wsId) return map;
+  try {
+    const raw = localStorage.getItem(`hyades_graph_positions_${wsId}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      for (const [id, pos] of Object.entries(parsed)) {
+        if (pos && typeof (pos as any).x === 'number' && typeof (pos as any).y === 'number') {
+          map.set(id, { x: (pos as any).x, y: (pos as any).y });
+        }
+      }
+    }
+  } catch {
+    // Graceful fallback
+  }
+  return map;
+}
+
+function saveStoredPositions(wsId: string, map: Map<string, { x: number; y: number }>) {
+  if (!wsId || map.size === 0) return;
+  try {
+    const obj: Record<string, { x: number; y: number }> = {};
+    map.forEach((pos, id) => {
+      obj[id] = { x: Math.round(pos.x * 10) / 10, y: Math.round(pos.y * 10) / 10 };
+    });
+    localStorage.setItem(`hyades_graph_positions_${wsId}`, JSON.stringify(obj));
+  } catch {
+    // Quota or private mode fallback
+  }
+}
+
 function computeCelestialCoords(id: string): { coords: string; catalog: string } {
   let hash = 0;
   for (let i = 0; i < id.length; i++) {
@@ -66,6 +99,7 @@ function computeCelestialCoords(id: string): { coords: string; catalog: string }
 
 export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   workspaceId,
+  initialTarget,
   onNavigateToDestination,
   onNavigateToNote,
   isFullscreen = false,
@@ -160,28 +194,66 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       if (d > maxDegree) maxDegree = d;
     });
 
-    // Sort nodes descending by degree to identify rare, meaningful Core concepts
+    // Build adjacency map for BFS depth calculation (§1)
+    const adj = new Map<string, Set<string>>();
+    graphData.nodes.forEach((n) => adj.set(n.id, new Set()));
+    graphData.edges.forEach((e) => {
+      adj.get(e.source_entity_id)?.add(e.target_entity_id);
+      adj.get(e.target_entity_id)?.add(e.source_entity_id);
+    });
+
+    // 1. Sort nodes descending by degree to identify rare, dominant Core concepts
     const sortedByDegree = [...graphData.nodes].sort(
       (a, b) => (b.degree || 0) - (a.degree || 0)
     );
 
     const coreNodeIds = new Set<string>();
-    // Pick the top 1 or 2 highest degree nodes as Core (degree >= 3 or absolute highest)
-    sortedByDegree.forEach((n, idx) => {
-      const deg = n.degree || 0;
-      if (idx === 0 && deg > 0) {
-        coreNodeIds.add(n.id);
-      } else if (idx < 2 && deg >= Math.max(3, Math.floor(maxDegree * 0.75))) {
-        coreNodeIds.add(n.id);
+    if (sortedByDegree.length > 0 && (sortedByDegree[0].degree || 0) > 0) {
+      coreNodeIds.add(sortedByDegree[0].id);
+      // Secondary Core ONLY if graph is substantial and 2nd node is a distinct high-degree center
+      if (
+        sortedByDegree.length >= 6 &&
+        (sortedByDegree[1]?.degree || 0) >= 3 &&
+        (sortedByDegree[1]?.degree || 0) >= Math.floor(maxDegree * 0.8) &&
+        sortedByDegree[1]?.cluster_id !== sortedByDegree[0]?.cluster_id
+      ) {
+        coreNodeIds.add(sortedByDegree[1].id);
       }
+    }
+
+    // 2. Breadth-First Search (BFS) to determine graph depth from Core concepts
+    const depthMap = new Map<string, number>();
+    const queue: string[] = [];
+    coreNodeIds.forEach((id) => {
+      depthMap.set(id, 0);
+      queue.push(id);
     });
 
-    // Subtopics: nodes directly linked to a Core node OR having degree >= 2
-    const subtopicNodeIds = new Set<string>();
-    graphData.edges.forEach((e) => {
-      if (coreNodeIds.has(e.source_entity_id)) subtopicNodeIds.add(e.target_entity_id);
-      if (coreNodeIds.has(e.target_entity_id)) subtopicNodeIds.add(e.source_entity_id);
-    });
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      const d = depthMap.get(curr)!;
+      const neighbors = adj.get(curr) || new Set();
+      neighbors.forEach((nbr) => {
+        if (!depthMap.has(nbr)) {
+          depthMap.set(nbr, d + 1);
+          queue.push(nbr);
+        }
+      });
+    }
+
+    // 3. Subtopics: strictly depth === 1 from Core AND degree >= 2 (restrained secondary concepts)
+    // All other nodes (depth >= 2, leaf nodes with degree 1, disconnected nodes) are 'related'
+    const directToCore = sortedByDegree.filter(
+      (n) => depthMap.get(n.id) === 1 && (n.degree || 0) >= 2
+    );
+    const subtopicNodeIds = new Set<string>(
+      directToCore.slice(0, 5).map((n) => n.id)
+    );
+
+    // Initialize or load position cache from localStorage if needed (§4, §5)
+    if (nodePositionsRef.current.size === 0 && workspaceId) {
+      nodePositionsRef.current = getStoredPositions(workspaceId);
+    }
 
     const nodes: CelestialNode[] = graphData.nodes.map((n) => {
       const { coords, catalog } = computeCelestialCoords(n.id);
@@ -190,7 +262,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       let hierarchy: 'core' | 'subtopic' | 'related' = 'related';
       if (coreNodeIds.has(n.id)) {
         hierarchy = 'core';
-      } else if (subtopicNodeIds.has(n.id) || deg >= 2) {
+      } else if (subtopicNodeIds.has(n.id)) {
         hierarchy = 'subtopic';
       } else {
         hierarchy = 'related';
@@ -260,15 +332,102 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       }));
 
     return { celestialNodes: nodes, celestialLinks: links };
-  }, [graphData, clusters]);
+  }, [graphData, clusters, workspaceId]);
 
-  // Set default selected node once graph loads (without triggering simulation reset)
+  const hasAutoSelectedRef = useRef(false);
+
+  // Set default selected node ONCE on mount if none is selected and initialTarget is not set
   useEffect(() => {
-    if (celestialNodes.length > 0 && !selectedNode) {
-      const sorted = [...celestialNodes].sort((a, b) => b.degree - a.degree);
-      setSelectedNode(sorted[0]);
+    if (celestialNodes.length > 0 && !hasAutoSelectedRef.current) {
+      hasAutoSelectedRef.current = true;
+      if (!selectedNode && !initialTarget) {
+        const sorted = [...celestialNodes].sort((a, b) => b.degree - a.degree);
+        setSelectedNode(sorted[0]);
+      }
     }
-  }, [celestialNodes, selectedNode]);
+  }, [celestialNodes, selectedNode, initialTarget]);
+
+  // Deep Link Navigation Target Handler (§9, §10)
+  useEffect(() => {
+    if (!initialTarget || celestialNodes.length === 0) return;
+
+    let matched: CelestialNode | undefined;
+    if (initialTarget.entityId) {
+      matched = celestialNodes.find((n) => n.id === initialTarget.entityId);
+    }
+    if (!matched && initialTarget.entityName) {
+      const q = initialTarget.entityName.trim().toLowerCase();
+      matched = celestialNodes.find(
+        (n) => n.label.toLowerCase() === q || n.label.toLowerCase().includes(q)
+      );
+    }
+    if (!matched && (initialTarget.noteId || initialTarget.sourceId)) {
+      const targetId = initialTarget.noteId || initialTarget.sourceId;
+      matched = celestialNodes.find(
+        (n) => n.id === targetId || n.connections.some((c) => c.id === targetId)
+      );
+    }
+
+    if (matched) {
+      setSelectedNode(matched);
+      setIsRightSidebarOpen(true);
+
+      if (
+        zoomBehaviorRef.current &&
+        svgRef.current &&
+        matched.x !== undefined &&
+        matched.y !== undefined
+      ) {
+        const width = containerRef.current?.clientWidth || window.innerWidth;
+        const height = containerRef.current?.clientHeight || window.innerHeight;
+        const scale = 1.35;
+        const x = width * 0.44 - matched.x * scale;
+        const y = height * 0.48 - matched.y * scale;
+
+        svgRef.current
+          .transition()
+          .duration(700)
+          .call(
+            zoomBehaviorRef.current.transform,
+            d3.zoomIdentity.translate(x, y).scale(scale)
+          );
+      }
+    }
+  }, [initialTarget, celestialNodes]);
+
+  // Escape key entity deselection (§3)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isEntityEditorOpen || isRelationshipEditorOpen || isSuggestionsOpen) {
+          return;
+        }
+        e.preventDefault();
+        setSelectedNode(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isEntityEditorOpen, isRelationshipEditorOpen, isSuggestionsOpen]);
+
+  // Manual Untangle / Organize Graph Action (§2)
+  const handleUntangle = useCallback(() => {
+    if (!simulationRef.current || !containerRef.current) return;
+    const width = containerRef.current.clientWidth || window.innerWidth;
+    const height = containerRef.current.clientHeight || window.innerHeight;
+
+    simulationRef.current
+      .force('center', d3.forceCenter(width * 0.44, height * 0.48))
+      .force('charge', d3.forceManyBody().strength(-460))
+      .force(
+        'collision',
+        d3.forceCollide().radius((d: any) => (d.size || 14) * 2.8 + 12)
+      )
+      .alpha(0.35)
+      .alphaDecay(0.035)
+      .alphaTarget(0)
+      .restart();
+  }, []);
 
   // Render Celestial Graticule (Astronomical Atlas Lines)
   const renderCelestialGraticule = useCallback(() => {
@@ -491,6 +650,36 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       d3.zoomIdentity.translate(width * 0.05, height * 0.03).scale(0.95)
     );
 
+    // Background blank click catcher for entity deselection (§3)
+    g.append('rect')
+      .attr('class', 'graph-blank-catcher')
+      .attr('x', -width * 4)
+      .attr('y', -height * 4)
+      .attr('width', width * 10)
+      .attr('height', height * 10)
+      .attr('fill', 'transparent')
+      .style('pointer-events', 'all')
+      .on('click', () => {
+        setSelectedNode(null);
+      });
+
+    svg.on('click', (event) => {
+      const target = event.target as HTMLElement | SVGElement;
+      if (
+        target === svg.node() ||
+        target.classList?.contains('graph-blank-catcher') ||
+        target.classList?.contains('observatory-viewport') ||
+        target.classList?.contains('graticule-group')
+      ) {
+        setSelectedNode(null);
+      }
+    });
+
+    // Check if nodes already have established positions (§4, §5)
+    const hasEstablishedPositions =
+      filteredNodes.length > 0 &&
+      filteredNodes.filter((n) => n.x !== undefined && n.y !== undefined).length / filteredNodes.length >= 0.75;
+
     // Force Simulation with fast alphaDecay to stabilize and consume 0% idle CPU
     const simulation = d3
       .forceSimulation<CelestialNode>(filteredNodes)
@@ -506,6 +695,11 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       .force('center', d3.forceCenter(width * 0.44, height * 0.48))
       .force('collision', d3.forceCollide().radius((d: any) => (d.size || 14) * 2.2))
       .alphaDecay(0.04); // Cooldown fast (~70 ticks)
+
+    if (hasEstablishedPositions) {
+      // Re-use established layout positions directly without exploding/re-scattering! (§4, §6, §7)
+      simulation.alpha(0);
+    }
 
     simulationRef.current = simulation;
 
@@ -544,9 +738,19 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       .append('g')
       .attr('class', 'celestial-node cursor-pointer')
       .attr('data-id', (d) => d.id)
-      .on('click', (_event, d) => {
+      .on('click', (event, d) => {
+        event.stopPropagation();
         setSelectedNode(d);
       });
+
+    // If positions are established, position elements immediately without waiting for simulation
+    if (hasEstablishedPositions) {
+      link.attr('d', (d: any) => linkCubicPath(d));
+      linkLabel
+        .attr('x', (d: any) => ((d.source?.x ?? 0) + (d.target?.x ?? 0)) / 2)
+        .attr('y', (d: any) => ((d.source?.y ?? 0) + (d.target?.y ?? 0)) / 2 - 3);
+      node.attr('transform', (d) => `translate(${d.x || 0}, ${d.y || 0})`);
+    }
 
     // Render Node Shapes according to approved astronomical hierarchy
     node.each(function (d) {
@@ -649,6 +853,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             x: event.subject.x,
             y: event.subject.y,
           });
+          saveStoredPositions(workspaceId, nodePositionsRef.current);
         }
       });
 
@@ -677,6 +882,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           nodePositionsRef.current.set(n.id, { x: n.x, y: n.y });
         }
       });
+      saveStoredPositions(workspaceId, nodePositionsRef.current);
     });
 
     return () => {
@@ -689,6 +895,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     filterConcepts,
     selectedClusterId,
     renderCelestialGraticule,
+    workspaceId,
   ]);
 
   // ================= STABLE SELECTION & HIGHLIGHTING EFFECT =================
@@ -943,6 +1150,17 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
               {isMoreMenuOpen && (
                 <div className="absolute left-0 mt-2 w-48 bg-white border border-[var(--border-strong)] rounded-xl shadow-lg py-1.5 z-50 text-xs animate-fade-in">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleUntangle();
+                      setIsMoreMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
+                  >
+                    <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
+                    <span>Untangle / Organize</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -1318,6 +1536,16 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         </button>
 
         <div className="w-4 h-px bg-[var(--border-parchment)] mx-auto my-0.5" />
+
+        <button
+          type="button"
+          onClick={handleUntangle}
+          data-testid="untangle-graph-btn"
+          className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--accent-terracotta)] transition-colors cursor-pointer"
+          title="Untangle / Organize Graph"
+        >
+          <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
+        </button>
 
         <button
           type="button"

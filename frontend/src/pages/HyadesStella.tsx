@@ -14,14 +14,14 @@ import { renderMarkdown } from '@/lib/markdown';
 import { Conversation } from '@/types/conversation';
 import { Message, MessageCitation } from '@/types/message';
 import { DashboardStats } from '@/types/dashboard';
-import { GraphResponse } from '@/types/graph';
+import { GraphResponse, ObservatoryTarget } from '@/types/graph';
 import { RAGStatusResponse } from '@/types/rag';
 import stellaStudiolum from '@/assets/plates/stella-studiolum.jpg';
 
 interface HyadesStellaProps {
   workspaceId: string;
   initialQuery?: string;
-  onNavigateToObservatory?: () => void;
+  onNavigateToObservatory?: (target?: ObservatoryTarget) => void;
   onNavigateToLibrary?: () => void;
   environmentIndex?: number;
 }
@@ -720,7 +720,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                 {onNavigateToObservatory && (
                   <button
                     type="button"
-                    onClick={onNavigateToObservatory}
+                    onClick={() => onNavigateToObservatory()}
                     className="px-2.5 py-1 rounded-md bg-[var(--bg-panel)] hover:bg-white border border-[var(--border-strong)] text-xs text-[var(--ink-secondary)] hover:text-[var(--accent-midnight)] transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
                   >
                     <i className="ph ph-compass text-xs text-[var(--accent-terracotta)]" />
@@ -839,7 +839,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                                     <button
                                       key={c}
                                       type="button"
-                                      onClick={() => onNavigateToObservatory && onNavigateToObservatory()}
+                                      onClick={() => onNavigateToObservatory && onNavigateToObservatory({ entityName: c })}
                                       className="concept-chip cursor-pointer"
                                       title={`View ${c} in Observatory`}
                                     >
@@ -870,7 +870,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                             {onNavigateToObservatory && (
                               <button
                                 type="button"
-                                onClick={onNavigateToObservatory}
+                                onClick={() => onNavigateToObservatory()}
                                 className="px-2.5 py-1 rounded-md bg-[var(--accent-midnight)] text-white hover:bg-[var(--accent-midnight-light)] text-[11.5px] font-medium transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
                               >
                                 <span>Observatory</span>

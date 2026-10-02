@@ -5,7 +5,7 @@ import { listClusters } from '@/api/clusters';
 import { getWorkspaceGraph } from '@/api/graph';
 import { DashboardStats } from '@/types/dashboard';
 import { Note } from '@/types/note';
-import { GraphClusterSummary, GraphResponse } from '@/types/graph';
+import { GraphClusterSummary, GraphResponse, ObservatoryTarget } from '@/types/graph';
 import classicalElevation from '@/assets/plates/classical-elevation.jpg';
 import classicalAtrium from '@/assets/plates/classical-atrium.jpg';
 import classicalColonnade from '@/assets/plates/classical-colonnade.jpg';
@@ -13,6 +13,7 @@ import classicalColonnade from '@/assets/plates/classical-colonnade.jpg';
 interface HyadesOverviewProps {
   workspaceId: string;
   onNavigateToDestination: (dest: 'overview' | 'library' | 'observatory' | 'stella') => void;
+  onNavigateToObservatory?: (target?: ObservatoryTarget) => void;
   onNavigateToNote?: (noteId: string) => void;
   environmentIndex?: number;
 }
@@ -22,6 +23,7 @@ const PLATES = [classicalElevation, classicalAtrium, classicalColonnade];
 export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
   workspaceId,
   onNavigateToDestination,
+  onNavigateToObservatory,
   onNavigateToNote,
   environmentIndex = 0,
 }) => {
@@ -453,7 +455,14 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                       {/* Real Concept 1 */}
                       <g
                         className="cursor-pointer group"
-                        onClick={() => onNavigateToDestination('observatory')}
+                        onClick={() => {
+                          const n = graphData?.nodes?.[0];
+                          if (n && onNavigateToObservatory) {
+                            onNavigateToObservatory({ entityId: n.id, entityName: n.name });
+                          } else {
+                            onNavigateToDestination('observatory');
+                          }
+                        }}
                       >
                         <circle cx="120" cy="100" r="14" fill="var(--accent-terracotta-soft)" className="pulse-dot" />
                         <circle cx="120" cy="100" r="6" fill="var(--accent-terracotta)" />
@@ -464,7 +473,17 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
 
                       {/* Real Concept 2 */}
                       {graphData?.nodes?.[1] && (
-                        <g className="cursor-pointer group" onClick={() => onNavigateToDestination('observatory')}>
+                        <g
+                          className="cursor-pointer group"
+                          onClick={() => {
+                            const n = graphData.nodes[1];
+                            if (onNavigateToObservatory) {
+                              onNavigateToObservatory({ entityId: n.id, entityName: n.name });
+                            } else {
+                              onNavigateToDestination('observatory');
+                            }
+                          }}
+                        >
                           <circle cx="170" cy="55" r="4.5" fill="var(--accent-midnight)" />
                           <text x="172" y="48" fontFamily="Inter, sans-serif" fontSize="8" fill="var(--ink-secondary)">
                             {graphData.nodes[1].name.slice(0, 12)}
@@ -474,7 +493,17 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
 
                       {/* Real Concept 3 */}
                       {graphData?.nodes?.[2] && (
-                        <g className="cursor-pointer group" onClick={() => onNavigateToDestination('observatory')}>
+                        <g
+                          className="cursor-pointer group"
+                          onClick={() => {
+                            const n = graphData.nodes[2];
+                            if (onNavigateToObservatory) {
+                              onNavigateToObservatory({ entityId: n.id, entityName: n.name });
+                            } else {
+                              onNavigateToDestination('observatory');
+                            }
+                          }}
+                        >
                           <circle cx="65" cy="140" r="5" fill="var(--accent-midnight)" />
                           <text x="65" y="156" fontFamily="Inter, sans-serif" fontSize="8" fill="var(--ink-secondary)" textAnchor="middle">
                             {graphData.nodes[2].name.slice(0, 12)}
@@ -484,7 +513,17 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
 
                       {/* Real Concept 4 */}
                       {graphData?.nodes?.[3] && (
-                        <g className="cursor-pointer group" onClick={() => onNavigateToDestination('observatory')}>
+                        <g
+                          className="cursor-pointer group"
+                          onClick={() => {
+                            const n = graphData.nodes[3];
+                            if (onNavigateToObservatory) {
+                              onNavigateToObservatory({ entityId: n.id, entityName: n.name });
+                            } else {
+                              onNavigateToDestination('observatory');
+                            }
+                          }}
+                        >
                           <circle cx="180" cy="120" r="4" fill="var(--accent-brass)" />
                           <text x="184" y="132" fontFamily="Inter, sans-serif" fontSize="8" fill="var(--accent-terracotta)">
                             {graphData.nodes[3].name.slice(0, 12)}

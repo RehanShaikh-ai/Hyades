@@ -9,12 +9,13 @@ import { Source } from '@/types/source';
 import { ClusterResponse } from '@/types/cluster';
 import libraryScriptorium from '@/assets/plates/library-scriptorium.jpg';
 import libraryCatalogFolio from '@/assets/plates/library-catalog-folio.jpg';
+import { ObservatoryTarget } from '@/types/graph';
 
 interface HyadesLibraryProps {
   workspaceId: string;
   userId?: string;
   initialNoteId?: string;
-  onNavigateToObservatory?: () => void;
+  onNavigateToObservatory?: (target?: ObservatoryTarget) => void;
   onNavigateToStella?: (context?: string) => void;
   environmentIndex?: number;
 }
@@ -1022,8 +1023,15 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                     </span>
                     <button
                       type="button"
-                      onClick={() => onNavigateToObservatory && onNavigateToObservatory()}
-                      className="text-[11px] text-[var(--accent-terracotta)] hover:underline flex items-center gap-1 font-medium"
+                      onClick={() =>
+                        onNavigateToObservatory &&
+                        onNavigateToObservatory({
+                          noteId: selectedItem.id,
+                          sourceId: (selectedItem as any).source_id || selectedItem.id,
+                          entityName: selectedItem.title,
+                        })
+                      }
+                      className="text-[11px] text-[var(--accent-terracotta)] hover:underline flex items-center gap-1 font-medium cursor-pointer"
                     >
                       <span>View in Sky</span>
                       <i className="ph ph-arrow-up-right text-xs" />
@@ -1031,20 +1039,24 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                   </div>
 
                   <div className="flex flex-wrap gap-1.5">
-                    <span className="px-2 py-1 rounded bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-xs text-[var(--accent-midnight)] font-medium">
-                      Vector Quantization
-                    </span>
-                    <span className="px-2 py-1 rounded bg-[var(--accent-terracotta-soft)] border border-[var(--accent-terracotta-soft)] text-xs text-[var(--accent-terracotta)] font-medium">
-                      Cosine Similarity
-                    </span>
-                    <span className="px-2 py-1 rounded bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-xs text-[var(--accent-midnight)] font-medium">
-                      Dense Embeddings
-                    </span>
-                    <span className="px-2 py-1 rounded bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-xs text-[var(--ink-primary)] font-medium">
-                      Hallucination Bounds
-                    </span>
+                    {['Vector Quantization', 'Cosine Similarity', 'Dense Embeddings', 'Hallucination Bounds'].map(
+                      (concept) => (
+                        <button
+                          key={concept}
+                          type="button"
+                          onClick={() =>
+                            onNavigateToObservatory &&
+                            onNavigateToObservatory({ entityName: concept })
+                          }
+                          className="px-2 py-1 rounded bg-[var(--bg-panel-subtle)] hover:bg-[var(--accent-terracotta-soft)] hover:text-[var(--accent-terracotta)] border border-[var(--border-parchment)] text-xs text-[var(--accent-midnight)] font-medium transition-colors cursor-pointer"
+                          title={`Locate "${concept}" in Observatory`}
+                        >
+                          {concept}
+                        </button>
+                      )
+                    )}
                     <span className="px-2 py-1 rounded bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-xs text-[var(--ink-tertiary)]">
-                      +{selectedItem.conceptCount - 4} more
+                      +{Math.max(0, selectedItem.conceptCount - 4)} more
                     </span>
                   </div>
                 </div>
@@ -1079,7 +1091,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                   <button
                     type="button"
                     onClick={() => handleOpenEditNote(selectedItem)}
-                    className="w-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-colors py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-2 shadow-2xs"
+                    className="w-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-colors py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
                   >
                     <i className="ph ph-book-open" />
                     <span>{selectedItem.type === 'note' ? 'Edit Note in Scriptorium' : 'Open Document Reader'}</span>
@@ -1090,7 +1102,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                       type="button"
                       onClick={handleTriggerMaterialExtract}
                       disabled={isExtracting}
-                      className="py-1.5 px-2.5 border border-[var(--border-strong)] bg-white hover:bg-[var(--bg-panel-subtle)] rounded-lg text-xs font-medium text-[var(--ink-primary)] flex items-center justify-center gap-1.5 transition-colors shadow-2xs group"
+                      className="py-1.5 px-2.5 border border-[var(--border-strong)] bg-white hover:bg-[var(--bg-panel-subtle)] rounded-lg text-xs font-medium text-[var(--ink-primary)] flex items-center justify-center gap-1.5 transition-colors shadow-2xs group cursor-pointer"
                       title="Extract concepts & entities from document"
                     >
                       <i className="ph ph-sparkle text-xs text-[var(--accent-terracotta)] group-hover:scale-110 transition-transform" />
@@ -1099,8 +1111,15 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => onNavigateToObservatory && onNavigateToObservatory()}
-                      className="py-1.5 px-2.5 border border-[var(--border-strong)] bg-white hover:bg-[var(--bg-panel-subtle)] rounded-lg text-xs font-medium text-[var(--ink-primary)] flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                      onClick={() =>
+                        onNavigateToObservatory &&
+                        onNavigateToObservatory({
+                          noteId: selectedItem.id,
+                          sourceId: (selectedItem as any).source_id || selectedItem.id,
+                          entityName: selectedItem.title,
+                        })
+                      }
+                      className="py-1.5 px-2.5 border border-[var(--border-strong)] bg-white hover:bg-[var(--bg-panel-subtle)] rounded-lg text-xs font-medium text-[var(--ink-primary)] flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                     >
                       <i className="ph ph-compass text-xs text-[var(--accent-brass)]" />
                       <span>Locate in Sky ↗</span>
