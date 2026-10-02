@@ -229,4 +229,52 @@ describe('HyadesObservatory Spatial Navigation & Search', () => {
       expect(screen.getAllByText('Chunking Strategies').length).toBeGreaterThan(0);
     });
   });
+
+  it('allows expanding and collapsing the orientation minimap chart inset', async () => {
+    render(<HyadesObservatory workspaceId="ws-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Chart Inset')).toBeInTheDocument();
+    });
+
+    const expandBtn = screen.getByTitle('Expand astronomical chart inset');
+    fireEvent.click(expandBtn);
+
+    // Should now show expanded astronomical chart title and instructions
+    expect(screen.getByText('Astronomical Sky Chart')).toBeInTheDocument();
+    expect(screen.getByText('Click region to pan camera')).toBeInTheDocument();
+
+    // Press Escape to collapse
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByText('Chart Inset')).toBeInTheDocument();
+    expect(screen.queryByText('Astronomical Sky Chart')).not.toBeInTheDocument();
+  });
+
+  it('closes open dialogs on Escape key first before clearing selection', async () => {
+    render(
+      <HyadesObservatory
+        workspaceId="ws-1"
+        initialTarget={{ entityId: 'n1', entityName: 'Chunking Strategies' }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Chart Inset')).toBeInTheDocument();
+      expect(screen.getByText('Knowledge Metrics')).toBeInTheDocument();
+    });
+
+    // Open Add Entity dialog via shortcut 'A'
+    fireEvent.keyDown(window, { key: 'a' });
+    expect(screen.getByTestId('entity-editor-modal')).toBeInTheDocument();
+
+    // Press Escape -> should close Entity Editor modal first
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('entity-editor-modal')).not.toBeInTheDocument();
+    // Selection and dossier should STILL be present!
+    expect(screen.getByText('Knowledge Metrics')).toBeInTheDocument();
+
+    // Press Escape again with no dialog open -> should clear selection
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByText('Knowledge Metrics')).not.toBeInTheDocument();
+  });
 });

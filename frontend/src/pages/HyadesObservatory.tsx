@@ -26,6 +26,8 @@ export interface CelestialNode extends d3.SimulationNodeDatum {
   id: string;
   label: string;
   catalog: string;
+  clusterKey: string;
+  clusterId?: string;
   group: number;
   type: 'hub' | 'concept' | 'entity';
   hierarchy: 'core' | 'subtopic' | 'related';
@@ -129,6 +131,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   const [showAtlasPlate, setShowAtlasPlate] = useState(true);
   const [showGraticule, setShowGraticule] = useState(true);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [isMinimapExpanded, setIsMinimapExpanded] = useState(false);
 
   // Dialogs / Panels
   const [isEntityEditorOpen, setIsEntityEditorOpen] = useState(false);
@@ -201,14 +204,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       clusterMap[c.id] = (idx % 6) + 1;
     });
 
-    // 1. Determine graph hierarchy from degrees and connectivity
-    let maxDegree = 1;
-    graphData.nodes.forEach((n) => {
-      const d = n.degree || 0;
-      if (d > maxDegree) maxDegree = d;
-    });
-
-    // Build adjacency map for BFS depth calculation (§1)
+    // 1. Build adjacency map for graph traversal and depth
     const adj = new Map<string, Set<string>>();
     graphData.nodes.forEach((n) => adj.set(n.id, new Set()));
     graphData.edges.forEach((e) => {
@@ -216,53 +212,99 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       adj.get(e.target_entity_id)?.add(e.source_entity_id);
     });
 
-    // 1. Sort nodes descending by degree to identify rare, dominant Core concepts
-    const sortedByDegree = [...graphData.nodes].sort(
-      (a, b) => (b.degree || 0) - (a.degree || 0)
-    );
+    // 2. Discover connected components via BFS
+    const visited = new Set<string>();
+    const nodeComponent = new Map<string, number>();
+    let compCounter = 0;
 
-    const coreNodeIds = new Set<string>();
-    if (sortedByDegree.length > 0 && (sortedByDegree[0].degree || 0) > 0) {
-      coreNodeIds.add(sortedByDegree[0].id);
-      // Secondary Core ONLY if graph is substantial and 2nd node is a distinct high-degree center
-      if (
-        sortedByDegree.length >= 6 &&
-        (sortedByDegree[1]?.degree || 0) >= 3 &&
-        (sortedByDegree[1]?.degree || 0) >= Math.floor(maxDegree * 0.8) &&
-        sortedByDegree[1]?.cluster_id !== sortedByDegree[0]?.cluster_id
-      ) {
-        coreNodeIds.add(sortedByDegree[1].id);
+    graphData.nodes.forEach((node) => {
+      if (!visited.has(node.id)) {
+        compCounter++;
+        const queue = [node.id];
+        visited.add(node.id);
+        while (queue.length > 0) {
+          const curr = queue.shift()!;
+          nodeComponent.set(curr, compCounter);
+          const neighbors = adj.get(curr) || new Set();
+          neighbors.forEach((nbr) => {
+            if (!visited.has(nbr)) {
+              visited.add(nbr);
+              queue.push(nbr);
+            }
+          });
+        }
       }
-    }
-
-    // 2. Breadth-First Search (BFS) to determine graph depth from Core concepts
-    const depthMap = new Map<string, number>();
-    const queue: string[] = [];
-    coreNodeIds.forEach((id) => {
-      depthMap.set(id, 0);
-      queue.push(id);
     });
 
-    while (queue.length > 0) {
-      const curr = queue.shift()!;
-      const d = depthMap.get(curr)!;
-      const neighbors = adj.get(curr) || new Set();
-      neighbors.forEach((nbr) => {
-        if (!depthMap.has(nbr)) {
-          depthMap.set(nbr, d + 1);
-          queue.push(nbr);
-        }
-      });
-    }
+    // 3. Cluster identification: use explicit cluster_id if available, otherwise component id
+    const clusterNodesMap = new Map<string, GraphNodeResponse[]>();
+    graphData.nodes.forEach((node) => {
+      const cKey = node.cluster_id || `comp_${nodeComponent.get(node.id) || 1}`;
+      const list = clusterNodesMap.get(cKey) || [];
+      list.push(node);
+      clusterNodesMap.set(cKey, list);
+    });
 
-    // 3. Subtopics: strictly depth === 1 from Core AND degree >= 2 (restrained secondary concepts)
-    // All other nodes (depth >= 2, leaf nodes with degree 1, disconnected nodes) are 'related'
-    const directToCore = sortedByDegree.filter(
-      (n) => depthMap.get(n.id) === 1 && (n.degree || 0) >= 2
-    );
-    const subtopicNodeIds = new Set<string>(
-      directToCore.slice(0, 5).map((n) => n.id)
-    );
+    // 4. Structural Hierarchy Derivation:
+    // Core (Level 1): The highest-degree/central concept in each meaningful cluster (size >= 3).
+    // Subtopics (Level 2): Meaningful second-level concepts (connected to Core with degree >= 2, or secondary hubs with degree >= 3).
+    // Related (Level 3): Satellite / leaf / peripheral concepts.
+    const coreNodeIds = new Set<string>();
+    const subtopicNodeIds = new Set<string>();
+
+    clusterNodesMap.forEach((cNodes) => {
+      if (cNodes.length >= 3) {
+        // Sort cluster nodes by degree (descending), then note_count
+        const sorted = [...cNodes].sort(
+          (a, b) =>
+            (b.degree || 0) * 10 +
+            (b.note_count || 0) -
+            ((a.degree || 0) * 10 + (a.note_count || 0))
+        );
+
+        // Top node is Core
+        const primaryCore = sorted[0];
+        if ((primaryCore.degree || 0) > 0 || cNodes.length >= 4) {
+          coreNodeIds.add(primaryCore.id);
+        }
+
+        // Secondary Core ONLY if cluster is large (>= 10 nodes) and second node is a distinct major hub
+        if (
+          sorted.length >= 10 &&
+          (sorted[1]?.degree || 0) >= 4 &&
+          sorted[1].id !== primaryCore.id
+        ) {
+          coreNodeIds.add(sorted[1].id);
+        }
+
+        // Identify Subtopics in this cluster
+        sorted.forEach((n) => {
+          if (coreNodeIds.has(n.id)) return;
+          const deg = n.degree || 0;
+          const isDirectToCore =
+            adj.get(primaryCore.id)?.has(n.id) ||
+            (sorted[1] && coreNodeIds.has(sorted[1].id) && adj.get(sorted[1].id)?.has(n.id));
+
+          // Subtopic: directly connected to Core with degree >= 2, OR an internal hub with degree >= 3
+          if ((isDirectToCore && deg >= 2) || deg >= 3) {
+            subtopicNodeIds.add(n.id);
+          }
+        });
+      } else if (cNodes.length === 2) {
+        // Simple pair: one subtopic, one related
+        const sorted = [...cNodes].sort((a, b) => (b.degree || 0) - (a.degree || 0));
+        subtopicNodeIds.add(sorted[0].id);
+      }
+    });
+
+    // Fallback: If graph has nodes but no core was picked, pick top node as Core
+    if (coreNodeIds.size === 0 && graphData.nodes.length > 0) {
+      const sortedAll = [...graphData.nodes].sort((a, b) => (b.degree || 0) - (a.degree || 0));
+      coreNodeIds.add(sortedAll[0].id);
+      if (sortedAll.length > 1 && (sortedAll[1].degree || 0) >= 2) {
+        subtopicNodeIds.add(sortedAll[1].id);
+      }
+    }
 
     // Initialize or load position cache from localStorage if needed (§4, §5)
     if (nodePositionsRef.current.size === 0 && workspaceId) {
@@ -313,13 +355,20 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
       // Restore cached layout coordinates if available
       const cached = nodePositionsRef.current.get(n.id);
+      const clusterKey = n.cluster_id || `comp_${nodeComponent.get(n.id) || 1}`;
+      const groupNum =
+        n.cluster_id && clusterMap[n.cluster_id]
+          ? clusterMap[n.cluster_id]
+          : ((nodeComponent.get(n.id) || 1) % 6) + 1;
 
       return {
         id: n.id,
         label: n.name,
         catalog,
+        clusterKey,
+        clusterId: n.cluster_id || undefined,
         coords,
-        group: n.cluster_id && clusterMap[n.cluster_id] ? clusterMap[n.cluster_id] : 1,
+        group: groupNum,
         type: hierarchy === 'core' ? 'hub' : 'concept',
         hierarchy,
         size,
@@ -436,7 +485,13 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     const visibleNodes = celestialNodes.filter((n) => {
       if (!filterHubs && n.hierarchy === 'core') return false;
       if (!filterConcepts && n.hierarchy !== 'core') return false;
-      if (selectedClusterId && n.catalog !== selectedClusterId) return false;
+      if (
+        selectedClusterId &&
+        n.clusterId !== selectedClusterId &&
+        n.clusterKey !== selectedClusterId
+      ) {
+        return false;
+      }
       return true;
     });
 
@@ -515,68 +570,171 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       );
   }, [celestialNodes, filterHubs, filterConcepts, selectedClusterId]);
 
-  // Manual Untangle / Organize Graph Action with Bounded Cluster Layout (§1.B, §1.C)
+  // Manual Untangle / Organize Graph Action with Bounded Constellation Layout (§1, §2, §3, §4)
   const handleUntangle = useCallback(() => {
-    if (!simulationRef.current || !containerRef.current || celestialNodes.length === 0) return;
+    if (!containerRef.current || celestialNodes.length === 0) return;
     const width = containerRef.current.clientWidth || window.innerWidth;
     const height = containerRef.current.clientHeight || window.innerHeight;
+    const centerX = width * 0.44;
+    const centerY = height * 0.48;
 
-    // Group active nodes by cluster/sector
-    const clusterMap = new Map<number | string, CelestialNode[]>();
+    // 1. Group nodes by clusterKey
+    const clusterMap = new Map<string, CelestialNode[]>();
     celestialNodes.forEach((n) => {
-      const grp = n.catalog || n.group || 1;
-      const list = clusterMap.get(grp) || [];
+      const key = n.clusterKey || `grp_${n.group || 1}`;
+      const list = clusterMap.get(key) || [];
       list.push(n);
-      clusterMap.set(grp, list);
+      clusterMap.set(key, list);
     });
 
-    const clusterIds = Array.from(clusterMap.keys());
-    const numClusters = Math.max(1, clusterIds.length);
-    const orbitRadius = Math.min(width, height) * 0.26;
-    const clusterAnchors = new Map<number | string, { x: number; y: number }>();
+    // 2. Sort clusters by member count descending
+    const sortedClusters = Array.from(clusterMap.entries()).sort(
+      (a, b) => b[1].length - a[1].length
+    );
 
-    clusterIds.forEach((cid, idx) => {
-      const angle = (idx / numClusters) * 2 * Math.PI - Math.PI / 2;
-      clusterAnchors.set(cid, {
-        x: width * 0.44 + Math.cos(angle) * orbitRadius,
-        y: height * 0.48 + Math.sin(angle) * (orbitRadius * 0.85),
+    const numClusters = sortedClusters.length;
+    const clusterAnchors = new Map<string, { x: number; y: number }>();
+
+    // 3. Assign balanced constellation regions on canvas
+    if (numClusters === 1) {
+      clusterAnchors.set(sortedClusters[0][0], { x: centerX, y: centerY });
+    } else {
+      const orbitX = Math.min(width * 0.32, 380);
+      const orbitY = Math.min(height * 0.28, 260);
+
+      sortedClusters.forEach(([cKey], idx) => {
+        const angle = (idx / numClusters) * 2 * Math.PI - Math.PI / 2;
+        clusterAnchors.set(cKey, {
+          x: centerX + Math.cos(angle) * orbitX,
+          y: centerY + Math.sin(angle) * orbitY,
+        });
+      });
+    }
+
+    // 4. Initial deterministic constellation placement:
+    // Core at center -> Subtopics in inner orbit (r~80-105) -> Related around their subtopic (r~40-60)
+    sortedClusters.forEach(([cKey, nodes]) => {
+      const anchor = clusterAnchors.get(cKey) || { x: centerX, y: centerY };
+      const cores = nodes.filter((n) => n.hierarchy === 'core');
+      const subtopics = nodes.filter((n) => n.hierarchy === 'subtopic');
+      const related = nodes.filter((n) => n.hierarchy === 'related');
+
+      // Place Cores
+      if (cores.length === 1) {
+        cores[0].x = anchor.x;
+        cores[0].y = anchor.y;
+      } else if (cores.length > 1) {
+        cores.forEach((c, ci) => {
+          const ca = (ci / cores.length) * 2 * Math.PI;
+          c.x = anchor.x + Math.cos(ca) * 35;
+          c.y = anchor.y + Math.sin(ca) * 35;
+        });
+      }
+
+      // Place Subtopics in inner ring
+      const subtopicPos = new Map<string, { x: number; y: number; angle: number }>();
+      const subRadius = Math.min(105, Math.max(70, 35 + subtopics.length * 15));
+      subtopics.forEach((sub, si) => {
+        const sa = (si / Math.max(1, subtopics.length)) * 2 * Math.PI - Math.PI / 2;
+        const sx = anchor.x + Math.cos(sa) * subRadius;
+        const sy = anchor.y + Math.sin(sa) * (subRadius * 0.88);
+        sub.x = sx;
+        sub.y = sy;
+        subtopicPos.set(sub.id, { x: sx, y: sy, angle: sa });
+      });
+
+      // Place Related nodes around their connected Subtopic (or Core)
+      const parentToRelated = new Map<string, CelestialNode[]>();
+      related.forEach((rel) => {
+        let parentId: string | null = null;
+        for (const conn of rel.connections) {
+          if (subtopicPos.has(conn.id)) {
+            parentId = conn.id;
+            break;
+          }
+        }
+        if (!parentId && cores.length > 0) {
+          parentId = cores[0].id;
+        }
+        const key = parentId || 'cluster_outer';
+        const list = parentToRelated.get(key) || [];
+        list.push(rel);
+        parentToRelated.set(key, list);
+      });
+
+      parentToRelated.forEach((relList, parentId) => {
+        const parentSub = subtopicPos.get(parentId);
+        if (parentSub) {
+          const satRadius = Math.min(65, 40 + relList.length * 5);
+          relList.forEach((rn, ri) => {
+            const spread = (ri - (relList.length - 1) / 2) * 0.55;
+            const ra = parentSub.angle + spread;
+            rn.x = parentSub.x + Math.cos(ra) * satRadius;
+            rn.y = parentSub.y + Math.sin(ra) * satRadius;
+          });
+        } else {
+          const haloRadius = subRadius + 45;
+          relList.forEach((rn, ri) => {
+            const ha = (ri / Math.max(1, relList.length)) * 2 * Math.PI;
+            rn.x = anchor.x + Math.cos(ha) * haloRadius;
+            rn.y = anchor.y + Math.sin(ha) * (haloRadius * 0.85);
+          });
+        }
       });
     });
 
-    // Clear individual node cache so new cluster positions settle deterministically
+    // 5. Clear localStorage and cache for clean re-settling
     nodePositionsRef.current.clear();
     try {
       localStorage.removeItem(`hyades_graph_positions_${workspaceId}`);
     } catch {
-      // Ignore storage errors
+      // Ignore
     }
 
-    simulationRef.current
-      .force('center', d3.forceCenter(width * 0.44, height * 0.48))
-      .force('clusterX', d3.forceX((d: any) => clusterAnchors.get(d.catalog || d.group)?.x ?? width * 0.44).strength(0.22))
-      .force('clusterY', d3.forceY((d: any) => clusterAnchors.get(d.catalog || d.group)?.y ?? height * 0.48).strength(0.22))
-      .force('charge', d3.forceManyBody().strength(-280).distanceMax(450))
-      .force(
-        'collision',
-        d3.forceCollide().radius((d: any) => (d.size || 14) * 2.4 + 14)
-      )
-      .force(
-        'radialBound',
-        d3.forceRadial(Math.min(width, height) * 0.40, width * 0.44, height * 0.48).strength(0.08)
-      )
-      .alpha(0.4)
-      .alphaDecay(0.03)
-      .alphaTarget(0)
-      .restart();
+    // 6. Run controlled D3 force relaxation to eliminate edge overlaps without blowing apart clusters
+    if (simulationRef.current) {
+      simulationRef.current
+        .force('center', d3.forceCenter(centerX, centerY).strength(0.04))
+        .force(
+          'clusterX',
+          d3.forceX((d: any) => clusterAnchors.get(d.clusterKey || `grp_${d.group || 1}`)?.x ?? centerX).strength(0.20)
+        )
+        .force(
+          'clusterY',
+          d3.forceY((d: any) => clusterAnchors.get(d.clusterKey || `grp_${d.group || 1}`)?.y ?? centerY).strength(0.20)
+        )
+        .force(
+          'charge',
+          d3.forceManyBody().strength(-70).distanceMax(260)
+        )
+        .force(
+          'collision',
+          d3.forceCollide().radius((d: any) => (d.size || 14) * 1.5 + 16)
+        )
+        .force(
+          'radialBound',
+          d3.forceRadial(Math.min(width, height) * 0.44, centerX, centerY).strength(0.12)
+        )
+        .alpha(0.35)
+        .alphaDecay(0.035)
+        .alphaTarget(0)
+        .restart();
+    }
 
-    // After untangling, frame the newly organized graph cleanly
+    // 7. Save coordinates and fit view nicely once settled
     setTimeout(() => {
+      celestialNodes.forEach((n) => {
+        if (n.x !== undefined && n.y !== undefined) {
+          nodePositionsRef.current.set(n.id, { x: n.x, y: n.y });
+        }
+      });
+      saveStoredPositions(workspaceId, nodePositionsRef.current);
       handleFitView();
-    }, 450);
+    }, 550);
   }, [celestialNodes, workspaceId, handleFitView]);
 
-  // Keyboard Shortcuts System across Hyades Observatory (§7)
-  // Global: Esc to deselect or cancel search
+  // Keyboard Shortcuts System across Hyades Observatory (§7, §12)
+  // Global: Esc closes open dialogs first; if none open, deselects node or cancels search.
   // Observatory: A (+Entity), C (Connect), F (Fit View), Shift+F (Fullscreen), U (Untangle)
   // Protected: NEVER trigger while typing in inputs, textareas, or search boxes!
   useEffect(() => {
@@ -590,7 +748,24 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         Boolean(activeEl?.isContentEditable);
 
       if (e.key === 'Escape') {
-        if (isEntityEditorOpen || isRelationshipEditorOpen || isSuggestionsOpen) {
+        if (isEntityEditorOpen) {
+          setIsEntityEditorOpen(false);
+          return;
+        }
+        if (isRelationshipEditorOpen) {
+          setIsRelationshipEditorOpen(false);
+          return;
+        }
+        if (isSuggestionsOpen) {
+          setIsSuggestionsOpen(false);
+          return;
+        }
+        if (isMoreMenuOpen) {
+          setIsMoreMenuOpen(false);
+          return;
+        }
+        if (isMinimapExpanded) {
+          setIsMinimapExpanded(false);
           return;
         }
         if (searchQuery || isSearchFocused) {
@@ -598,6 +773,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           setIsSearchFocused(false);
           return;
         }
+        if (isInput) return;
         if (selectedNode) {
           e.preventDefault();
           setSelectedNode(null);
@@ -634,6 +810,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     isEntityEditorOpen,
     isRelationshipEditorOpen,
     isSuggestionsOpen,
+    isMoreMenuOpen,
+    isMinimapExpanded,
     searchQuery,
     isSearchFocused,
     selectedNode,
@@ -953,9 +1131,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     });
 
     // Calculate cluster anchor points in celestial orbital ring (§1.B, §1.C)
-    const clusterGroups = new Map<number | string, CelestialNode[]>();
+    const clusterGroups = new Map<string, CelestialNode[]>();
     filteredNodes.forEach((n) => {
-      const grp = n.catalog || n.group || 1;
+      const grp = n.clusterKey || `grp_${n.group || 1}`;
       const list = clusterGroups.get(grp) || [];
       list.push(n);
       clusterGroups.set(grp, list);
@@ -963,8 +1141,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
     const clusterIds = Array.from(clusterGroups.keys());
     const numClusters = Math.max(1, clusterIds.length);
-    const orbitRadius = Math.min(width, height) * 0.26;
-    const clusterAnchors = new Map<number | string, { x: number; y: number }>();
+    const orbitRadius = Math.min(width, height) * 0.28;
+    const clusterAnchors = new Map<string, { x: number; y: number }>();
 
     clusterIds.forEach((cid, idx) => {
       const angle = (idx / numClusters) * 2 * Math.PI - Math.PI / 2;
@@ -982,17 +1160,23 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         d3
           .forceLink<CelestialNode, CelestialLink>(filteredLinks)
           .id((d) => d.id)
-          .distance((d) => 100 + (1 - (d.weight || 0.8)) * 60)
-          .strength(0.32)
+          .distance((d) => 85 + (1 - (d.weight || 0.8)) * 45)
+          .strength(0.35)
       )
-      .force('clusterX', d3.forceX((d: any) => clusterAnchors.get(d.catalog || d.group)?.x ?? width * 0.44).strength(0.18))
-      .force('clusterY', d3.forceY((d: any) => clusterAnchors.get(d.catalog || d.group)?.y ?? height * 0.48).strength(0.18))
-      .force('charge', d3.forceManyBody().strength(-280).distanceMax(450))
+      .force(
+        'clusterX',
+        d3.forceX((d: any) => clusterAnchors.get(d.clusterKey || `grp_${d.group || 1}`)?.x ?? width * 0.44).strength(0.18)
+      )
+      .force(
+        'clusterY',
+        d3.forceY((d: any) => clusterAnchors.get(d.clusterKey || `grp_${d.group || 1}`)?.y ?? height * 0.48).strength(0.18)
+      )
+      .force('charge', d3.forceManyBody().strength(-80).distanceMax(260))
       .force('center', d3.forceCenter(width * 0.44, height * 0.48))
-      .force('collision', d3.forceCollide().radius((d: any) => (d.size || 14) * 2.2 + 12))
+      .force('collision', d3.forceCollide().radius((d: any) => (d.size || 14) * 1.5 + 14))
       .force(
         'radialBound',
-        d3.forceRadial(Math.min(width, height) * 0.42, width * 0.44, height * 0.48).strength(0.06)
+        d3.forceRadial(Math.min(width, height) * 0.42, width * 0.44, height * 0.48).strength(0.08)
       )
       .alphaDecay(0.04); // Cooldown fast (~70 ticks)
 
@@ -1385,12 +1569,20 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     }
   };
 
-  // Miniature Orientation Map calculations (§1.E)
+  // Miniature Orientation Map calculations (§1.E, §8)
   const miniMapData = useMemo(() => {
-    const W = 126;
-    const H = 74;
+    const W = isMinimapExpanded ? 340 : 126;
+    const H = isMinimapExpanded ? 210 : 74;
 
-    const positions: Array<{ id: string; x: number; y: number; hierarchy: string; isSelected: boolean }> = [];
+    const positions: Array<{
+      id: string;
+      x: number;
+      y: number;
+      clusterKey: string;
+      hierarchy: string;
+      isSelected: boolean;
+    }> = [];
+
     celestialNodes.forEach((n) => {
       const cached = nodePositionsRef.current.get(n.id);
       const x = cached?.x ?? n.x;
@@ -1400,6 +1592,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           id: n.id,
           x,
           y,
+          clusterKey: n.clusterKey,
           hierarchy: n.hierarchy,
           isSelected: selectedNode?.id === n.id,
         });
@@ -1407,7 +1600,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     });
 
     if (positions.length === 0) {
-      return { nodes: [], viewport: null, bounds: null };
+      return { nodes: [], viewport: null, bounds: null, clusters: [], selectedPoint: null };
     }
 
     let minX = Infinity;
@@ -1439,7 +1632,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           : p.hierarchy === 'subtopic'
           ? '#C08D38'
           : '#645A50';
-      const r = p.isSelected ? 3.0 : p.hierarchy === 'core' ? 2.5 : p.hierarchy === 'subtopic' ? 1.8 : 1.2;
+      const baseR = p.hierarchy === 'core' ? 2.5 : p.hierarchy === 'subtopic' ? 1.8 : 1.2;
+      const r = (p.isSelected ? baseR * 1.5 : baseR) * (isMinimapExpanded ? 1.4 : 1.0);
       const opacity = p.isSelected ? 1.0 : p.hierarchy === 'core' ? 0.95 : 0.75;
       return { id: p.id, mx, my, r, color, opacity };
     });
@@ -1461,12 +1655,37 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     const vw = Math.min(W - vx, Math.max(8, ((visibleRight - visibleLeft) / spanX) * W));
     const vh = Math.min(H - vy, Math.max(6, ((visibleBottom - visibleTop) / spanY) * H));
 
+    // Compute cluster centroids for expanded mode
+    const clusterCentroids: Array<{ key: string; label: string; cx: number; cy: number }> = [];
+    if (isMinimapExpanded) {
+      const clusterPoints = new Map<string, Array<{ mx: number; my: number }>>();
+      positions.forEach((p) => {
+        const list = clusterPoints.get(p.clusterKey) || [];
+        list.push({ mx: ((p.x - graphMinX) / spanX) * W, my: ((p.y - graphMinY) / spanY) * H });
+        clusterPoints.set(p.clusterKey, list);
+      });
+
+      clusterPoints.forEach((pts, key) => {
+        if (pts.length >= 2) {
+          const avgX = pts.reduce((a, b) => a + b.mx, 0) / pts.length;
+          const avgY = pts.reduce((a, b) => a + b.my, 0) / pts.length;
+          const matched = clusters.find((c) => c.id === key);
+          const label = matched?.label || key.replace(/^comp_/, 'Sector ');
+          clusterCentroids.push({ key, label, cx: avgX, cy: avgY });
+        }
+      });
+    }
+
+    const selectedPoint = mappedNodes.find((n) => n.id === selectedNode?.id) || null;
+
     return {
       nodes: mappedNodes,
       viewport: { x: vx, y: vy, w: vw, h: vh },
       bounds: { graphMinX, spanX, graphMinY, spanY },
+      clusters: clusterCentroids,
+      selectedPoint,
     };
-  }, [celestialNodes, selectedNode, currentTransform]);
+  }, [celestialNodes, selectedNode, currentTransform, isMinimapExpanded, clusters]);
 
   const handleMiniMapClick = useCallback(
     (clickX: number, clickY: number, width: number, height: number) => {
@@ -2276,7 +2495,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         </aside>
       )}
 
-      {/* ================= ASTRONOMICAL ORIENTATION AID (MINI CHART INSET) (§1.E) ================= */}
+      {/* ================= ASTRONOMICAL ORIENTATION AID (MINI CHART INSET) (§1.E, §8) ================= */}
       {celestialNodes.length > 0 && (
         <div
           id="celestial-orientation-inset"
@@ -2284,28 +2503,89 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             isLeftSidebarOpen ? 'left-[304px]' : 'left-6'
           }`}
         >
-          <div className="instrument-panel bg-[#FAF8F2]/95 backdrop-blur-md border border-[var(--border-strong)] rounded-xl p-2 shadow-sm flex flex-col gap-1.5 w-[142px]">
-            <div className="flex items-center justify-between text-[9px] mono uppercase tracking-[0.16em] text-[var(--ink-tertiary)]">
-              <span className="flex items-center gap-1">
-                <i className="ph ph-compass text-[var(--accent-midnight)]" />
-                Chart Inset
+          <div
+            className={`instrument-panel bg-[#FAF8F2]/95 backdrop-blur-md border border-[var(--border-strong)] rounded-xl p-3 shadow-md flex flex-col gap-2 transition-all duration-300 ${
+              isMinimapExpanded ? 'w-[364px]' : 'w-[146px]'
+            }`}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between text-[10px] mono uppercase tracking-[0.14em] text-[var(--ink-secondary)]">
+              <span className="flex items-center gap-1.5 font-semibold">
+                <i className="ph ph-compass text-[var(--accent-midnight)] text-xs" />
+                {isMinimapExpanded ? 'Astronomical Sky Chart' : 'Chart Inset'}
               </span>
-              <span className="text-[8px] opacity-75">{celestialNodes.length}★</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] text-[var(--ink-tertiary)] mono">
+                  {celestialNodes.length}★
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsMinimapExpanded((prev) => !prev)}
+                  className="p-1 rounded hover:bg-[var(--bg-panel-subtle)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
+                  title={isMinimapExpanded ? 'Collapse chart inset' : 'Expand astronomical chart inset'}
+                >
+                  <i className={`ph ${isMinimapExpanded ? 'ph-arrows-in-simple' : 'ph-arrows-out-simple'} text-xs`} />
+                </button>
+              </div>
             </div>
 
+            {isMinimapExpanded && (
+              <div className="text-[10px] text-[var(--ink-tertiary)] flex items-center justify-between -mt-1 pb-1 border-b border-[var(--border-parchment)]">
+                <span>Click region to pan camera</span>
+                <span className="mono">Esc to close</span>
+              </div>
+            )}
+
             <svg
-              className="w-full h-[74px] rounded border border-[var(--border-parchment)] bg-[#F5F2E9]/60 cursor-crosshair"
-              viewBox="0 0 126 74"
+              className={`w-full rounded border border-[var(--border-parchment)] bg-[#F5F2E9]/70 cursor-crosshair transition-all duration-300 ${
+                isMinimapExpanded ? 'h-[210px]' : 'h-[74px]'
+              }`}
+              viewBox={`0 0 ${isMinimapExpanded ? 340 : 126} ${isMinimapExpanded ? 210 : 74}`}
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 const clickX = e.clientX - rect.left;
                 const clickY = e.clientY - rect.top;
-                handleMiniMapClick(clickX, clickY, 126, 74);
+                handleMiniMapClick(
+                  clickX,
+                  clickY,
+                  isMinimapExpanded ? 340 : 126,
+                  isMinimapExpanded ? 210 : 74
+                );
               }}
             >
-              {/* Subtle astronomical grid rings */}
-              <circle cx="63" cy="37" r="30" fill="none" stroke="#4A3E3D" strokeOpacity="0.08" strokeDasharray="2,2" />
-              <circle cx="63" cy="37" r="16" fill="none" stroke="#4A3E3D" strokeOpacity="0.08" strokeDasharray="2,2" />
+              {/* Subtle astronomical grid graticules */}
+              {isMinimapExpanded ? (
+                <>
+                  <circle cx="170" cy="105" r="95" fill="none" stroke="#4A3E3D" strokeOpacity="0.08" strokeDasharray="3,3" />
+                  <circle cx="170" cy="105" r="55" fill="none" stroke="#4A3E3D" strokeOpacity="0.08" strokeDasharray="3,3" />
+                  <line x1="170" y1="10" x2="170" y2="200" stroke="#4A3E3D" strokeOpacity="0.06" strokeDasharray="2,2" />
+                  <line x1="15" y1="105" x2="325" y2="105" stroke="#4A3E3D" strokeOpacity="0.06" strokeDasharray="2,2" />
+                </>
+              ) : (
+                <>
+                  <circle cx="63" cy="37" r="30" fill="none" stroke="#4A3E3D" strokeOpacity="0.08" strokeDasharray="2,2" />
+                  <circle cx="63" cy="37" r="16" fill="none" stroke="#4A3E3D" strokeOpacity="0.08" strokeDasharray="2,2" />
+                </>
+              )}
+
+              {/* Cluster Labels in Expanded Mode */}
+              {isMinimapExpanded &&
+                miniMapData.clusters.map((c) => (
+                  <text
+                    key={c.key}
+                    x={c.cx}
+                    y={c.cy - 12}
+                    textAnchor="middle"
+                    fontFamily="Inter, sans-serif"
+                    fontSize="8.5px"
+                    fontWeight="600"
+                    fill="var(--ink-secondary)"
+                    opacity="0.85"
+                    className="pointer-events-none uppercase tracking-wider"
+                  >
+                    {c.label.length > 18 ? c.label.slice(0, 16) + '...' : c.label}
+                  </text>
+                ))}
 
               {/* Plotted miniature nodes */}
               {miniMapData.nodes.map((n) => (
@@ -2319,6 +2599,36 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                 />
               ))}
 
+              {/* Selected Entity Reticle Crosshairs */}
+              {miniMapData.selectedPoint && (
+                <g className="pointer-events-none">
+                  <circle
+                    cx={miniMapData.selectedPoint.mx}
+                    cy={miniMapData.selectedPoint.my}
+                    r={isMinimapExpanded ? 7 : 4.5}
+                    fill="none"
+                    stroke="#BD532B"
+                    strokeWidth="1.2"
+                  />
+                  <line
+                    x1={miniMapData.selectedPoint.mx - (isMinimapExpanded ? 11 : 7)}
+                    y1={miniMapData.selectedPoint.my}
+                    x2={miniMapData.selectedPoint.mx + (isMinimapExpanded ? 11 : 7)}
+                    y2={miniMapData.selectedPoint.my}
+                    stroke="#BD532B"
+                    strokeWidth="1"
+                  />
+                  <line
+                    x1={miniMapData.selectedPoint.mx}
+                    y1={miniMapData.selectedPoint.my - (isMinimapExpanded ? 11 : 7)}
+                    x2={miniMapData.selectedPoint.mx}
+                    y2={miniMapData.selectedPoint.my + (isMinimapExpanded ? 11 : 7)}
+                    stroke="#BD532B"
+                    strokeWidth="1"
+                  />
+                </g>
+              )}
+
               {/* Viewport Boundary Frame */}
               {miniMapData.viewport && (
                 <rect
@@ -2328,8 +2638,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                   height={miniMapData.viewport.h}
                   fill="rgba(189, 83, 43, 0.08)"
                   stroke="#BD532B"
-                  strokeWidth="0.85"
-                  strokeDasharray="2,1.5"
+                  strokeWidth={isMinimapExpanded ? '1.2' : '0.85'}
+                  strokeDasharray="3,2"
                   rx="1"
                 />
               )}
