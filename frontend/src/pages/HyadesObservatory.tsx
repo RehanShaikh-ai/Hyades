@@ -819,29 +819,20 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     // 6. Run controlled D3 force relaxation to eliminate edge overlaps without blowing apart clusters
     if (simulationRef.current) {
       simulationRef.current
-        .force('center', d3.forceCenter(centerX, centerY).strength(0.04))
         .force(
           'clusterX',
-          d3.forceX((d: any) => clusterAnchors.get(d.clusterKey || `grp_${d.group || 1}`)?.x ?? centerX).strength(0.20)
+          d3.forceX((d: any) => clusterAnchors.get(d.clusterKey || `grp_${d.group || 1}`)?.x ?? centerX).strength(0.40)
         )
         .force(
           'clusterY',
-          d3.forceY((d: any) => clusterAnchors.get(d.clusterKey || `grp_${d.group || 1}`)?.y ?? centerY).strength(0.20)
+          d3.forceY((d: any) => clusterAnchors.get(d.clusterKey || `grp_${d.group || 1}`)?.y ?? centerY).strength(0.40)
         )
-        .force(
-          'charge',
-          d3.forceManyBody().strength(-70).distanceMax(260)
-        )
-        .force(
-          'collision',
-          d3.forceCollide().radius((d: any) => (d.size || 14) * 1.5 + 16)
-        )
-        .force(
-          'radialBound',
-          d3.forceRadial(Math.min(width, height) * 0.44, centerX, centerY).strength(0.12)
-        )
-        .alpha(0.35)
-        .alphaDecay(0.035)
+        .force('charge', d3.forceManyBody().strength(-60).distanceMax(180))
+        .force('collision', d3.forceCollide().radius((d: any) => (d.size || 14) * 1.5 + 12))
+        .force('center', d3.forceCenter(centerX, centerY).strength(0.01))
+        .force('radialBound', null)
+        .alpha(0.3)
+        .alphaDecay(0.05)
         .alphaTarget(0)
         .restart();
     }
@@ -855,7 +846,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       });
       saveStoredPositions(workspaceId, nodePositionsRef.current);
       handleFitView();
-    }, 550);
+    }, 450);
   }, [celestialNodes, workspaceId, handleFitView]);
 
   // Keyboard Shortcuts System across Hyades Observatory (§7, §12)
@@ -1173,10 +1164,10 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           if (isSelected || isConnected) {
             // Selected node and its direct neighbors ALWAYS show label
             labelGroup.style('display', 'block');
-          } else if (k < 0.55) {
+          } else if (k < 0.75) {
             // Low zoom (overview): only core concepts show labels
             labelGroup.style('display', d.hierarchy === 'core' ? 'block' : 'none');
-          } else if (k < 0.92) {
+          } else if (k < 1.25) {
             // Mid zoom: core and subtopics show labels
             labelGroup.style('display', d.hierarchy === 'core' || d.hierarchy === 'subtopic' ? 'block' : 'none');
           } else {
@@ -1185,8 +1176,17 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           }
         });
 
+        // Level 3 markers subtle celestial dust at low zoom
+        g.selectAll<SVGGElement, CelestialNode>('.celestial-node').each(function (d) {
+          const isSelected = d.id === currentSelectedId;
+          const isConnected = currentConnectedIds.has(d.id);
+          if (d.hierarchy === 'related' && !isSelected && !isConnected) {
+            d3.select(this).style('opacity', k < 0.75 ? 0.45 : 1);
+          }
+        });
+
         // Link labels hide at lower zoom to avoid clutter
-        g.selectAll('.link-label').style('display', k < 0.8 ? 'none' : 'block');
+        g.selectAll('.link-label').style('display', k < 0.95 ? 'none' : 'block');
       });
 
     svg.call(zoom);
@@ -1267,7 +1267,11 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     const clusterIds = Array.from(clusterGroups.keys());
     const clusterAnchors = computeClusterAnchors(clusterIds, width * 0.44, height * 0.48);
 
-    // Force Simulation with cluster-aware layout and radial bounding
+    // Node lookup map for fast link cluster checking
+    const nodeLookup = new Map<string, CelestialNode>();
+    filteredNodes.forEach((n) => nodeLookup.set(n.id, n));
+
+    // Force Simulation with cluster-aware layout and separation
     const simulation = d3
       .forceSimulation<CelestialNode>(filteredNodes)
       .force(
@@ -1275,24 +1279,34 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         d3
           .forceLink<CelestialNode, CelestialLink>(filteredLinks)
           .id((d) => d.id)
-          .distance((d) => 85 + (1 - (d.weight || 0.8)) * 45)
-          .strength(0.35)
+          .distance((d: any) => {
+            const sId = typeof d.source === 'string' ? d.source : d.source.id;
+            const tId = typeof d.target === 'string' ? d.target : d.target.id;
+            const sNode = nodeLookup.get(sId);
+            const tNode = nodeLookup.get(tId);
+            const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
+            return isSame ? 55 + (1 - (d.weight || 0.8)) * 30 : 320;
+          })
+          .strength((d: any) => {
+            const sId = typeof d.source === 'string' ? d.source : d.source.id;
+            const tId = typeof d.target === 'string' ? d.target : d.target.id;
+            const sNode = nodeLookup.get(sId);
+            const tNode = nodeLookup.get(tId);
+            const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
+            return isSame ? 0.35 : 0.005;
+          })
       )
       .force(
         'clusterX',
-        d3.forceX((d: any) => clusterAnchors.get(d.clusterKey || `grp_${d.group || 1}`)?.x ?? width * 0.44).strength(0.18)
+        d3.forceX((d: any) => clusterAnchors.get(d.clusterKey || `grp_${d.group || 1}`)?.x ?? width * 0.44).strength(0.35)
       )
       .force(
         'clusterY',
-        d3.forceY((d: any) => clusterAnchors.get(d.clusterKey || `grp_${d.group || 1}`)?.y ?? height * 0.48).strength(0.18)
+        d3.forceY((d: any) => clusterAnchors.get(d.clusterKey || `grp_${d.group || 1}`)?.y ?? height * 0.48).strength(0.35)
       )
-      .force('charge', d3.forceManyBody().strength(-80).distanceMax(260))
-      .force('center', d3.forceCenter(width * 0.44, height * 0.48))
-      .force('collision', d3.forceCollide().radius((d: any) => (d.size || 14) * 1.5 + 14))
-      .force(
-        'radialBound',
-        d3.forceRadial(Math.min(width, height) * 0.42, width * 0.44, height * 0.48).strength(0.08)
-      )
+      .force('charge', d3.forceManyBody().strength(-65).distanceMax(180))
+      .force('center', d3.forceCenter(width * 0.44, height * 0.48).strength(0.01))
+      .force('collision', d3.forceCollide().radius((d: any) => (d.size || 14) * 1.5 + 12))
       .alphaDecay(0.04); // Cooldown fast (~70 ticks)
 
     if (hasEstablishedPositions) {
@@ -1301,10 +1315,6 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     }
 
     simulationRef.current = simulation;
-
-    // Node lookup map for fast link cluster checking
-    const nodeLookup = new Map<string, CelestialNode>();
-    filteredNodes.forEach((n) => nodeLookup.set(n.id, n));
 
     // Links Layer
     const linkGroup = g.append('g').attr('class', 'links-layer');
@@ -1461,11 +1471,12 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         el.append('circle').attr('r', 1.8).attr('fill', '#FAF8F2');
       }
 
-      // Elegant Astronomical Label
+      // Elegant Astronomical Label with progressive disclosure
       const textGroup = el
         .append('g')
         .attr('class', 'node-label-group pointer-events-none select-none')
-        .attr('transform', `translate(0, ${d.size + 13})`);
+        .attr('transform', `translate(0, ${d.size + 13})`)
+        .style('display', d.hierarchy === 'core' ? 'block' : 'none');
 
       textGroup
         .append('text')
@@ -2278,30 +2289,35 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
                 <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
                   {clusters.length > 0 ? (
-                    clusters.map((cl) => (
-                      <button
-                        key={cl.id}
-                        type="button"
-                        onClick={() =>
-                          setSelectedClusterId(selectedClusterId === cl.id ? null : cl.id)
-                        }
-                        className={`w-full text-left p-2 rounded-lg border transition-all flex items-center justify-between cursor-pointer ${
-                          selectedClusterId === cl.id
-                            ? 'bg-white border-[var(--accent-terracotta)] shadow-2xs'
-                            : 'hover:bg-white/80 border-transparent hover:border-[var(--border-parchment)]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          <span className="w-2 h-2 rounded-full bg-[var(--accent-midnight)]" />
-                          <span className="text-xs font-medium text-[var(--ink-primary)] truncate">
-                            {cl.label}
+                    clusters.map((cl) => {
+                      const starCount = celestialNodes.filter(
+                        (n) => n.clusterId === cl.id || n.clusterKey === cl.id
+                      ).length;
+                      return (
+                        <button
+                          key={cl.id}
+                          type="button"
+                          onClick={() =>
+                            setSelectedClusterId(selectedClusterId === cl.id ? null : cl.id)
+                          }
+                          className={`w-full text-left p-2 rounded-lg border transition-all flex items-center justify-between cursor-pointer ${
+                            selectedClusterId === cl.id
+                              ? 'bg-white border-[var(--accent-terracotta)] shadow-2xs'
+                              : 'hover:bg-white/80 border-transparent hover:border-[var(--border-parchment)]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate min-w-0 flex-1">
+                            <span className="w-2 h-2 rounded-full bg-[var(--accent-midnight)] shrink-0" />
+                            <span className="text-xs font-medium text-[var(--ink-primary)] truncate">
+                              {cl.label}
+                            </span>
+                          </div>
+                          <span className="text-[10px] mono text-[var(--ink-tertiary)] shrink-0 ml-1.5">
+                            {starCount} {starCount === 1 ? 'star' : 'stars'}
                           </span>
-                        </div>
-                        <span className="text-[10px] mono text-[var(--ink-tertiary)]">
-                          {cl.member_count} stars
-                        </span>
-                      </button>
-                    ))
+                        </button>
+                      );
+                    })
                   ) : (
                     celestialNodes.slice(0, 8).map((n) => (
                       <button
