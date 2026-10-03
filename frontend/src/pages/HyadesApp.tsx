@@ -209,7 +209,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
         {currentDestination === 'library' && (
           <HyadesLibrary
             workspaceId={effectiveWorkspaceId}
-            userId={initialUserId}
+            userId={selectedUser?.id || initialUserId || selectedWorkspace?.owner_id || users[0]?.id}
             initialNoteId={activeNoteId}
             onNavigateToObservatory={handleNavigateToObservatory}
             onNavigateToStella={handleNavigateToStella}

@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { listNotes, createNote, updateNote } from '@/api/notes';
-import { listSources } from '@/api/sources';
+import { listSources, uploadSource } from '@/api/sources';
 import { listClusters } from '@/api/clusters';
 import { triggerExtraction, triggerReindex } from '@/api/graph_index';
 import { getJobStatus } from '@/api/jobs';
+import { getUsers } from '@/api/users';
 import { Note } from '@/types/note';
 import { Source } from '@/types/source';
 import { ClusterResponse } from '@/types/cluster';
@@ -78,20 +79,35 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [isSavingNote, setIsSavingNote] = useState(false);
+  const [saveNoteError, setSaveNoteError] = useState<string | null>(null);
 
-  // Handle Escape key to close note editor dialog
+  // Source Import Modal
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [isUploadingSource, setIsUploadingSource] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Handle Escape key to close note editor or import dialogs
   useEffect(() => {
-    if (!isEditingNote) return;
+    if (!isEditingNote && !isImportModalOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        setIsEditingNote(false);
+        if (isEditingNote && !isSavingNote) {
+          setIsEditingNote(false);
+        }
+        if (isImportModalOpen && !isUploadingSource) {
+          setIsImportModalOpen(false);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [isEditingNote]);
+  }, [isEditingNote, isImportModalOpen, isSavingNote, isUploadingSource]);
 
   const activePlate = LIBRARY_PLATES[environmentIndex % LIBRARY_PLATES.length];
 
@@ -404,24 +420,129 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
     }
   };
 
+  const isValidUUID = (id?: string | null): boolean =>
+    typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+  const handleCreateNewNote = () => {
+    setEditingNoteId(null);
+    setEditTitle('');
+    setEditContent('');
+    setSaveNoteError(null);
+    setIsSavingNote(false);
+    setIsEditingNote(true);
+  };
+
   const handleOpenEditNote = (item: UnifiedItem) => {
-    setEditingNoteId(item.type === 'note' ? item.id : null);
-    setEditTitle(item.title);
-    setEditContent(item.excerpt);
+    setEditingNoteId(item.type === 'note' && item.id && !item.id.startsWith('canon-') ? item.id : null);
+    setEditTitle(item.title || '');
+    setEditContent(item.rawNote?.content || item.excerpt || '');
+    setSaveNoteError(null);
+    setIsSavingNote(false);
     setIsEditingNote(true);
   };
 
   const handleSaveNote = async () => {
+    const trimmedTitle = editTitle.trim();
+    if (!trimmedTitle) {
+      setSaveNoteError('Note title cannot be empty.');
+      return;
+    }
+
+    setIsSavingNote(true);
+    setSaveNoteError(null);
+
     try {
       if (editingNoteId && !editingNoteId.startsWith('canon-')) {
-        await updateNote(editingNoteId, { title: editTitle, content: editContent });
+        await updateNote(editingNoteId, {
+          title: trimmedTitle,
+          content: editContent,
+        });
+        setActionFeedback(`Note "${trimmedTitle}" updated successfully.`);
       } else {
-        await createNote(workspaceId, { title: editTitle, content: editContent, created_by: userId || 'user' });
+        let authorId = userId;
+        if (!isValidUUID(authorId)) {
+          try {
+            const userRes = await getUsers();
+            if (userRes.items && userRes.items.length > 0) {
+              authorId = userRes.items[0].id;
+            }
+          } catch {
+            // Handled by validation check below
+          }
+        }
+
+        if (!isValidUUID(authorId)) {
+          throw new Error('No valid user profile found to associate with this note.');
+        }
+
+        const newNote = await createNote(workspaceId, {
+          title: trimmedTitle,
+          content: editContent,
+          created_by: authorId as string,
+        });
+        setActionFeedback(`Note "${newNote.title}" saved to archive.`);
       }
+
       setIsEditingNote(false);
-      fetchData();
-    } catch {
-      setIsEditingNote(false);
+      await fetchData();
+    } catch (err: unknown) {
+      const apiErr = err as { error?: { message?: string } } | Error;
+      const msg =
+        (apiErr as { error?: { message?: string } })?.error?.message ||
+        (err instanceof Error ? err.message : 'Failed to save note');
+      setSaveNoteError(msg);
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
+
+  const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
+  const SUPPORTED_EXTENSIONS = ['.pdf', '.md', '.markdown', '.txt'];
+
+  const validateSourceFile = (file: File): string | null => {
+    const ext = `.${file.name.split('.').pop()?.toLowerCase()}`;
+    if (!SUPPORTED_EXTENSIONS.includes(ext)) {
+      return `Unsupported format (${ext}). Supported formats: PDF, Markdown (.md), and plain text (.txt).`;
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+      return `File size (${sizeMB} MB) exceeds maximum limit of 25 MB.`;
+    }
+    return null;
+  };
+
+  const handleSelectImportFile = (file: File) => {
+    setImportError(null);
+    const validationErr = validateSourceFile(file);
+    if (validationErr) {
+      setImportError(validationErr);
+      setImportFile(null);
+      return;
+    }
+    setImportFile(file);
+  };
+
+  const handleImportSource = async () => {
+    if (!importFile) return;
+
+    setIsUploadingSource(true);
+    setImportError(null);
+
+    try {
+      const uploaded = await uploadSource(workspaceId, importFile);
+      setActionFeedback(`Source "${uploaded.file_name || (uploaded as any).filename || importFile.name}" imported and queued for indexing.`);
+      setImportFile(null);
+      setIsImportModalOpen(false);
+      setActiveCategory('sources');
+      await fetchData();
+    } catch (err: unknown) {
+      const apiErr = err as { error?: { message?: string } } | Error;
+      const msg =
+        (apiErr as { error?: { message?: string } })?.error?.message ||
+        (err instanceof Error ? err.message : 'Failed to import source');
+      setImportError(msg);
+    } finally {
+      setIsUploadingSource(false);
     }
   };
 
@@ -524,24 +645,52 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
             </h1>
           </div>
 
-          {/* Quick summary stats */}
-          <div className="flex items-center gap-4 text-xs text-[var(--ink-secondary)]">
-            <div className="flex items-center gap-1.5">
-              <i className="ph ph-file-text text-sm text-[var(--accent-midnight)]" />
-              <span className="font-medium text-[var(--ink-primary)]">{sources.length}</span>
-              <span>Sources</span>
+          {/* Quick summary stats & Action Buttons */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-4 text-xs text-[var(--ink-secondary)]">
+              <div className="flex items-center gap-1.5">
+                <i className="ph ph-file-text text-sm text-[var(--accent-midnight)]" />
+                <span className="font-medium text-[var(--ink-primary)]">{sources.length}</span>
+                <span>Sources</span>
+              </div>
+              <div className="w-px h-3 bg-[var(--border-parchment)]" />
+              <div className="flex items-center gap-1.5">
+                <i className="ph ph-note-pencil text-sm text-[var(--accent-terracotta)]" />
+                <span className="font-medium text-[var(--ink-primary)]">{notes.length}</span>
+                <span>Notes</span>
+              </div>
+              <div className="w-px h-3 bg-[var(--border-parchment)]" />
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                <span>Workspace Synced</span>
+              </div>
             </div>
-            <div className="w-px h-3 bg-[var(--border-parchment)]" />
-            <div className="flex items-center gap-1.5">
-              <i className="ph ph-note-pencil text-sm text-[var(--accent-terracotta)]" />
-              <span className="font-medium text-[var(--ink-primary)]">{notes.length}</span>
-              <span>Notes</span>
-            </div>
-            <div className="w-px h-3 bg-[var(--border-parchment)]" />
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-600" />
-              <span>Workspace Synced</span>
-            </div>
+
+            <div className="hidden sm:block w-px h-4 bg-[var(--border-parchment)] mx-1" />
+
+            <button
+              type="button"
+              onClick={() => {
+                setImportFile(null);
+                setImportError(null);
+                setIsImportModalOpen(true);
+              }}
+              className="py-1.5 px-3 border border-[var(--border-strong)] bg-white hover:bg-[var(--bg-panel-subtle)] rounded-lg text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer active:scale-95"
+              title="Import PDF, Markdown, or text sources"
+            >
+              <i className="ph ph-upload-simple text-sm text-[var(--accent-midnight)]" />
+              <span>Import Sources</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCreateNewNote}
+              className="py-1.5 px-3.5 rounded-lg bg-[var(--accent-midnight)] hover:bg-[var(--accent-midnight-light)] text-[#FAF8F2] text-xs font-medium flex items-center gap-1.5 shadow-2xs cursor-pointer transition-colors active:scale-95"
+              title="Compose a new archival note"
+            >
+              <i className="ph ph-plus text-sm" />
+              <span>New Note</span>
+            </button>
           </div>
         </div>
 
@@ -819,9 +968,9 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                 </button>
               </div>
 
-              {/* In-Catalog Search & Sort */}
+              {/* In-Catalog Search, Sort & Quick Actions */}
               <div className="flex items-center gap-2 w-full sm:w-auto">
-                <div className="relative flex-1 sm:w-56">
+                <div className="relative flex-1 sm:w-52">
                   <i className="ph ph-magnifying-glass absolute left-2.5 top-2.5 text-xs text-[var(--ink-tertiary)]" />
                   <input
                     value={searchQuery}
@@ -835,10 +984,36 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsSortAsc((prev) => !prev)}
-                  className="p-2 bg-white border border-[var(--border-strong)] rounded-lg text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors shrink-0"
+                  className="p-2 bg-white border border-[var(--border-strong)] rounded-lg text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors shrink-0 cursor-pointer"
                   title="Sort items"
                 >
                   <i className="ph ph-arrows-down-up text-xs" />
+                </button>
+
+                <div className="hidden sm:block w-px h-4 bg-[var(--border-parchment)] mx-0.5" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImportFile(null);
+                    setImportError(null);
+                    setIsImportModalOpen(true);
+                  }}
+                  className="py-1.5 px-2.5 bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] rounded-lg text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                  title="Import source documents"
+                >
+                  <i className="ph ph-upload-simple text-xs text-[var(--accent-midnight)]" />
+                  <span className="hidden md:inline">Import</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCreateNewNote}
+                  className="py-1.5 px-2.5 bg-[var(--accent-midnight)] hover:bg-[var(--accent-midnight-light)] text-[#FAF8F2] rounded-lg text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer shrink-0 shadow-2xs"
+                  title="Create new note"
+                >
+                  <i className="ph ph-plus text-xs" />
+                  <span className="hidden md:inline">Note</span>
                 </button>
               </div>
             </div>
@@ -867,13 +1042,28 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                       ? 'No items match your active filter or search criteria.'
                       : 'This workspace archive is currently empty. Add notes or ingest sources to begin.'}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenEditNote({ id: '', type: 'note', format: 'Note', title: '', authorOrMeta: '', excerpt: '', topic: 'General', topicColor: '', status: '', statusColor: '', conceptCount: 0, linkCount: 0, dateStr: '' })}
-                    className="px-4 py-2 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] text-xs font-medium cursor-pointer hover:bg-[var(--accent-midnight-light)] transition-colors"
-                  >
-                    Create Note
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportFile(null);
+                        setImportError(null);
+                        setIsImportModalOpen(true);
+                      }}
+                      className="px-4 py-2 rounded-lg border border-[var(--border-strong)] bg-white text-[var(--ink-primary)] hover:bg-[var(--bg-panel-subtle)] text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 shadow-2xs"
+                    >
+                      <i className="ph ph-upload-simple text-sm text-[var(--accent-midnight)]" />
+                      <span>Import Sources</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCreateNewNote}
+                      className="px-4 py-2 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] text-xs font-medium cursor-pointer hover:bg-[var(--accent-midnight-light)] transition-colors flex items-center gap-1.5 shadow-2xs"
+                    >
+                      <i className="ph ph-plus text-sm" />
+                      <span>Create Note</span>
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div data-testid="library-ledger-scroll-container" className="flex-1 min-h-0 overflow-y-auto divide-y divide-[var(--border-parchment)]">
@@ -1188,23 +1378,40 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
       {/* Note Editor Modal */}
       {isEditingNote && (
-        <div className="fixed inset-0 z-50 bg-black/35 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="instrument-panel w-full max-w-2xl bg-white shadow-2xl p-6 rounded-2xl flex flex-col gap-4 border border-[var(--border-strong)]">
             <div className="panel-bracket-tl" />
             <div className="panel-bracket-br" />
 
             <div className="flex items-center justify-between border-b border-[var(--border-parchment)] pb-3">
               <div className="flex items-center gap-2">
-                <span className="serif text-xl font-semibold text-[var(--ink-primary)]">Scriptorium Note Editor</span>
+                <i className="ph ph-note-pencil text-lg text-[var(--accent-midnight)]" />
+                <span className="serif text-xl font-semibold text-[var(--ink-primary)]">
+                  Scriptorium Note Editor
+                </span>
+                {editingNoteId && (
+                  <span className="text-[10px] mono uppercase tracking-wider text-[var(--ink-tertiary)] bg-[var(--bg-panel-subtle)] px-2 py-0.5 rounded border border-[var(--border-parchment)]">
+                    Edit
+                  </span>
+                )}
               </div>
               <button
                 type="button"
-                onClick={() => setIsEditingNote(false)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-tertiary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] text-sm"
+                onClick={() => !isSavingNote && setIsEditingNote(false)}
+                disabled={isSavingNote}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-tertiary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] text-sm cursor-pointer disabled:opacity-50"
+                aria-label="Close modal"
               >
                 ✕
               </button>
             </div>
+
+            {saveNoteError && (
+              <div className="p-3 rounded-xl bg-amber-50/80 border border-[var(--accent-terracotta)] text-xs text-[var(--accent-terracotta)] flex items-center gap-2 animate-fade-in">
+                <i className="ph ph-warning-circle text-base shrink-0" />
+                <span>{saveNoteError}</span>
+              </div>
+            )}
 
             <div className="flex flex-col gap-3">
               <div>
@@ -1214,9 +1421,14 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                 <input
                   type="text"
                   value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full px-3 py-2 bg-[var(--bg-panel)] border border-[var(--border-strong)] rounded-lg text-sm font-medium text-[var(--ink-primary)] outline-none focus:border-[var(--accent-midnight)]"
+                  onChange={(e) => {
+                    setEditTitle(e.target.value);
+                    if (saveNoteError) setSaveNoteError(null);
+                  }}
+                  disabled={isSavingNote}
+                  className="w-full px-3 py-2 bg-[var(--bg-panel)] border border-[var(--border-strong)] rounded-lg text-sm font-medium text-[var(--ink-primary)] outline-none focus:border-[var(--accent-midnight)] disabled:opacity-60"
                   placeholder="Note Title..."
+                  autoFocus
                 />
               </div>
 
@@ -1228,7 +1440,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                   rows={8}
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
-                  className="w-full px-3 py-2 bg-[var(--bg-panel)] border border-[var(--border-strong)] rounded-lg text-sm text-[var(--ink-primary)] leading-relaxed outline-none focus:border-[var(--accent-midnight)] resize-none"
+                  disabled={isSavingNote}
+                  className="w-full px-3 py-2 bg-[var(--bg-panel)] border border-[var(--border-strong)] rounded-lg text-sm text-[var(--ink-primary)] leading-relaxed outline-none focus:border-[var(--accent-midnight)] resize-none disabled:opacity-60 font-mono text-[13px]"
                   placeholder="Record your research insights and connections..."
                 />
               </div>
@@ -1238,16 +1451,183 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
               <button
                 type="button"
                 onClick={() => setIsEditingNote(false)}
-                className="px-3 py-1.5 rounded-lg border border-[var(--border-strong)] bg-white text-xs font-medium text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]"
+                disabled={isSavingNote}
+                className="px-3 py-1.5 rounded-lg border border-[var(--border-strong)] bg-white text-xs font-medium text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] cursor-pointer disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleSaveNote}
-                className="px-4 py-1.5 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium shadow-2xs"
+                disabled={isSavingNote || !editTitle.trim()}
+                className="px-4 py-1.5 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium shadow-2xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
               >
-                Save to Archive
+                {isSavingNote ? (
+                  <>
+                    <i className="ph ph-spinner animate-spin text-sm" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <i className="ph ph-floppy-disk text-sm" />
+                    <span>Save to Archive</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Source Ingestion Modal */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="instrument-panel w-full max-w-lg bg-white shadow-2xl p-6 rounded-2xl flex flex-col gap-4 border border-[var(--border-strong)]">
+            <div className="panel-bracket-tl" />
+            <div className="panel-bracket-br" />
+
+            <div className="flex items-center justify-between border-b border-[var(--border-parchment)] pb-3">
+              <div className="flex items-center gap-2">
+                <i className="ph ph-upload-simple text-lg text-[var(--accent-midnight)]" />
+                <span className="serif text-xl font-semibold text-[var(--ink-primary)]">
+                  Import Source Document
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isUploadingSource && setIsImportModalOpen(false)}
+                disabled={isUploadingSource}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-tertiary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] text-sm cursor-pointer disabled:opacity-50"
+                aria-label="Close modal"
+              >
+                ✕
+              </button>
+            </div>
+
+            {importError && (
+              <div className="p-3 rounded-xl bg-amber-50/80 border border-[var(--accent-terracotta)] text-xs text-[var(--accent-terracotta)] flex items-center gap-2 animate-fade-in">
+                <i className="ph ph-warning-circle text-base shrink-0" />
+                <span>{importError}</span>
+              </div>
+            )}
+
+            {/* Hidden native file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.md,.markdown,.txt"
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  handleSelectImportFile(e.target.files[0]);
+                }
+              }}
+            />
+
+            {/* Dropzone Area */}
+            {!importFile ? (
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragOver(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  setIsDragOver(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragOver(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    handleSelectImportFile(e.dataTransfer.files[0]);
+                  }
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center gap-2.5 cursor-pointer transition-all ${
+                  isDragOver
+                    ? 'border-[var(--accent-midnight)] bg-[var(--accent-midnight)]/5'
+                    : 'border-[var(--border-strong)] bg-[var(--bg-panel-subtle)] hover:bg-white hover:border-[var(--accent-midnight)]'
+                }`}
+              >
+                <div className="w-12 h-12 rounded-full bg-white shadow-2xs border border-[var(--border-parchment)] flex items-center justify-center text-[var(--accent-midnight)] text-2xl">
+                  <i className="ph ph-cloud-arrow-up" />
+                </div>
+                <div className="text-center">
+                  <p className="serif text-sm font-semibold text-[var(--ink-primary)]">
+                    Drag and drop source document here
+                  </p>
+                  <p className="text-xs text-[var(--ink-secondary)] mt-0.5">
+                    or <span className="text-[var(--accent-midnight)] underline underline-offset-2 font-medium">browse files</span> from your computer
+                  </p>
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 text-[10px] mono text-[var(--ink-tertiary)] bg-white px-2.5 py-1 rounded-md border border-[var(--border-parchment)]">
+                  <span>PDF · Markdown (.md) · Plain Text (.txt)</span>
+                  <span>·</span>
+                  <span>Max 25 MB</span>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-panel-subtle)] flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-lg bg-white border border-[var(--border-parchment)] flex items-center justify-center text-[var(--accent-midnight)] text-xl shrink-0">
+                    <i className="ph ph-file-text" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-[var(--ink-primary)] truncate">
+                      {importFile.name}
+                    </p>
+                    <p className="text-[11px] mono text-[var(--ink-tertiary)]">
+                      {(importFile.size / 1024).toFixed(1)} KB · Ready to ingest
+                    </p>
+                  </div>
+                </div>
+                {!isUploadingSource && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImportFile(null);
+                      setImportError(null);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-tertiary)] hover:bg-white hover:text-[var(--ink-primary)] text-xs cursor-pointer border border-transparent hover:border-[var(--border-parchment)]"
+                    title="Choose a different file"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-parchment)]">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setImportFile(null);
+                  setImportError(null);
+                }}
+                disabled={isUploadingSource}
+                className="px-3 py-1.5 rounded-lg border border-[var(--border-strong)] bg-white text-xs font-medium text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleImportSource}
+                disabled={!importFile || isUploadingSource}
+                className="px-4 py-1.5 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium shadow-2xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {isUploadingSource ? (
+                  <>
+                    <i className="ph ph-spinner animate-spin text-sm" />
+                    <span>Ingesting...</span>
+                  </>
+                ) : (
+                  <>
+                    <i className="ph ph-arrow-up-right text-sm" />
+                    <span>Import to Archive</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
