@@ -142,8 +142,8 @@ describe('HyadesLibrary Layout and Independent Scrolling (§16, §17)', () => {
 
     const shelvesContainer = screen.getByTestId('library-topic-shelves-container');
     expect(shelvesContainer).toBeInTheDocument();
-    expect(shelvesContainer.className).toContain('max-h-52');
     expect(shelvesContainer.className).toContain('overflow-y-auto');
+    expect(shelvesContainer.className).toContain('flex-1');
 
     // Verify all topics are rendered within the scrollable container with counts
     expect(screen.getByText('15')).toBeInTheDocument();

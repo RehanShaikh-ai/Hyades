@@ -558,19 +558,19 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
           
           {/* ================= LEFT FLANK: THE CATALOG SHELVES & TOPICS (COLUMNS 1–3) ================= */}
           {isLeftShelfOpen && (
-            <aside className="lg:col-span-3 flex flex-col h-full min-h-0 overflow-y-auto pr-1 transition-all duration-300">
-              <div className="instrument-panel p-5 min-h-full">
+            <aside className="lg:col-span-3 flex flex-col h-full min-h-0 overflow-hidden transition-all duration-300">
+              <div className="instrument-panel p-4 flex flex-col h-full min-h-0 overflow-hidden">
                 <div className="panel-bracket-tl" />
                 <div className="panel-bracket-br" />
 
                 {/* Section: Views */}
-                <div className="mb-5">
-                  <div className="flex items-center justify-between mb-2.5">
+                <div className="mb-3 shrink-0">
+                  <div className="flex items-center justify-between mb-2">
                     <span className="serif-italic text-sm text-[var(--ink-secondary)]">Archival Shelves</span>
                     <button
                       type="button"
                       onClick={() => setIsLeftShelfOpen(false)}
-                      className="w-6 h-6 rounded flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white transition-colors"
+                      className="w-6 h-6 rounded flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white transition-colors cursor-pointer"
                       title="Collapse Archival Shelves"
                     >
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -633,11 +633,11 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                   </div>
                 </div>
 
-                <div className="w-full h-px bg-[var(--border-parchment)] mb-5" />
+                <div className="w-full h-px bg-[var(--border-parchment)] mb-3 shrink-0" />
 
                 {/* Section: Topic Shelves */}
-                <div className="mb-5 flex flex-col min-h-0">
-                  <div className="flex items-center justify-between mb-2 shrink-0">
+                <div className="flex-1 min-h-0 flex flex-col mb-3">
+                  <div className="flex items-center justify-between mb-1.5 shrink-0">
                     <div className="flex items-center gap-2">
                       <span className="serif-italic text-sm text-[var(--ink-secondary)]">Topic Shelves</span>
                       {topicShelves.length > 0 && (
@@ -657,7 +657,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
                   <div
                     data-testid="library-topic-shelves-container"
-                    className="flex flex-col gap-1 max-h-52 overflow-y-auto pr-1"
+                    className="flex flex-col gap-1 overflow-y-auto pr-1 flex-1 min-h-[60px]"
                   >
                     {topicShelves.length > 0 ? (
                       topicShelves.map((topic) => (
@@ -686,18 +686,18 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                   </div>
                 </div>
 
-                <div className="w-full h-px bg-[var(--border-parchment)] mb-5" />
+                <div className="w-full h-px bg-[var(--border-parchment)] mb-3 shrink-0" />
 
                 {/* Section: Needs Attention */}
-                <div>
-                  <div className="text-[10px] uppercase tracking-wider font-semibold text-[var(--ink-tertiary)] mono mb-2.5">
+                <div className="shrink-0 mb-3">
+                  <div className="text-[10px] uppercase tracking-wider font-semibold text-[var(--ink-tertiary)] mono mb-1.5">
                     ATTENTION
                   </div>
-                  <div className="flex flex-col gap-1.5">
+                  <div className="flex flex-col gap-1">
                     <button
                       type="button"
                       onClick={() => setActiveAttention(activeAttention === 'unconnected' ? null : 'unconnected')}
-                      className={`w-full text-left p-2 rounded-lg border flex items-center justify-between transition-colors ${
+                      className={`w-full text-left p-2 rounded-lg border flex items-center justify-between transition-colors cursor-pointer ${
                         activeAttention === 'unconnected'
                           ? 'border-[var(--accent-brass)] bg-white font-medium'
                           : 'border-[var(--border-parchment)] bg-white hover:border-[var(--accent-brass)]'
@@ -712,11 +712,11 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                   </div>
                 </div>
 
-                <div className="w-full h-px bg-[var(--border-parchment)] my-5" />
+                <div className="w-full h-px bg-[var(--border-parchment)] my-2.5 shrink-0" />
 
                 {/* Section: Maintenance & Ingestion Operations */}
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between mb-1">
+                <div className="shrink-0 flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between mb-0.5">
                     <span className="text-[10px] uppercase tracking-wider font-semibold text-[var(--ink-tertiary)] mono">
                       MAINTENANCE
                     </span>
