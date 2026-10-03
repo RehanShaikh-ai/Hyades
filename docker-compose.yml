@@ -80,6 +80,20 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - git_repositories:/data/workspaces
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./backend/app
+          target: /app/app
+        - action: sync+restart
+          path: ./backend/alembic
+          target: /app/alembic
+        - action: rebuild
+          path: ./backend/pyproject.toml
+        - action: rebuild
+          path: ./backend/uv.lock
+        - action: rebuild
+          path: ./backend/Dockerfile
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -155,10 +169,6 @@ services:
     restart: unless-stopped
     ports:
       - "5173:5173"
-    volumes:
-      - ./frontend/src:/app/src
-      - ./frontend/public:/app/public
-      - ./frontend/index.html:/app/index.html
     develop:
       watch:
         - action: sync
@@ -174,6 +184,10 @@ services:
           path: ./frontend/package.json
         - action: rebuild
           path: ./frontend/package-lock.json
+        - action: rebuild
+          path: ./frontend/Dockerfile
+        - action: rebuild
+          path: ./frontend/vite.config.ts
     depends_on:
       - backend
 
