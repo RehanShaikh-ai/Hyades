@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { createContext, useContext, useState, useRef, useCallback } from 'react';
 import { Conversation } from '@/types/conversation';
 import { Message, MessageCitation } from '@/types/message';

@@ -52,13 +52,13 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
   }[currentDestination];
 
   return (
-    <header className="sticky top-0 z-30 w-full bg-[var(--bg-base)]/85 backdrop-blur-md border-b border-[var(--border-parchment)] px-6 lg:px-8 py-3 flex items-center justify-between transition-all select-none">
+    <header className="sticky top-0 z-30 w-full bg-[var(--bg-base)]/85 backdrop-blur-md border-b border-[var(--border-parchment)] px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex items-center justify-between transition-all select-none">
       {/* Left: Branding & Core Navigation */}
-      <div className="flex items-center gap-6 lg:gap-8">
+      <div className="flex items-center gap-4 sm:gap-6 lg:gap-8">
         <button
           type="button"
           onClick={() => onNavigate('overview')}
-          className="flex items-center gap-3 group text-left focus:outline-none"
+          className="flex items-center gap-3 group text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] focus-visible:rounded-lg p-0.5"
           title="Hyades Overview"
         >
           {/* Astrolabe Mark */}
@@ -78,20 +78,20 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
           </div>
           <div className="flex items-baseline gap-2">
             <span className="serif text-[22px] font-semibold tracking-tight text-[var(--ink-primary)] leading-none">Hyades</span>
-            <div className="w-px h-3 bg-[var(--border-strong)]" />
-            <span className="text-[10px] tracking-[0.2em] font-medium text-[var(--ink-secondary)] uppercase">
+            <div className="w-px h-3 bg-[var(--border-strong)] hidden xs:block" />
+            <span className="text-[10px] tracking-[0.2em] font-medium text-[var(--ink-secondary)] uppercase hidden xs:inline">
               {destinationTitle}
             </span>
           </div>
         </button>
 
         {/* Primary Application Destinations */}
-        <nav className="flex items-center gap-5 lg:gap-7 ml-1" aria-label="Main navigation">
+        <nav className="flex items-center gap-3 sm:gap-5 lg:gap-7 ml-1" aria-label="Main navigation">
           <button
             type="button"
             aria-label="Overview"
             onClick={() => onNavigate('overview')}
-            className={`nav-item flex items-center gap-1.5 ${currentDestination === 'overview' ? 'active' : ''}`}
+            className={`nav-item flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] focus-visible:rounded-md ${currentDestination === 'overview' ? 'active' : ''}`}
             aria-current={currentDestination === 'overview' ? 'page' : undefined}
           >
             <span>Overview</span>
@@ -100,7 +100,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             type="button"
             aria-label="Library"
             onClick={() => onNavigate('library')}
-            className={`nav-item flex items-center gap-1.5 ${currentDestination === 'library' ? 'active' : ''}`}
+            className={`nav-item flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] focus-visible:rounded-md ${currentDestination === 'library' ? 'active' : ''}`}
             aria-current={currentDestination === 'library' ? 'page' : undefined}
           >
             <span>Library</span>
@@ -109,7 +109,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             type="button"
             aria-label="Observatory"
             onClick={() => onNavigate('observatory')}
-            className={`nav-item group flex items-center gap-1.5 ${currentDestination === 'observatory' ? 'active' : ''}`}
+            className={`nav-item group flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] focus-visible:rounded-md ${currentDestination === 'observatory' ? 'active' : ''}`}
             aria-current={currentDestination === 'observatory' ? 'page' : undefined}
           >
             <span>Observatory</span>
@@ -119,7 +119,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             type="button"
             aria-label="Stella"
             onClick={() => onNavigate('stella')}
-            className={`nav-item flex items-center gap-1.5 ${currentDestination === 'stella' ? 'active' : ''}`}
+            className={`nav-item flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] focus-visible:rounded-md ${currentDestination === 'stella' ? 'active' : ''}`}
             aria-current={currentDestination === 'stella' ? 'page' : undefined}
           >
             <span>Stella</span>
@@ -136,7 +136,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             type="button"
             onClick={() => setIsWorkspaceMenuOpen((prev) => !prev)}
             data-testid="active-workspace-badge"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[var(--ink-secondary)] bg-[var(--bg-panel)] hover:bg-white border border-[var(--border-strong)] transition-colors shadow-2xs"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[var(--ink-secondary)] bg-[var(--bg-panel)] hover:bg-white border border-[var(--border-strong)] transition-colors shadow-2xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
             title="Switch Workspace"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)]" />
@@ -160,7 +160,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
                         onSelectWorkspace(ws);
                         setIsWorkspaceMenuOpen(false);
                       }}
-                      className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition-colors ${
+                      className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between transition-colors focus-visible:outline-none focus-visible:bg-white ${
                         isSelected
                           ? 'bg-white font-medium text-[var(--ink-primary)]'
                           : 'text-[var(--ink-secondary)] hover:bg-white/60 hover:text-[var(--ink-primary)]'
@@ -186,7 +186,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
                     setIsWorkspaceMenuOpen(false);
                     onOpenAccountModal();
                   }}
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white transition-colors flex items-center gap-2"
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white transition-colors flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
                 >
                   <i className="ph ph-gear text-xs text-[var(--accent-midnight)]" />
                   <span>Workspace Settings & Setup</span>
@@ -202,7 +202,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             type="button"
             onClick={onRefreshHealth}
             data-testid="health-status"
-            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs mono text-[var(--ink-secondary)] bg-[var(--bg-panel)] hover:bg-white border border-[var(--border-strong)] transition-colors shadow-2xs"
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs mono text-[var(--ink-secondary)] bg-[var(--bg-panel)] hover:bg-white border border-[var(--border-strong)] transition-colors shadow-2xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
             title={`Backend: ${healthStatus === 'connected' ? 'Connected' : healthStatus === 'loading' ? 'Loading' : 'Unavailable'}`}
           >
             <span
@@ -224,15 +224,15 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
         <button
           type="button"
           onClick={onOpenSearch}
-          className="w-48 sm:w-60 px-3 py-1.5 bg-[var(--bg-panel)] hover:bg-white border border-[var(--border-strong)] rounded-xl flex items-center justify-between text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-all shadow-2xs group"
+          className="w-9 sm:w-52 md:w-60 px-2 sm:px-3 py-1.5 bg-[var(--bg-panel)] hover:bg-white border border-[var(--border-strong)] rounded-xl flex items-center justify-center sm:justify-between text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-all shadow-2xs group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
           title="Global Search (⌘K)"
           aria-label="Global Search (⌘K)"
         >
           <div className="flex items-center gap-2 truncate">
             <i className="ph ph-magnifying-glass text-sm text-[var(--accent-midnight)] group-hover:scale-105 transition-transform" />
-            <span className="text-[12px] truncate">Search knowledge base...</span>
+            <span className="text-[12px] truncate hidden sm:inline">Search knowledge base...</span>
           </div>
-          <kbd className="px-1.5 py-0.5 rounded border border-[var(--border-parchment)] bg-[var(--bg-panel-subtle)] text-[10px] mono text-[var(--ink-tertiary)] shrink-0">
+          <kbd className="hidden sm:inline-block px-1.5 py-0.5 rounded border border-[var(--border-parchment)] bg-[var(--bg-panel-subtle)] text-[10px] mono text-[var(--ink-tertiary)] shrink-0">
             ⌘K
           </kbd>
         </button>
@@ -242,7 +242,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
           <button
             type="button"
             onClick={onNewNote}
-            className="bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-all px-3.5 py-1.5 rounded-lg flex items-center gap-2 shadow-2xs border border-[#233552] text-xs font-medium active:scale-95 shrink-0"
+            className="bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-all px-3.5 py-1.5 rounded-lg flex items-center gap-2 shadow-2xs border border-[#233552] text-xs font-medium active:scale-95 shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
           >
             <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
             <span className="hidden sm:inline">New Note</span>
@@ -256,7 +256,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
               type="button"
               onClick={onCycleEnvironment}
               id="env-toggle-btn"
-              className="w-8 h-8 rounded-lg bg-[var(--bg-panel)] hover:bg-white border border-[var(--border-strong)] flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors shadow-2xs"
+              className="w-8 h-8 rounded-lg bg-[var(--bg-panel)] hover:bg-white border border-[var(--border-strong)] flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors shadow-2xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
               title="Toggle background perspective"
             >
               <i className="ph-bold ph-columns text-sm text-[var(--accent-midnight)]" />

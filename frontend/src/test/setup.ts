@@ -42,7 +42,7 @@ if (typeof window !== 'undefined') {
       value: mockStorage,
       writable: true,
     });
-    (globalThis as any).localStorage = mockStorage;
+    (globalThis as unknown as { localStorage: Storage }).localStorage = mockStorage;
   }
 }
 

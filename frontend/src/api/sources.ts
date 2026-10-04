@@ -37,7 +37,7 @@ export async function uploadSource(
       (typeof errorData?.detail === 'string'
         ? errorData.detail
         : Array.isArray(errorData?.detail)
-        ? errorData.detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
+        ? errorData.detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join(', ')
         : `Failed to upload source (HTTP ${response.status})`);
     const code = errorData?.error?.code || 'SOURCE_UPLOAD_FAILED';
     throw { error: { code, message } };

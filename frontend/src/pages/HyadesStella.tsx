@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { getRAGStatus } from '@/api/rag';
 import { getWorkspaceDashboard } from '@/api/dashboard';
@@ -49,7 +48,9 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
     deleteConversationById,
   } = useStellaSession();
 
-  const [isInquiriesOpen, setIsInquiriesOpen] = useState(true);
+  const [isInquiriesOpen, setIsInquiriesOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
+  );
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // Workspace metadata & Scope
@@ -222,7 +223,8 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
           <button
             type="button"
             onClick={() => setIsInquiriesOpen(true)}
-            className="bg-[var(--bg-panel)]/95 hover:bg-white backdrop-blur-md border border-l-0 border-[var(--border-strong)] rounded-r-xl shadow-md py-2 px-3 flex items-center gap-2 text-xs font-medium text-[var(--ink-primary)] transition-all active:scale-95 group cursor-pointer"
+            aria-label="Open Research Inquiries"
+            className="bg-[var(--bg-panel)]/95 hover:bg-white backdrop-blur-md border border-l-0 border-[var(--border-strong)] rounded-r-xl shadow-md py-2 px-3 flex items-center gap-2 text-xs font-medium text-[var(--ink-primary)] transition-all active:scale-95 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] cursor-pointer"
             title="Open Research Inquiries"
           >
             <i className="ph ph-chat-teardrop-text text-sm text-[var(--accent-midnight)] group-hover:scale-110 transition-transform" />
@@ -237,7 +239,8 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
           <button
             type="button"
             onClick={() => setIsEvidenceOpen(true)}
-            className="bg-[var(--bg-panel)]/95 hover:bg-white backdrop-blur-md border border-r-0 border-[var(--border-strong)] rounded-l-xl shadow-md py-2 px-3 flex items-center gap-2 text-xs font-medium text-[var(--ink-primary)] transition-all active:scale-95 group cursor-pointer"
+            aria-label="Open Sources in Context"
+            className="bg-[var(--bg-panel)]/95 hover:bg-white backdrop-blur-md border border-r-0 border-[var(--border-strong)] rounded-l-xl shadow-md py-2 px-3 flex items-center gap-2 text-xs font-medium text-[var(--ink-primary)] transition-all active:scale-95 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] cursor-pointer"
             title="Open Sources in Context"
           >
             <span className="serif-italic font-medium">Sources in Context</span>
@@ -247,10 +250,10 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
       )}
 
       {/* ================= MAIN WORKSPACE: 3-COLUMN RESEARCH STUDY ================= */}
-      <main className="relative z-10 flex-1 w-full max-w-[1720px] mx-auto px-6 py-4 md:px-8 md:py-5 flex gap-6 overflow-hidden min-h-0">
+      <main className="relative z-10 flex-1 w-full max-w-[1720px] mx-auto px-4 py-3 md:px-8 md:py-5 flex gap-4 md:gap-6 overflow-hidden min-h-0">
         {/* ================= LEFT COLUMN: INQUIRY THREADS & CONTEXT (280px) ================= */}
         {isInquiriesOpen && (
-          <aside className="w-[280px] shrink-0 h-full min-h-0 flex flex-col gap-4 transition-all duration-300">
+          <aside className="fixed inset-y-16 left-0 z-20 w-[280px] sm:w-[320px] lg:static lg:w-[280px] lg:h-full shrink-0 flex flex-col gap-4 transition-all duration-300 shadow-2xl lg:shadow-none bg-[var(--bg-base)]/95 lg:bg-transparent backdrop-blur-md lg:backdrop-blur-none p-3 lg:p-0">
             {/* Header / New Chat Trigger */}
             <div className="instrument-panel p-3 flex flex-col gap-2.5">
               <div className="panel-bracket-tl" />
@@ -266,7 +269,8 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsInquiriesOpen(false)}
-                  className="w-6 h-6 rounded flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white transition-colors cursor-pointer"
+                  aria-label="Collapse Inquiries Panel"
+                  className="w-6 h-6 rounded flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
                   title="Collapse Inquiries Panel"
                 >
                   <i className="ph ph-caret-left text-sm" />
@@ -277,7 +281,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
               <button
                 type="button"
                 onClick={handleNewChat}
-                className="w-full py-1.5 px-3 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center justify-center gap-2 shadow-2xs transition-all active:scale-95 cursor-pointer"
+                className="w-full py-1.5 px-3 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center justify-center gap-2 shadow-2xs transition-all active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
               >
                 <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
                 <span>+ New Chat</span>
@@ -683,7 +687,8 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveScope(null)}
-                  className="text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] p-0.5 rounded transition-colors ml-2 shrink-0 cursor-pointer"
+                  aria-label="Clear carried context"
+                  className="text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] p-0.5 rounded transition-colors ml-2 shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
                   title="Clear carried context"
                 >
                   <i className="ph ph-x text-xs" />
@@ -707,7 +712,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                     }
                   }}
                   placeholder="Ask Stella about your notes, sources, or concepts... (Press Enter to send)"
-                  className="w-full bg-transparent resize-none outline-none text-[13.5px] placeholder:text-[var(--ink-tertiary)] px-2 pt-1 leading-relaxed text-[var(--ink-primary)]"
+                  className="w-full bg-transparent resize-none outline-none text-[13.5px] placeholder:text-[var(--ink-tertiary)] px-2 pt-1 leading-relaxed text-[var(--ink-primary)] focus-visible:ring-1 focus-visible:ring-[var(--accent-midnight)] rounded-md"
                 />
               </div>
 
@@ -716,7 +721,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                   <select
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
-                    className="px-2 py-1 bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] rounded text-[11px] text-[var(--ink-secondary)] outline-none cursor-pointer"
+                    className="px-2 py-1 bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] rounded text-[11px] text-[var(--ink-secondary)] outline-none cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
                   >
                     <option value="auto">Model: Auto ({ragStatus?.provider || 'Standard'})</option>
                     {ragStatus?.recommended_models?.map((m) => (
@@ -732,7 +737,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                     <button
                       type="button"
                       onClick={cancelGeneration}
-                      className="px-3 py-1.5 rounded-lg bg-[var(--accent-terracotta)] text-[#FAF8F2] hover:bg-[#8F3819] text-xs font-medium flex items-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-[var(--accent-terracotta)] text-[#FAF8F2] hover:bg-[#8F3819] text-xs font-medium flex items-center gap-1.5 shadow-2xs active:scale-95 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-terracotta)]"
                       title="Stop inquiry generation (explicit cancel)"
                     >
                       <i className="ph-bold ph-stop text-xs" />
@@ -744,7 +749,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                     type="button"
                     onClick={() => handleSendMessage()}
                     disabled={!inputPrompt.trim() || isStreaming}
-                    className="px-4 py-1.5 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center gap-1.5 shadow-2xs disabled:opacity-50 active:scale-95 transition-all cursor-pointer"
+                    className="px-4 py-1.5 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center gap-1.5 shadow-2xs disabled:opacity-50 active:scale-95 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
                   >
                     {isStreaming ? (
                       <>
@@ -766,7 +771,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
 
         {/* ================= RIGHT COLUMN: SOURCES IN CONTEXT (EVIDENCE DRAWER) ================= */}
         {isEvidenceOpen && (
-          <aside className="w-[320px] shrink-0 h-full min-h-0 flex flex-col gap-4 transition-all duration-300">
+          <aside className="fixed inset-y-16 right-0 z-20 w-[280px] sm:w-[320px] lg:static lg:w-[320px] lg:h-full shrink-0 flex flex-col gap-4 transition-all duration-300 shadow-2xl lg:shadow-none bg-[var(--bg-base)]/95 lg:bg-transparent backdrop-blur-md lg:backdrop-blur-none p-3 lg:p-0">
             <div className="instrument-panel p-4 flex-1 flex flex-col gap-3 min-h-0">
               <div className="panel-bracket-tl" />
               <div className="panel-bracket-br" />
@@ -781,7 +786,8 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsEvidenceOpen(false)}
-                  className="w-6 h-6 rounded flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white transition-colors cursor-pointer"
+                  aria-label="Close Sources Panel"
+                  className="w-6 h-6 rounded flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
                   title="Close Sources Panel"
                 >
                   <i className="ph ph-x text-sm" />

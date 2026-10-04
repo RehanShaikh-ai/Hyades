@@ -246,6 +246,11 @@ body {
 .nav-item:hover {
   color: var(--ink-primary);
 }
+.nav-item:focus-visible {
+  outline: 2px solid var(--accent-midnight);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 .nav-item.active {
   color: var(--ink-primary);
   font-weight: 600;
@@ -277,6 +282,10 @@ body {
   color: var(--ink-primary);
   background-color: var(--bg-panel-subtle);
 }
+.filter-tab:focus-visible {
+  outline: 2px solid var(--accent-midnight);
+  outline-offset: 1px;
+}
 .filter-tab.active {
   color: var(--ink-primary);
   background-color: white;
@@ -302,6 +311,10 @@ body {
   color: var(--ink-primary);
   background-color: var(--bg-panel-subtle);
 }
+.shelf-item:focus-visible {
+  outline: 2px solid var(--accent-midnight);
+  outline-offset: 1px;
+}
 .shelf-item.active {
   background-color: white;
   color: var(--accent-midnight);
@@ -319,6 +332,10 @@ body {
 }
 .catalog-row:hover {
   background-color: rgba(255, 255, 255, 0.9);
+}
+.catalog-row:focus-visible {
+  outline: 2px solid var(--accent-midnight);
+  outline-offset: -2px;
 }
 .catalog-row.selected {
   background-color: white;

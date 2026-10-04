@@ -679,7 +679,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
           <button
             type="button"
             onClick={() => setIsLeftShelfOpen(true)}
-            className="bg-[var(--bg-panel)]/95 hover:bg-white backdrop-blur-md border border-l-0 border-[var(--border-strong)] rounded-r-xl shadow-md py-2 px-3 flex items-center gap-2 text-xs font-medium text-[var(--ink-primary)] transition-all active:scale-95 group"
+            aria-label="Open Archival Shelves"
+            className="bg-[var(--bg-panel)]/95 hover:bg-white backdrop-blur-md border border-l-0 border-[var(--border-strong)] rounded-r-xl shadow-md py-2 px-3 flex items-center gap-2 text-xs font-medium text-[var(--ink-primary)] transition-all active:scale-95 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] cursor-pointer"
             title="Open Archival Shelves"
           >
             <svg
@@ -706,7 +707,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
           <button
             type="button"
             onClick={() => setIsRightDossierOpen(true)}
-            className="bg-[var(--bg-panel)]/95 hover:bg-white backdrop-blur-md border border-r-0 border-[var(--border-strong)] rounded-l-xl shadow-md py-2 px-3 flex items-center gap-2 text-xs font-medium text-[var(--ink-primary)] transition-all active:scale-95 group"
+            aria-label="Open Reading Dossier"
+            className="bg-[var(--bg-panel)]/95 hover:bg-white backdrop-blur-md border border-r-0 border-[var(--border-strong)] rounded-l-xl shadow-md py-2 px-3 flex items-center gap-2 text-xs font-medium text-[var(--ink-primary)] transition-all active:scale-95 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] cursor-pointer"
             title="Open Reading Dossier"
           >
             <span className="serif-italic font-medium">Reading Dossier</span>
@@ -791,7 +793,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsLeftShelfOpen(false)}
-                      className="w-6 h-6 rounded flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white transition-colors cursor-pointer"
+                      aria-label="Collapse Archival Shelves"
+                      className="w-6 h-6 rounded flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
                       title="Collapse Archival Shelves"
                     >
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -805,11 +808,22 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                   <div className="flex flex-col gap-1">
                     <div
                       data-testid="shelf-all-items"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => {
                         setActiveCategory('all');
                         setActiveTopicId(null);
                         setActiveTag(null);
                         setActiveAttention(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setActiveCategory('all');
+                          setActiveTopicId(null);
+                          setActiveTag(null);
+                          setActiveAttention(null);
+                        }
                       }}
                       className={`shelf-item ${activeCategory === 'all' && !activeTopicId && !activeTag && !activeAttention ? 'active' : ''}`}
                     >
@@ -822,11 +836,22 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
                     <div
                       data-testid="shelf-sources"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => {
                         setActiveCategory('sources');
                         setActiveTopicId(null);
                         setActiveTag(null);
                         setActiveAttention(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setActiveCategory('sources');
+                          setActiveTopicId(null);
+                          setActiveTag(null);
+                          setActiveAttention(null);
+                        }
                       }}
                       className={`shelf-item ${activeCategory === 'sources' ? 'active' : ''}`}
                     >
@@ -841,11 +866,22 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
                     <div
                       data-testid="shelf-notes"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => {
                         setActiveCategory('notes');
                         setActiveTopicId(null);
                         setActiveTag(null);
                         setActiveAttention(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setActiveCategory('notes');
+                          setActiveTopicId(null);
+                          setActiveTag(null);
+                          setActiveAttention(null);
+                        }
                       }}
                       className={`shelf-item ${activeCategory === 'notes' ? 'active' : ''}`}
                     >
@@ -890,9 +926,18 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                       topicShelves.map((topic) => (
                         <div
                           key={topic.key}
+                          role="button"
+                          tabIndex={0}
                           onClick={() => {
                             setActiveTopicId(activeTopicId === topic.key ? null : topic.key);
                             setActiveTag(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setActiveTopicId(activeTopicId === topic.key ? null : topic.key);
+                              setActiveTag(null);
+                            }
                           }}
                           className={`shelf-item ${activeTopicId === topic.key ? 'active' : ''} flex items-center justify-between gap-2`}
                           title={`${topic.label} (${topic.count} items)`}
@@ -1341,7 +1386,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsRightDossierOpen(false)}
-                  className="absolute top-4 right-4 w-6 h-6 rounded flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[var(--bg-panel-subtle)] transition-colors"
+                  aria-label="Collapse Reading Dossier"
+                  className="absolute top-4 right-4 w-6 h-6 rounded flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[var(--bg-panel-subtle)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] cursor-pointer"
                   title="Collapse Reading Dossier"
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

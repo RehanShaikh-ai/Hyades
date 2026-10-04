@@ -249,13 +249,13 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
 
       {/* Bottom-Left Profile & Account Trigger */}
       {!isFullscreenObservatory && (
-        <div className="fixed bottom-4 left-4 z-40">
+        <div className="fixed bottom-4 left-4 z-40 hidden md:block">
           <button
             type="button"
             onClick={() => setIsAccountModalOpen(true)}
             data-testid="profile-bottom-left-btn"
             title="Account & Setup"
-            className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-[var(--bg-panel)]/95 hover:bg-white text-[var(--ink-primary)] border border-[var(--border-strong)] shadow-md transition-all active:scale-95 group backdrop-blur-md cursor-pointer"
+            className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-[var(--bg-panel)]/95 hover:bg-white text-[var(--ink-primary)] border border-[var(--border-strong)] shadow-md transition-all active:scale-95 group backdrop-blur-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
           >
             <div className="w-6 h-6 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] flex items-center justify-center font-serif text-[11px] font-semibold shadow-2xs">
               RS

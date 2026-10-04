@@ -782,6 +782,27 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   // Persistent node position cache to prevent layout resets and explosions
   const nodePositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
+  // Reactive container dimensions for pure rendering and accurate minimap calculations
+  const [containerDimensions, setContainerDimensions] = useState<{ width: number; height: number }>({
+    width: typeof window !== 'undefined' ? window.innerWidth : 1600,
+    height: typeof window !== 'undefined' ? window.innerHeight : 1000,
+  });
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const updateSize = () => {
+      if (containerRef.current) {
+        const w = containerRef.current.clientWidth || window.innerWidth;
+        const h = containerRef.current.clientHeight || window.innerHeight;
+        setContainerDimensions({ width: w, height: h });
+      }
+    };
+    updateSize();
+    const observer = new ResizeObserver(() => updateSize());
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
   // Constellation Link Curved Path Generator (§3)
   const linkConstellationPath = (
     d: any,
@@ -988,10 +1009,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       coreNodeIds.add(nodesByDegree[0].id);
     }
 
-    // 5. Initialize or load position cache from localStorage (§5)
-    if (nodePositionsRef.current.size === 0 && workspaceId) {
-      nodePositionsRef.current = getStoredPositions(workspaceId);
-    }
+    // 5. Load position cache from localStorage (§5)
+    const storedPositions = workspaceId ? getStoredPositions(workspaceId) : new Map<string, { x: number; y: number }>();
 
     const nodes: CelestialNode[] = graphData.nodes.map((n) => {
       const { coords, catalog } = computeCelestialCoords(n.id);
@@ -1036,7 +1055,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         }
       });
 
-      const cached = nodePositionsRef.current.get(n.id);
+      const cached = storedPositions.get(n.id);
       const groupNum =
         cInfo.clusterId && clusterMap[cInfo.clusterId]
           ? clusterMap[cInfo.clusterId]
@@ -1109,14 +1128,10 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
     // 8. Ensure every node has established layout coordinates immediately (§4, §5)
     // If cache is empty or has missing positions, compute layout once and cache it.
-    const missingCount = nodes.filter((n) => !nodePositionsRef.current.has(n.id)).length;
-    if (missingCount > 0 || nodePositionsRef.current.size === 0) {
-      const width =
-        containerRef.current?.clientWidth ||
-        (typeof window !== 'undefined' ? window.innerWidth : 1600);
-      const height =
-        containerRef.current?.clientHeight ||
-        (typeof window !== 'undefined' ? window.innerHeight : 1000);
+    const missingCount = nodes.filter((n) => !storedPositions.has(n.id)).length;
+    if (missingCount > 0 || storedPositions.size === 0) {
+      const width = containerDimensions.width;
+      const height = containerDimensions.height;
       const computedPositions = computeObservatoryLayout(
         nodes,
         links,
@@ -1124,14 +1139,14 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         height * 0.48
       );
       computedPositions.forEach((pos, id) => {
-        nodePositionsRef.current.set(id, pos);
+        storedPositions.set(id, pos);
       });
-      saveStoredPositions(workspaceId, nodePositionsRef.current);
+      saveStoredPositions(workspaceId, storedPositions);
     }
 
     // Apply coordinates to nodes
     nodes.forEach((n) => {
-      const pos = nodePositionsRef.current.get(n.id);
+      const pos = storedPositions.get(n.id);
       if (pos) {
         n.x = pos.x;
         n.y = pos.y;
@@ -1139,7 +1154,17 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     });
 
     return { celestialNodes: nodes, celestialLinks: links };
-  }, [graphData, clusters, workspaceId]);
+  }, [graphData, clusters, workspaceId, containerDimensions]);
+
+  // Keep nodePositionsRef synchronized with stored coordinates
+  useEffect(() => {
+    if (workspaceId) {
+      const stored = getStoredPositions(workspaceId);
+      stored.forEach((pos, id) => {
+        nodePositionsRef.current.set(id, pos);
+      });
+    }
+  }, [workspaceId, celestialNodes.length]);
 
 
   // Deep Link Navigation Target Handler (§9, §10, §16)
@@ -1920,13 +1945,13 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         .attr('class', 'serif font-medium')
         .attr(
           'font-size',
-          d.hierarchy === 'core' ? '12px' : d.hierarchy === 'subtopic' ? '10px' : '8.5px'
+          d.hierarchy === 'core' ? '12.5px' : d.hierarchy === 'subtopic' ? '11px' : '9.5px'
         )
         .attr('fill', '#1A2130')
         .attr('letter-spacing', '0.015em')
         .attr('paint-order', 'stroke')
-        .attr('stroke', '#FAF7F0')
-        .attr('stroke-width', '2.5px')
+        .attr('stroke', '#FAF8F2')
+        .attr('stroke-width', '3px')
         .attr('stroke-linejoin', 'round')
         .text(d.label);
     });
@@ -2481,9 +2506,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     }> = [];
 
     celestialNodes.forEach((n) => {
-      const cached = nodePositionsRef.current.get(n.id);
-      const x = cached?.x ?? n.x;
-      const y = cached?.y ?? n.y;
+      const x = n.x;
+      const y = n.y;
       if (x !== undefined && y !== undefined && !isNaN(x) && !isNaN(y)) {
         positions.push({
           id: n.id,
@@ -2536,8 +2560,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     });
 
     // Viewport rect calculation
-    const containerW = containerRef.current?.clientWidth || window.innerWidth;
-    const containerH = containerRef.current?.clientHeight || window.innerHeight;
+    const containerW = containerDimensions.width;
+    const containerH = containerDimensions.height;
     const k = currentTransform.k || 1;
     const tx = currentTransform.x || 0;
     const ty = currentTransform.y || 0;
@@ -2583,7 +2607,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       clusters: clusterCentroids,
       selectedPoint,
     };
-  }, [celestialNodes, selectedNode, currentTransform, isMinimapExpanded, clusters]);
+  }, [celestialNodes, selectedNode, currentTransform, isMinimapExpanded, clusters, containerDimensions]);
 
   const handleMiniMapClick = useCallback(
     (clickX: number, clickY: number, width: number, height: number) => {
@@ -2592,8 +2616,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       const targetGraphX = graphMinX + (clickX / width) * spanX;
       const targetGraphY = graphMinY + (clickY / height) * spanY;
 
-      const containerW = containerRef.current?.clientWidth || window.innerWidth;
-      const containerH = containerRef.current?.clientHeight || window.innerHeight;
+      const containerW = containerDimensions.width;
+      const containerH = containerDimensions.height;
       const k = currentTransform.k || 1;
       const tx = containerW * 0.44 - targetGraphX * k;
       const ty = containerH * 0.48 - targetGraphY * k;
@@ -2604,7 +2628,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         .ease(d3.easeCubicOut)
         .call(zoomBehaviorRef.current.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
     },
-    [miniMapData.bounds, currentTransform]
+    [miniMapData.bounds, currentTransform, containerDimensions]
   );
 
   return (
@@ -3480,7 +3504,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                     y={c.cy - 12}
                     textAnchor="middle"
                     fontFamily="Inter, sans-serif"
-                    fontSize="8.5px"
+                    fontSize="9.5px"
                     fontWeight="600"
                     fill="var(--ink-secondary)"
                     opacity="0.85"

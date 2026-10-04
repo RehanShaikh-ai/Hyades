@@ -20,7 +20,6 @@ interface SearchPanelProps {
 export const SearchPanel: React.FC<SearchPanelProps> = ({
   workspaceId,
   onNoteSelect,
-  onClose: _onClose,
   onViewInObservatory,
   onAskStella,
 }) => {

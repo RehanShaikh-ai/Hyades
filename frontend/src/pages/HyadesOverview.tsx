@@ -358,9 +358,9 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                 {topicDistribution.length > 0 ? (
                   topicDistribution.map((t) => (
                     <div key={t.id} className="flex items-center justify-between py-0.5 border-b border-[var(--border-parchment)] last:border-b-0">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-xs" style={{ backgroundColor: t.color }} />
-                        <span className="font-medium text-[var(--ink-primary)] truncate max-w-[130px]">{t.label}</span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-2.5 h-2.5 rounded-xs shrink-0" style={{ backgroundColor: t.color }} />
+                        <span className="font-medium text-[var(--ink-primary)] truncate max-w-[170px] sm:max-w-[200px]" title={t.label}>{t.label}</span>
                       </div>
                       <span className="mono text-[11px] text-[var(--ink-secondary)]">
                         {t.percentage}% ({t.count})
@@ -433,7 +433,9 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                         <div className="flex items-center gap-1.5">
                           <span className="text-[var(--ink-tertiary)]">Tags:</span>
                           <span className="font-medium text-[var(--ink-primary)]">
-                            {activeNote.tags && activeNote.tags.length > 0 ? activeNote.tags.join(', ') : 'None attached'}
+                            {activeNote.tags && activeNote.tags.length > 0
+                              ? activeNote.tags.map((t) => (typeof t === 'string' ? t : t.name)).join(', ')
+                              : 'None attached'}
                           </span>
                         </div>
                         <div className="w-px h-3 bg-[var(--border-parchment)]" />
@@ -449,7 +451,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                       <button
                         type="button"
                         onClick={() => onNavigateToNote ? onNavigateToNote(activeNote.id) : onNavigateToDestination('library')}
-                        className="w-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-all px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 text-xs font-medium shadow-2xs active:scale-95 cursor-pointer"
+                        className="w-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-all px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 text-xs font-medium shadow-2xs active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
                       >
                         <i className="ph ph-book-open text-sm" />
                         <span>Continue Reading</span>
@@ -466,7 +468,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                             onNavigateToDestination('observatory');
                           }
                         }}
-                        className="w-full bg-white hover:bg-[var(--bg-panel-subtle)] text-[var(--ink-primary)] border border-[var(--border-strong)] transition-all px-3 py-2 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium shadow-2xs cursor-pointer"
+                        className="w-full bg-white hover:bg-[var(--bg-panel-subtle)] text-[var(--ink-primary)] border border-[var(--border-strong)] transition-all px-3 py-2 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium shadow-2xs cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
                       >
                         <i className="ph ph-compass text-xs text-[var(--accent-brass)]" />
                         <span>Open in Observatory ↗</span>
@@ -480,7 +482,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                     <button
                       type="button"
                       onClick={() => (onNewNote ? onNewNote() : onNavigateToDestination('library'))}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] text-xs font-medium cursor-pointer"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] text-xs font-medium cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
                     >
                       <i className="ph ph-plus text-sm" />
                       <span>Create First Note in Library</span>
@@ -494,8 +496,17 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                     {secondaryNotes.map((sn) => (
                       <div
                         key={sn.id}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => onNavigateToNote ? onNavigateToNote(sn.id) : onNavigateToDestination('library')}
-                        className="card-surface p-3.5 flex items-start gap-3 cursor-pointer group"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            if (onNavigateToNote) onNavigateToNote(sn.id);
+                            else onNavigateToDestination('library');
+                          }
+                        }}
+                        className="card-surface p-3.5 flex items-start gap-3 cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
                       >
                         <div className="w-8 h-8 rounded-lg bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] flex items-center justify-center text-[var(--accent-midnight)] shrink-0 mt-0.5">
                           <i className="ph ph-article text-base group-hover:scale-110 transition-transform" />
