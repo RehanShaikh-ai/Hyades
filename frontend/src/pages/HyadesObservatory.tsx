@@ -44,14 +44,15 @@ export interface CelestialNode extends d3.SimulationNodeDatum {
   fy?: number | null;
 }
 
+export type EdgeTier = 'level1' | 'level2_to_3' | 'secondary' | 'cross_cluster';
+
 export interface CelestialLink extends d3.SimulationLinkDatum<CelestialNode> {
   source: string | CelestialNode;
   target: string | CelestialNode;
   weight: number;
   type: string;
   types?: string[];
-  isAsterism?: boolean;
-  isPrimaryBridge?: boolean;
+  tier?: EdgeTier;
 }
 
 export const POSITION_CACHE_VERSION = 'v6_celestial';
@@ -641,6 +642,127 @@ export function computeConstellationPath(
   return `M ${x1} ${y1} C ${cx1} ${cy1} ${cx2} ${cy2} ${x2} ${y2}`;
 }
 
+/**
+ * Classifies a relationship edge into the 4-tier visual hierarchy (§1, §2, §3, §7):
+ * - 'level1': Level 1 (Core) -> any local node (restrained terracotta/red, most prominent)
+ * - 'level2_to_3': Level 2 (Subtopic) -> Level 3 (Related) (restrained gold/ochre, visible but quieter)
+ * - 'secondary': Same-level or lateral local relationships (light neutral deep-ink)
+ * - 'cross_cluster': Distant inter-cluster connections (faint dotted lines)
+ */
+export function getEdgeTier(
+  sNode?: CelestialNode,
+  tNode?: CelestialNode
+): EdgeTier {
+  if (!sNode || !tNode) return 'secondary';
+  const isSameCluster = sNode.clusterKey === tNode.clusterKey;
+  if (!isSameCluster) return 'cross_cluster';
+
+  // Same cluster:
+  // Level 1 (Core) -> any node:
+  if (sNode.hierarchy === 'core' || tNode.hierarchy === 'core') {
+    return 'level1';
+  }
+  // Level 2 (Subtopic) -> Level 3 (Related):
+  if (
+    (sNode.hierarchy === 'subtopic' && tNode.hierarchy === 'related') ||
+    (tNode.hierarchy === 'subtopic' && sNode.hierarchy === 'related')
+  ) {
+    return 'level2_to_3';
+  }
+  // Secondary / lateral relationships:
+  return 'secondary';
+}
+
+export function getLinkStroke(tier: EdgeTier): string {
+  switch (tier) {
+    case 'level1':
+      return '#B84E2A'; // Restrained celestial terracotta/red for Level 1 -> any node
+    case 'level2_to_3':
+      return '#C49234'; // Restrained gold/ochre for Level 2 -> Level 3
+    case 'secondary':
+      return '#6E5F5A'; // Very light neutral / deep ink for secondary lateral
+    case 'cross_cluster':
+      return '#8E7E7A'; // Lighter neutral tone for cross-cluster
+  }
+}
+
+export function getLinkOpacity(tier: EdgeTier): number {
+  switch (tier) {
+    case 'level1':
+      return 0.58; // Most visible
+    case 'level2_to_3':
+      return 0.44; // Clearly visible but quieter
+    case 'secondary':
+      return 0.22; // Lighter secondary
+    case 'cross_cluster':
+      return 0.25; // Faint, visible dotted line
+  }
+}
+
+export function getLinkWidth(tier: EdgeTier, weight?: number): number {
+  switch (tier) {
+    case 'level1':
+      return 1.45 + (weight || 0.8) * 0.35;
+    case 'level2_to_3':
+      return 1.15;
+    case 'secondary':
+      return 0.85;
+    case 'cross_cluster':
+      return 0.85;
+  }
+}
+
+export function getLinkDashArray(tier: EdgeTier): string {
+  return tier === 'cross_cluster' ? '4,4' : 'none';
+}
+
+export function getSubduedLinkOpacity(tier: EdgeTier): number {
+  switch (tier) {
+    case 'level1':
+      return 0.18;
+    case 'level2_to_3':
+      return 0.12;
+    case 'secondary':
+      return 0.06;
+    case 'cross_cluster':
+      return 0.07;
+  }
+}
+
+/**
+ * Progressive semantic label disclosure (§5):
+ * Wide view: Level 1 labels + top important Level 2 labels
+ * Medium view: Level 1 + Level 2 labels + important Level 3 labels
+ * Close view: Remaining relevant labels
+ * Hover / Selection / Connected: Always visible
+ */
+export function shouldShowNodeLabel(
+  d: CelestialNode,
+  k: number,
+  isPriority: boolean
+): boolean {
+  if (isPriority) return true;
+  // Wide view (k < 0.72):
+  // Level 1 labels + a limited number of important Level 2 labels (degree >= 3 or noteCount >= 2)
+  if (k < 0.72) {
+    if (d.hierarchy === 'core') return true;
+    if (d.hierarchy === 'subtopic' && ((d.degree || 0) >= 3 || (d.noteCount || 0) >= 2)) {
+      return true;
+    }
+    return false;
+  }
+  // Medium view (0.72 <= k < 1.25):
+  // Level 1 + Level 2 labels + important Level 3 labels (degree >= 2 or noteCount >= 1)
+  if (k < 1.25) {
+    if (d.hierarchy === 'core' || d.hierarchy === 'subtopic') return true;
+    if ((d.degree || 0) >= 2 || (d.noteCount || 0) >= 1) return true;
+    return false;
+  }
+  // Close view (k >= 1.25):
+  // Remaining relevant labels
+  return true;
+}
+
 
 export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   workspaceId,
@@ -974,36 +1096,15 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
     const links: CelestialLink[] = Array.from(linkMap.values());
 
-    // 7. Track cross-cluster bridge counts to avoid 20+ parallel cables between clusters (§8)
-    const clusterPairBridges = new Map<string, number>();
-    // Sort links descending by confidence weight so highest quality bridges are prioritized
-    const sortedLinks = [...links].sort((a, b) => b.weight - a.weight);
+    // 7. Compute edge tier for every relationship (§1, §2, §3, §7)
+    // Preserves all real relationships without hiding or deleting cross-cluster connections
+    const nodeLookup = new Map<string, CelestialNode>();
+    nodes.forEach((n) => nodeLookup.set(n.id, n));
 
-    sortedLinks.forEach((l) => {
+    links.forEach((l) => {
       const sId = typeof l.source === 'string' ? l.source : (l.source as any).id;
       const tId = typeof l.target === 'string' ? l.target : (l.target as any).id;
-      const sCluster = nodeClusterMap.get(sId)?.key;
-      const tCluster = nodeClusterMap.get(tId)?.key;
-
-      if (sCluster && tCluster && sCluster === tCluster) {
-        // Same-cluster: asterism backbone link connects Core or Subtopics, or small cluster (<= 12 nodes)
-        const isCoreOrSub =
-          coreNodeIds.has(sId) ||
-          coreNodeIds.has(tId) ||
-          (subtopicNodeIds.has(sId) && subtopicNodeIds.has(tId));
-        const clusterSize = clusterNodesMap.get(sCluster)?.length || 0;
-        l.isAsterism = isCoreOrSub || clusterSize <= 12;
-      } else if (sCluster && tCluster) {
-        // Cross-cluster: limit resting visible bridges to top 2 highest confidence per cluster pair
-        const pairKey = sCluster < tCluster ? `${sCluster}::${tCluster}` : `${tCluster}::${sCluster}`;
-        const count = clusterPairBridges.get(pairKey) || 0;
-        if (count < 2) {
-          l.isPrimaryBridge = true;
-          clusterPairBridges.set(pairKey, count + 1);
-        } else {
-          l.isPrimaryBridge = false;
-        }
-      }
+      l.tier = getEdgeTier(nodeLookup.get(sId), nodeLookup.get(tId));
     });
 
     // 8. Ensure every node has established layout coordinates immediately (§4, §5)
@@ -1567,38 +1668,15 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           hoveredNodeRef.current.connections.forEach((c) => currentConnectedIds.add(c.id));
         }
 
-        // Semantic zoom label density control (§1, §2)
+        // Progressive semantic label disclosure (§5)
         g.selectAll<SVGGElement, CelestialNode>('.celestial-node').each(function (d) {
           const isSelected = d.id === currentSelectedId;
           const isHovered = d.id === currentHoveredId;
           const isConnected = currentConnectedIds.has(d.id);
           const labelGroup = d3.select(this).select('.node-label-group');
 
-          if (isSelected || isHovered || isConnected) {
-            // Selected node, hovered node, and their direct neighbors ALWAYS show label
-            labelGroup.style('display', 'block');
-          } else if (k < 0.75) {
-            // Low zoom (overview): only core concepts show labels
-            labelGroup.style('display', d.hierarchy === 'core' ? 'block' : 'none');
-          } else if (k < 1.3) {
-            // Mid zoom: core and subtopics show labels
-            labelGroup.style('display', d.hierarchy === 'core' || d.hierarchy === 'subtopic' ? 'block' : 'none');
-          } else if (k < 1.9) {
-            // Closer zoom: core, subtopics, and prominent related concepts
-            labelGroup.style('display', d.hierarchy === 'core' || d.hierarchy === 'subtopic' || d.degree >= 2 ? 'block' : 'none');
-          } else {
-            // Deep zoom: all labels visible
-            labelGroup.style('display', 'block');
-          }
-        });
-
-        // Level 3 markers subtle celestial dust at low zoom
-        g.selectAll<SVGGElement, CelestialNode>('.celestial-node').each(function (d) {
-          const isSelected = d.id === currentSelectedId;
-          const isConnected = currentConnectedIds.has(d.id);
-          if (d.hierarchy === 'related' && !isSelected && !isConnected) {
-            d3.select(this).style('opacity', k < 0.75 ? 0.45 : 1);
-          }
+          const show = shouldShowNodeLabel(d, k, isSelected || isHovered || isConnected);
+          labelGroup.style('display', show ? 'block' : 'none');
         });
       });
 
@@ -1692,41 +1770,11 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       }
     });
 
-    // Helper functions for link resting styles (§8)
-    const getLinkStroke = (d: CelestialLink) => {
+    // Helper to resolve edge tier for link rendering (§1, §2, §3, §7)
+    const resolveTier = (d: CelestialLink): EdgeTier => {
       const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
       const tId = typeof d.target === 'string' ? d.target : (d.target as any).id;
-      const sNode = nodeLookup.get(sId);
-      const tNode = nodeLookup.get(tId);
-      const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-      if (isSame) {
-        return d.isAsterism !== false ? '#4A3C39' : '#8A7B76';
-      }
-      return '#726360';
-    };
-
-    const getLinkOpacity = (d: CelestialLink) => {
-      const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
-      const tId = typeof d.target === 'string' ? d.target : (d.target as any).id;
-      const sNode = nodeLookup.get(sId);
-      const tNode = nodeLookup.get(tId);
-      const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-      if (isSame) {
-        return d.isAsterism !== false ? 0.58 : 0.14;
-      }
-      return d.isPrimaryBridge !== false ? 0.36 : 0.05;
-    };
-
-    const getLinkWidth = (d: CelestialLink) => {
-      const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
-      const tId = typeof d.target === 'string' ? d.target : (d.target as any).id;
-      const sNode = nodeLookup.get(sId);
-      const tNode = nodeLookup.get(tId);
-      const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-      if (isSame) {
-        return d.isAsterism !== false ? 1.25 + (d.weight || 0.8) * 0.45 : 0.8;
-      }
-      return 0.95;
+      return d.tier || getEdgeTier(nodeLookup.get(sId), nodeLookup.get(tId));
     };
 
     // Links Layer
@@ -1738,17 +1786,10 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       .append('path')
       .attr('class', 'celestial-link')
       .attr('fill', 'none')
-      .attr('stroke', (d) => getLinkStroke(d))
-      .attr('stroke-opacity', (d) => getLinkOpacity(d))
-      .attr('stroke-width', (d) => getLinkWidth(d))
-      .attr('stroke-dasharray', (d) => {
-        const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
-        const tId = typeof d.target === 'string' ? d.target : (d.target as any).id;
-        const sNode = nodeLookup.get(sId);
-        const tNode = nodeLookup.get(tId);
-        const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-        return isSame ? 'none' : '4,4';
-      });
+      .attr('stroke', (d) => getLinkStroke(resolveTier(d)))
+      .attr('stroke-opacity', (d) => getLinkOpacity(resolveTier(d)))
+      .attr('stroke-width', (d) => getLinkWidth(resolveTier(d), d.weight))
+      .attr('stroke-dasharray', (d) => getLinkDashArray(resolveTier(d)));
 
     // Nodes Layer
     const nodeGroup = g.append('g').attr('class', 'nodes-layer');
@@ -1794,15 +1835,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         if (isSelected || isConnected) return;
 
         const labelGroup = d3.select(this).select('.node-label-group');
-        if (k < 0.75) {
-          labelGroup.style('display', d.hierarchy === 'core' ? 'block' : 'none');
-        } else if (k < 1.3) {
-          labelGroup.style('display', d.hierarchy === 'core' || d.hierarchy === 'subtopic' ? 'block' : 'none');
-        } else if (k < 1.9) {
-          labelGroup.style('display', d.hierarchy === 'core' || d.hierarchy === 'subtopic' || d.degree >= 2 ? 'block' : 'none');
-        } else {
-          labelGroup.style('display', 'block');
-        }
+        labelGroup.style('display', shouldShowNodeLabel(d, k, false) ? 'block' : 'none');
       });
 
     // Statically position all nodes and curved constellation links directly from established coordinates (§3, §4)
@@ -1863,14 +1896,15 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           .attr('stroke', '#C08D38')
           .attr('stroke-width', 0.8);
       } else {
-        // Smaller Terracotta/Orange Concept Star for Related/Lower concepts
+        // Smaller Terracotta/Orange Concept Star for Related/Lower concepts (§4, §7)
+        // Maintains recognizable terracotta color, crisp geometry, and clear definition across all zoom levels
         el.append('path')
-          .attr('d', createSymmetricalConceptStar(9))
+          .attr('d', createSymmetricalConceptStar(10))
           .attr('fill', 'url(#related-concept-grad)')
           .attr('stroke', '#BD532B')
-          .attr('stroke-width', 0.7);
+          .attr('stroke-width', 1.0);
 
-        el.append('circle').attr('r', 1.8).attr('fill', '#FAF8F2');
+        el.append('circle').attr('r', 2.0).attr('fill', '#FAF8F2');
       }
 
       // Clean, elegant astronomical label showing ONLY the concept name (§1, §2)
@@ -1878,7 +1912,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         .append('g')
         .attr('class', 'node-label-group pointer-events-none select-none')
         .attr('transform', `translate(0, ${d.size + 11})`)
-        .style('display', d.hierarchy === 'core' ? 'block' : 'none');
+        .style('display', shouldShowNodeLabel(d, currentTransform?.k ?? 1, false) ? 'block' : 'none');
 
       textGroup
         .append('text')
@@ -1961,7 +1995,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           .classed('is-drag-active', true)
           .attr('stroke', '#BD532B')
           .attr('stroke-opacity', 0.95)
-          .attr('stroke-width', (l: any) => getLinkWidth(l) + 0.85);
+          .attr('stroke-width', (l: any) => getLinkWidth(resolveTier(l), l.weight) + 0.85);
 
         activeDragData = {
           nodeId: d.id,
@@ -2082,7 +2116,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                   (tgtId === currentHoveredId && hoveredNeighbors.has(srcId))
                 : false;
               if (isDirectHoveredEdge) return '#D26E40';
-              return getLinkStroke(l);
+              const tier = resolveTier(l);
+              return getLinkStroke(tier);
             })
             .attr('stroke-opacity', (l: any) => {
               const srcId = typeof l.source === 'string' ? l.source : l.source.id;
@@ -2097,12 +2132,11 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                   (tgtId === currentHoveredId && hoveredNeighbors.has(srcId))
                 : false;
               if (isDirectHoveredEdge) return 0.88;
-              if (currentSelectedId) {
-                const sNode = nodeLookup.get(srcId);
-                const tNode = nodeLookup.get(tgtId);
-                return sNode && tNode && sNode.clusterKey === tNode.clusterKey ? 0.26 : 0.18;
+              const tier = resolveTier(l);
+              if (currentSelectedId || currentHoveredId) {
+                return getSubduedLinkOpacity(tier);
               }
-              return getLinkOpacity(l);
+              return getLinkOpacity(tier);
             })
             .attr('stroke-width', (l: any) => {
               const srcId = typeof l.source === 'string' ? l.source : l.source.id;
@@ -2117,7 +2151,24 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                   (tgtId === currentHoveredId && hoveredNeighbors.has(srcId))
                 : false;
               if (isDirectHoveredEdge) return 2.0;
-              return getLinkWidth(l);
+              const tier = resolveTier(l);
+              return getLinkWidth(tier, l.weight);
+            })
+            .attr('stroke-dasharray', (l: any) => {
+              const srcId = typeof l.source === 'string' ? l.source : l.source.id;
+              const tgtId = typeof l.target === 'string' ? l.target : l.target.id;
+              const isDirectSelectedEdge = currentSelectedId
+                ? (srcId === currentSelectedId && selectedNeighbors.has(tgtId)) ||
+                  (tgtId === currentSelectedId && selectedNeighbors.has(srcId))
+                : false;
+              if (isDirectSelectedEdge) return 'none';
+              const isDirectHoveredEdge = currentHoveredId
+                ? (srcId === currentHoveredId && hoveredNeighbors.has(tgtId)) ||
+                  (tgtId === currentHoveredId && hoveredNeighbors.has(srcId))
+                : false;
+              if (isDirectHoveredEdge) return 'none';
+              const tier = resolveTier(l);
+              return getLinkDashArray(tier);
             })
             .attr('d', (l: any) => linkConstellationPath(l));
 
@@ -2269,7 +2320,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
       const sNode = nodeLookup.get(srcId);
       const tNode = nodeLookup.get(tgtId);
-      const isSameCluster = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
+      const tier = d.tier || getEdgeTier(sNode, tNode);
 
       if (isDirectSelectedEdge) {
         // SELECTED NODE EDGES: temporarily stronger/highlighted (§3, §5)
@@ -2285,30 +2336,24 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           .attr('stroke-opacity', 0.88)
           .attr('stroke-width', 2.0)
           .attr('stroke-dasharray', 'none');
-      } else if (selectedId) {
-        // A node is selected: slightly reduce unrelated edges, keeping cross-cluster visible (§3, §5)
-        const isSame = isSameCluster;
-        const op = isSame
-          ? (d.isAsterism !== false ? 0.26 : 0.08)
-          : (d.isPrimaryBridge !== false ? 0.18 : 0.02);
+      } else if (selectedId || hoveredId) {
+        // A node is selected or hovered: keep unrelated edges subdued based on tier (§3)
         el.classed('is-active-link', false)
-          .attr('stroke', isSame ? (d.isAsterism !== false ? '#4A3C39' : '#8A7B76') : '#726360')
-          .attr('stroke-opacity', op)
-          .attr('stroke-width', isSame ? (d.isAsterism !== false ? 1.1 : 0.7) : 0.85)
-          .attr('stroke-dasharray', isSame ? 'none' : '4,4');
+          .attr('stroke', getLinkStroke(tier))
+          .attr('stroke-opacity', getSubduedLinkOpacity(tier))
+          .attr('stroke-width', getLinkWidth(tier, d.weight) * 0.9)
+          .attr('stroke-dasharray', getLinkDashArray(tier));
       } else {
-        // NEUTRAL RESTING STATE (§4, §5):
-        // SAME-CLUSTER EDGES -> normal visibility (asterism backbone) / delicate (secondary)
-        // CROSS-CLUSTER EDGES -> lighter/thinner/dashed (primary bridges) / ethereal
-        const isSame = isSameCluster;
-        const op = isSame
-          ? (d.isAsterism !== false ? 0.58 : 0.14)
-          : (d.isPrimaryBridge !== false ? 0.36 : 0.05);
+        // DEFAULT NEUTRAL RESTING STATE (§1, §2, §3, §7):
+        // 1. Level 1 relationships -> restrained terracotta/red, most visible
+        // 2. Level 2 -> Level 3 -> restrained gold/ochre, clearly visible but quieter
+        // 3. same-level / secondary relationships -> very light neutral/deep-ink
+        // 4. cross-cluster relationships -> faint dotted lines, lower opacity, slightly lighter tone
         el.classed('is-active-link', false)
-          .attr('stroke', isSame ? (d.isAsterism !== false ? '#4A3C39' : '#8A7B76') : '#726360')
-          .attr('stroke-opacity', op)
-          .attr('stroke-width', isSame ? (d.isAsterism !== false ? 1.25 + (d.weight || 0.8) * 0.45 : 0.8) : 0.95)
-          .attr('stroke-dasharray', isSame ? 'none' : '4,4');
+          .attr('stroke', getLinkStroke(tier))
+          .attr('stroke-opacity', getLinkOpacity(tier))
+          .attr('stroke-width', getLinkWidth(tier, d.weight))
+          .attr('stroke-dasharray', getLinkDashArray(tier));
       }
     });
   }, [selectedNode, hoveredNode, celestialNodes]);

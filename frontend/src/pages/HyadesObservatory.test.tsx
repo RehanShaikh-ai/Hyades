@@ -6,6 +6,13 @@ import {
   computeObservatoryLayout,
   performLocalUntangle,
   computeConstellationPath,
+  getEdgeTier,
+  getLinkStroke,
+  getLinkOpacity,
+  getSubduedLinkOpacity,
+  getLinkWidth,
+  getLinkDashArray,
+  shouldShowNodeLabel,
   CelestialNode,
   CelestialLink,
 } from './HyadesObservatory';
@@ -664,15 +671,15 @@ describe('HyadesObservatory Spatial Navigation & Search', () => {
     const links = Array.from(container.querySelectorAll<SVGPathElement>('.celestial-link'));
     expect(links.length).toBe(2);
 
-    // One edge is intra-cluster (n1-n2 in cl-1), one is cross-cluster (n3 in cl-2 to n1 in cl-1)
+    // One edge is intra-cluster (n1-n2 in cl-1 with n1 as Core -> level1 tier), one is cross-cluster (n3 in cl-2 to n1 in cl-1)
     const crossClusterLink = links.find((l) => l.getAttribute('stroke-dasharray') === '4,4');
     expect(crossClusterLink).toBeDefined();
-    expect(crossClusterLink?.getAttribute('stroke')).toBe('#726360');
-    expect(Number(crossClusterLink?.getAttribute('stroke-opacity'))).toBeCloseTo(0.36, 2);
+    expect(crossClusterLink?.getAttribute('stroke')).toBe('#8E7E7A');
+    expect(Number(crossClusterLink?.getAttribute('stroke-opacity'))).toBeCloseTo(0.25, 2);
 
     const sameClusterLink = links.find((l) => l.getAttribute('stroke-dasharray') === 'none');
     expect(sameClusterLink).toBeDefined();
-    expect(sameClusterLink?.getAttribute('stroke')).toBe('#4A3C39');
+    expect(sameClusterLink?.getAttribute('stroke')).toBe('#B84E2A');
     expect(Number(sameClusterLink?.getAttribute('stroke-opacity'))).toBeCloseTo(0.58, 2);
   });
 
@@ -842,6 +849,147 @@ describe('HyadesObservatory Spatial Navigation & Search', () => {
     const distSubRel = Math.hypot(relPos!.x - subPos!.x, relPos!.y - subPos!.y);
     expect(distSubRel).toBeGreaterThan(30);
     expect(distSubRel).toBeLessThan(140);
+  });
+
+  describe('Edge Visual Hierarchy & Styling (§1, §2, §3, §7)', () => {
+    const makeNode = (id: string, clusterKey: string, hierarchy: 'core' | 'subtopic' | 'related'): CelestialNode => ({
+      id,
+      label: id,
+      size: 16,
+      group: 1,
+      type: 'concept',
+      desc: '',
+      clusterKey,
+      catalog: `HYA-${id}`,
+      coords: 'RA 00 DEC 00',
+      connections: [],
+      degree: 1,
+      noteCount: 1,
+      hierarchy,
+    });
+
+    it('correctly classifies edge tiers based on node hierarchy and cluster membership', () => {
+      const coreA = makeNode('c1', 'cl-A', 'core');
+      const subA1 = makeNode('s1', 'cl-A', 'subtopic');
+      const subA2 = makeNode('s2', 'cl-A', 'subtopic');
+      const relA1 = makeNode('r1', 'cl-A', 'related');
+      const relA2 = makeNode('r2', 'cl-A', 'related');
+      const coreB = makeNode('c2', 'cl-B', 'core');
+      const relB = makeNode('rb', 'cl-B', 'related');
+
+      // 1. Level 1 -> any local node: restrained terracotta/red
+      expect(getEdgeTier(coreA, subA1)).toBe('level1');
+      expect(getEdgeTier(subA1, coreA)).toBe('level1');
+      expect(getEdgeTier(coreA, relA1)).toBe('level1');
+
+      // 2. Level 2 -> Level 3: restrained gold/ochre
+      expect(getEdgeTier(subA1, relA1)).toBe('level2_to_3');
+      expect(getEdgeTier(relA1, subA1)).toBe('level2_to_3');
+
+      // 3. Secondary / lateral relationships: very light neutral/deep-ink
+      expect(getEdgeTier(subA1, subA2)).toBe('secondary');
+      expect(getEdgeTier(relA1, relA2)).toBe('secondary');
+
+      // 4. Cross-cluster relationships: faint dotted lines
+      expect(getEdgeTier(coreA, coreB)).toBe('cross_cluster');
+      expect(getEdgeTier(subA1, relB)).toBe('cross_cluster');
+      expect(getEdgeTier(relA1, relB)).toBe('cross_cluster');
+    });
+
+    it('returns exact specified stroke colors according to visual hierarchy', () => {
+      // Level 1 -> restrained terracotta/red
+      expect(getLinkStroke('level1')).toBe('#B84E2A');
+      // Level 2 -> Level 3 -> restrained gold/ochre
+      expect(getLinkStroke('level2_to_3')).toBe('#C49234');
+      // Secondary -> very light neutral / deep-ink
+      expect(getLinkStroke('secondary')).toBe('#6E5F5A');
+      // Cross-cluster -> lighter neutral tone
+      expect(getLinkStroke('cross_cluster')).toBe('#8E7E7A');
+    });
+
+    it('returns specified opacity, dasharray, and width values for resting and subdued states', () => {
+      // Default resting opacities: hierarchy weight prevents spaghetti while showing 100% of real relations
+      expect(getLinkOpacity('level1')).toBe(0.58);
+      expect(getLinkOpacity('level2_to_3')).toBe(0.44);
+      expect(getLinkOpacity('secondary')).toBe(0.22);
+      expect(getLinkOpacity('cross_cluster')).toBe(0.25);
+
+      // Subdued opacities when a node is selected or hovered
+      expect(getSubduedLinkOpacity('level1')).toBe(0.18);
+      expect(getSubduedLinkOpacity('level2_to_3')).toBe(0.12);
+      expect(getSubduedLinkOpacity('secondary')).toBe(0.06);
+      expect(getSubduedLinkOpacity('cross_cluster')).toBe(0.07);
+
+      // Dasharrays: cross-cluster uses thin dotted/dashed lines, others solid
+      expect(getLinkDashArray('cross_cluster')).toBe('4,4');
+      expect(getLinkDashArray('level1')).toBe('none');
+      expect(getLinkDashArray('level2_to_3')).toBe('none');
+      expect(getLinkDashArray('secondary')).toBe('none');
+
+      // Link widths by hierarchy
+      expect(getLinkWidth('level1')).toBeGreaterThan(1.4);
+      expect(getLinkWidth('level2_to_3')).toBe(1.15);
+      expect(getLinkWidth('secondary')).toBe(0.85);
+      expect(getLinkWidth('cross_cluster')).toBe(0.85);
+    });
+  });
+
+  describe('Progressive Semantic Label Disclosure (§5)', () => {
+    const makeNodeWithStats = (
+      hierarchy: 'core' | 'subtopic' | 'related',
+      degree: number,
+      noteCount: number
+    ): CelestialNode => ({
+      id: 'test-node',
+      label: 'Test Node',
+      size: 16,
+      group: 1,
+      type: 'concept',
+      desc: '',
+      clusterKey: 'cl-1',
+      catalog: 'HYA-TEST',
+      coords: 'RA 00 DEC 00',
+      connections: [],
+      degree,
+      noteCount,
+      hierarchy,
+    });
+
+    it('always shows label when priority is true (selected, hovered, or connected)', () => {
+      const minorNode = makeNodeWithStats('related', 0, 0);
+      expect(shouldShowNodeLabel(minorNode, 0.4, true)).toBe(true);
+      expect(shouldShowNodeLabel(minorNode, 0.8, true)).toBe(true);
+      expect(shouldShowNodeLabel(minorNode, 1.5, true)).toBe(true);
+    });
+
+    it('reveals labels progressively across zoom thresholds (Wide, Medium, Close)', () => {
+      const coreNode = makeNodeWithStats('core', 5, 3);
+      const highSubtopic = makeNodeWithStats('subtopic', 4, 2);
+      const lowSubtopic = makeNodeWithStats('subtopic', 1, 0);
+      const impRelated = makeNodeWithStats('related', 2, 1);
+      const minorRelated = makeNodeWithStats('related', 1, 0);
+
+      // 1. Wide view (k < 0.72): Level 1 + limited important Level 2
+      expect(shouldShowNodeLabel(coreNode, 0.5, false)).toBe(true);
+      expect(shouldShowNodeLabel(highSubtopic, 0.5, false)).toBe(true);
+      expect(shouldShowNodeLabel(lowSubtopic, 0.5, false)).toBe(false);
+      expect(shouldShowNodeLabel(impRelated, 0.5, false)).toBe(false);
+      expect(shouldShowNodeLabel(minorRelated, 0.5, false)).toBe(false);
+
+      // 2. Medium view (0.72 <= k < 1.25): Level 1 + Level 2 + important Level 3
+      expect(shouldShowNodeLabel(coreNode, 0.9, false)).toBe(true);
+      expect(shouldShowNodeLabel(highSubtopic, 0.9, false)).toBe(true);
+      expect(shouldShowNodeLabel(lowSubtopic, 0.9, false)).toBe(true);
+      expect(shouldShowNodeLabel(impRelated, 0.9, false)).toBe(true);
+      expect(shouldShowNodeLabel(minorRelated, 0.9, false)).toBe(false);
+
+      // 3. Close view (k >= 1.25): All remaining relevant labels
+      expect(shouldShowNodeLabel(coreNode, 1.5, false)).toBe(true);
+      expect(shouldShowNodeLabel(highSubtopic, 1.5, false)).toBe(true);
+      expect(shouldShowNodeLabel(lowSubtopic, 1.5, false)).toBe(true);
+      expect(shouldShowNodeLabel(impRelated, 1.5, false)).toBe(true);
+      expect(shouldShowNodeLabel(minorRelated, 1.5, false)).toBe(true);
+    });
   });
 });
 
