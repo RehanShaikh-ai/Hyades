@@ -322,10 +322,11 @@ body {
   font-weight: 600;
 }
 
-/* Row item selection */
+/* Row item selection — inset bar animates in without shifting layout */
 .catalog-row {
-  transition: all 0.18s ease;
+  transition: background-color 160ms ease, box-shadow 200ms var(--ease-out);
   border-bottom: 1px solid var(--border-parchment);
+  box-shadow: inset 0 0 0 0 var(--accent-terracotta);
 }
 .catalog-row:last-child {
   border-bottom: none;
@@ -339,7 +340,7 @@ body {
 }
 .catalog-row.selected {
   background-color: white;
-  border-left: 3px solid var(--accent-terracotta);
+  box-shadow: inset 3px 0 0 0 var(--accent-terracotta);
 }
 
 /* Stella Dialogue Message styling */
@@ -446,9 +447,20 @@ body {
   transform-origin: center;
 }
 
+/* ======================================================================
+   HYADES MOTION SYSTEM
+   One easing family (strong deceleration), short durations, exits faster
+   than entrances. Transform + opacity only, except one-shot SVG reveals.
+   ====================================================================== */
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
 /* Collapsible sidebars & transitions */
 .sidebar-transition {
-  transition: transform 0.30s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+  transition: transform 0.30s var(--ease-out), opacity 0.25s ease;
 }
 .sidebar-left-collapsed {
   transform: translateX(-340px) !important;
@@ -461,135 +473,231 @@ body {
   pointer-events: none !important;
 }
 
-/* Authored Motion Language — Emil Kowalski Physics & Deceleration */
+/* ---------- Page continuity ---------- */
+/* Native View Transitions (Chromium/modern Firefox): real old→new crossfade. */
+@keyframes vt-out {
+  to { opacity: 0; transform: translateY(-6px); }
+}
+@keyframes vt-in {
+  from { opacity: 0; transform: translateY(10px); }
+}
+::view-transition-old(root) {
+  animation: vt-out 140ms var(--ease-in) both;
+}
+::view-transition-new(root) {
+  animation: vt-in 260ms var(--ease-out) 40ms both;
+}
+/* Header stays put while the page beneath it changes. */
+.hyades-header { view-transition-name: hyades-header; }
+::view-transition-old(hyades-header),
+::view-transition-new(hyades-header) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* Fallback when View Transitions are unavailable. */
 @keyframes page-enter {
-  from {
-    opacity: 0.85;
-    transform: translateY(3px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(10px); }
 }
 .page-transition {
-  animation: page-enter 220ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation: page-enter 260ms var(--ease-out) both;
+}
+html.vt-enabled .page-transition {
+  animation: none;
 }
 
-@keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(3px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* ---------- Staggered entrance (Overview, lists) ---------- */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(14px); }
+}
+.reveal {
+  animation: rise-in 520ms var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 70ms + 60ms);
+}
+
+/* Value change acknowledgement (keyed on value) */
+@keyframes value-tick {
+  from { opacity: 0.25; transform: translateY(3px); }
+}
+.value-tick {
+  display: inline-block;
+  animation: value-tick 360ms var(--ease-out) both;
+}
+
+/* Topic ring segments draw themselves in, once. */
+@keyframes ring-draw {
+  from { stroke-dasharray: 0 302; }
+}
+.ring-segment {
+  animation: ring-draw 900ms var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 90ms + 250ms);
+}
+@keyframes fade-scale-in {
+  from { opacity: 0; transform: scale(0.92); }
+}
+.orbital-reveal {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: fade-scale-in 600ms var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 110ms + 300ms);
+}
+
+/* Small directional nudge for arrows / icons on hover */
+.nudge {
+  display: inline-block;
+  transition: transform 180ms var(--ease-out);
+}
+.group:hover .nudge,
+.group:focus-visible .nudge {
+  transform: translate(2px, -2px);
+}
+.nudge-x {
+  display: inline-block;
+  transition: transform 180ms var(--ease-out);
+}
+.group:hover .nudge-x,
+.group:focus-visible .nudge-x {
+  transform: translateX(3px);
+}
+
+/* Lift for interactive cards (1–2px, never more) */
+.lift {
+  transition: transform 200ms var(--ease-out), box-shadow 200ms var(--ease-out), border-color 160ms ease;
+}
+.lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px -14px rgba(35, 30, 25, 0.35);
+}
+.lift:active {
+  transform: translateY(0);
+  transition-duration: 80ms;
+}
+
+/* ---------- Popovers ---------- */
+@keyframes popover-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
 }
 .animate-fade-in {
-  animation: fade-in 200ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  transform-origin: top center;
+  animation: popover-in 180ms var(--ease-out) both;
 }
 
-@keyframes dialog-backdrop {
-  from { opacity: 0; }
-  to { opacity: 1; }
+/* ---------- Dialogs ---------- */
+@keyframes backdrop-in { from { opacity: 0; } }
+@keyframes backdrop-out { to { opacity: 0; } }
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.96); }
+}
+@keyframes dialog-out {
+  to { opacity: 0; transform: translateY(8px) scale(0.98); }
 }
 .dialog-backdrop {
-  animation: dialog-backdrop 200ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation: backdrop-in 200ms ease-out both;
 }
-
-@keyframes dialog-content {
-  from {
-    opacity: 0;
-    transform: scale(0.975) translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
+.dialog-backdrop[data-state='closing'] {
+  animation: backdrop-out 160ms ease-in both;
+  pointer-events: none;
 }
 .dialog-content {
-  animation: dialog-content 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation: dialog-in 260ms var(--ease-out) both;
+}
+[data-state='closing'] > .dialog-content,
+.dialog-content[data-state='closing'] {
+  animation: dialog-out 150ms var(--ease-in) both;
 }
 
-@keyframes left-drawer-slide {
-  from {
-    transform: translateX(-18px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
+/* ---------- Drawers (attached to their edge) ---------- */
+@keyframes drawer-in-left { from { opacity: 0; transform: translateX(-28px); } }
+@keyframes drawer-out-left { to { opacity: 0; transform: translateX(-24px); } }
+@keyframes drawer-in-right { from { opacity: 0; transform: translateX(32px); } }
+@keyframes drawer-out-right { to { opacity: 0; transform: translateX(28px); } }
 #left-sidebar {
-  animation: left-drawer-slide 260ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation: drawer-in-left 280ms var(--ease-out) both;
 }
-
-@keyframes right-drawer-slide {
-  from {
-    transform: translateX(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+#left-sidebar[data-state='closing'] {
+  animation: drawer-out-left 160ms var(--ease-in) both;
+  pointer-events: none;
 }
 #right-sidebar {
-  animation: right-drawer-slide 260ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation: drawer-in-right 300ms var(--ease-out) both;
 }
-
+#right-sidebar[data-state='closing'] {
+  animation: drawer-out-right 160ms var(--ease-in) both;
+  pointer-events: none;
+}
 #reopen-left-sidebar,
 #reopen-right-sidebar {
-  animation: fade-in 180ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
-}
-
-@keyframes shelves-enter {
-  from {
-    opacity: 0.85;
-    transform: translateX(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  animation: backdrop-in 220ms ease-out 80ms both;
 }
 .shelves-slide {
-  animation: shelves-enter 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
-}
-
-@keyframes dossier-enter {
-  from {
-    opacity: 0.85;
-    transform: translateX(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  animation: drawer-in-left 280ms var(--ease-out) both;
 }
 .dossier-slide {
-  animation: dossier-enter 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation: drawer-in-right 300ms var(--ease-out) both;
 }
 
+/* Content swap inside a persistent surface (dossier item change, shelf change) */
+@keyframes content-swap {
+  from { opacity: 0; transform: translateY(8px); }
+}
+.content-swap {
+  animation: content-swap 260ms var(--ease-out) both;
+}
+.stagger-row {
+  animation: content-swap 300ms var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 28ms);
+}
+
+/* ---------- Header navigation rail ---------- */
+.nav-rail { position: relative; }
+.nav-rail .nav-item.active::after { display: none; }
+.nav-indicator {
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  height: 2px;
+  width: 100px;
+  border-radius: 2px;
+  background: var(--accent-terracotta);
+  transform-origin: left center;
+  transition: transform 320ms var(--ease-out), width 320ms var(--ease-out), opacity 160ms ease;
+  pointer-events: none;
+}
+
+/* ---------- Stella ---------- */
 @keyframes message-enter {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(12px); }
 }
 .message-enter {
-  animation: message-enter 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation: message-enter 320ms var(--ease-out) both;
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.45; transform: scale(0.82) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.12) rotate(45deg); }
+}
+.stella-twinkle {
+  display: inline-block;
+  animation: twinkle 1.4s var(--ease-in-out) infinite;
+}
+@keyframes breathe {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.stella-breathe {
+  animation: breathe 1.8s ease-in-out infinite;
 }
 
-/* Tactile button micro-response */
-button:active:not(:disabled) {
-  transform: scale(0.985);
+/* ---------- Press response ----------
+   Lives in @layer base so Tailwind utilities (e.g. active:scale-95) still win. */
+@layer base {
+  button:not(:disabled):active {
+    scale: 0.97;
+  }
+  button {
+    transition-property: color, background-color, border-color, box-shadow, opacity, scale;
+    transition-duration: 140ms;
+    transition-timing-function: var(--ease-out);
+  }
 }
 
 /* Focused Fullscreen View for Observatory */
@@ -722,28 +830,48 @@ button:active:not(:disabled) {
   background: rgba(250, 248, 242, 0.6);
 }
 
-/* Celestial Graph Highlight Classes */
+/* Celestial Graph Highlight & Motion Classes */
 .celestial-node {
   transition: opacity 0.25s ease;
 }
+.celestial-node path,
+.celestial-node circle:not(.star-hitbox):not(.selection-halo) {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.22s var(--ease-out), filter 0.22s var(--ease-out);
+}
 .celestial-node.is-dimmed {
-  opacity: 0.42 !important;
+  opacity: 0.38 !important;
 }
 .celestial-node.is-selected {
   opacity: 1 !important;
 }
+.celestial-node.is-selected path,
+.celestial-node.is-selected circle:not(.star-hitbox):not(.selection-halo) {
+  transform: scale(1.26);
+  filter: drop-shadow(0 0 6px rgba(189, 83, 43, 0.65));
+}
 .celestial-node.is-connected {
   opacity: 1 !important;
 }
+.celestial-node.is-connected path,
+.celestial-node.is-connected circle:not(.star-hitbox):not(.selection-halo) {
+  transform: scale(1.08);
+}
 .celestial-node.is-hovered {
   opacity: 1 !important;
+}
+.celestial-node.is-hovered path,
+.celestial-node.is-hovered circle:not(.star-hitbox):not(.selection-halo) {
+  transform: scale(1.18);
 }
 .celestial-node.is-dragging {
   cursor: grabbing !important;
 }
 .celestial-node.is-dragging circle,
 .celestial-node.is-dragging path {
-  filter: drop-shadow(0 2px 6px rgba(189, 83, 43, 0.45));
+  transform: scale(1.22);
+  filter: drop-shadow(0 2px 8px rgba(189, 83, 43, 0.55));
 }
 .celestial-node.is-dragging .selection-halo {
   opacity: 1 !important;
@@ -765,6 +893,36 @@ button:active:not(:disabled) {
 }
 .celestial-link.is-drag-active {
   transition: none !important;
+}
+
+@keyframes star-enter {
+  0% {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.star-reveal {
+  animation: star-enter 0.5s var(--ease-out) backwards;
+}
+
+@keyframes link-enter {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.link-reveal {
+  animation: link-enter 0.65s var(--ease-out) backwards;
 }
 
 /* Scrollbars */

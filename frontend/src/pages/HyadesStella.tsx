@@ -531,7 +531,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                   ) : (
                     <>
                       <div className="flex items-center gap-2 px-1 text-[11.5px] text-[var(--ink-secondary)]">
-                        <div className="w-5 h-5 rounded-full bg-[var(--accent-midnight)] text-[var(--accent-brass)] flex items-center justify-center text-[10px] shadow-2xs">
+                        <div className={`w-5 h-5 rounded-full bg-[var(--accent-midnight)] text-[var(--accent-brass)] flex items-center justify-center text-[10px] shadow-2xs ${isStreaming && index === messages.length - 1 ? 'stella-twinkle' : ''}`}>
                           <i className="ph ph-sparkle" />
                         </div>
                         <span className="serif font-semibold text-[13px] text-[var(--accent-midnight)]">
@@ -752,17 +752,17 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                     type="button"
                     onClick={() => handleSendMessage()}
                     disabled={!inputPrompt.trim() || isStreaming}
-                    className="px-4 py-1.5 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center gap-1.5 shadow-2xs disabled:opacity-50 active:scale-95 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
+                    className="px-4 py-1.5 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center gap-1.5 shadow-2xs disabled:opacity-50 active:scale-95 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] group"
                   >
                     {isStreaming ? (
                       <>
-                        <i className="ph ph-spinner animate-spin text-xs text-[var(--accent-brass)]" />
-                        <span>Reasoning...</span>
+                        <i className="ph ph-sparkle text-xs text-[var(--accent-brass)] stella-twinkle" />
+                        <span className="stella-breathe">Synthesizing...</span>
                       </>
                     ) : (
                       <>
                         <span>Send Inquiry</span>
-                        <i className="ph ph-arrow-up text-xs text-[var(--accent-brass)]" />
+                        <i className="ph ph-arrow-up text-xs text-[var(--accent-brass)] nudge" />
                       </>
                     )}
                   </button>

@@ -33,6 +33,38 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
 }) => {
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const navRailRef = useRef<HTMLElement>(null);
+  const tabRefs = useRef<Record<HyadesDestination, HTMLButtonElement | null>>({
+    overview: null,
+    library: null,
+    observatory: null,
+    stella: null,
+  });
+  const [indicatorStyle, setIndicatorStyle] = useState<{ x: number; width: number; visible: boolean }>({
+    x: 0,
+    width: 0,
+    visible: false,
+  });
+
+  const updateIndicator = () => {
+    const activeTab = tabRefs.current[currentDestination];
+    const rail = navRailRef.current;
+    if (activeTab && rail) {
+      const railRect = rail.getBoundingClientRect();
+      const tabRect = activeTab.getBoundingClientRect();
+      setIndicatorStyle({
+        x: tabRect.left - railRect.left,
+        width: tabRect.width,
+        visible: true,
+      });
+    }
+  };
+
+  useEffect(() => {
+    updateIndicator();
+    window.addEventListener('resize', updateIndicator);
+    return () => window.removeEventListener('resize', updateIndicator);
+  }, [currentDestination]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -52,7 +84,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
   }[currentDestination];
 
   return (
-    <header className="sticky top-0 z-30 w-full bg-[var(--bg-base)]/85 backdrop-blur-md border-b border-[var(--border-parchment)] px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex items-center justify-between transition-all select-none">
+    <header className="hyades-header sticky top-0 z-30 w-full bg-[var(--bg-base)]/85 backdrop-blur-md border-b border-[var(--border-parchment)] px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex items-center justify-between transition-all select-none">
       {/* Left: Branding & Core Navigation */}
       <div className="flex items-center gap-4 sm:gap-6 lg:gap-8">
         <button
@@ -86,8 +118,9 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
         </button>
 
         {/* Primary Application Destinations */}
-        <nav className="flex items-center gap-3 sm:gap-5 lg:gap-7 ml-1" aria-label="Main navigation">
+        <nav ref={navRailRef} className="nav-rail flex items-center gap-3 sm:gap-5 lg:gap-7 ml-1" aria-label="Main navigation">
           <button
+            ref={(el) => { tabRefs.current.overview = el; }}
             type="button"
             aria-label="Overview"
             onClick={() => onNavigate('overview')}
@@ -97,6 +130,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             <span>Overview</span>
           </button>
           <button
+            ref={(el) => { tabRefs.current.library = el; }}
             type="button"
             aria-label="Library"
             onClick={() => onNavigate('library')}
@@ -106,6 +140,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             <span>Library</span>
           </button>
           <button
+            ref={(el) => { tabRefs.current.observatory = el; }}
             type="button"
             aria-label="Observatory"
             onClick={() => onNavigate('observatory')}
@@ -116,6 +151,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             <span className="text-[11px] text-[var(--accent-terracotta)] opacity-0 group-hover:opacity-100 transition-opacity">↗</span>
           </button>
           <button
+            ref={(el) => { tabRefs.current.stella = el; }}
             type="button"
             aria-label="Stella"
             onClick={() => onNavigate('stella')}
@@ -125,6 +161,17 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             <span>Stella</span>
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-brass)]" />
           </button>
+
+          {/* Gliding terracotta underline indicator */}
+          <span
+            className="nav-indicator"
+            style={{
+              transform: `translateX(${indicatorStyle.x}px)`,
+              width: `${indicatorStyle.width}px`,
+              opacity: indicatorStyle.visible ? 1 : 0,
+            }}
+            aria-hidden="true"
+          />
         </nav>
       </div>
 

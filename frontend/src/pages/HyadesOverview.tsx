@@ -252,7 +252,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
       <main className="relative z-10 max-w-[1460px] mx-auto px-6 sm:px-8 pt-8">
         
         {/* 1. OVERALL KNOWLEDGE SUMMARY (Clean, Visual, Direct) */}
-        <div className="instrument-panel p-6 sm:p-7 mb-8 overflow-hidden">
+        <div className="instrument-panel p-6 sm:p-7 mb-8 overflow-hidden reveal" style={{ '--i': 0 } as React.CSSProperties}>
           <div className="panel-bracket-tl" />
           <div className="panel-bracket-br" />
 
@@ -265,19 +265,19 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
 
               <p className="text-sm text-[var(--ink-secondary)] mt-2 leading-relaxed">
                 Welcome back. You have{' '}
-                <strong className="text-[var(--ink-primary)] font-semibold">
+                <strong className="text-[var(--ink-primary)] font-semibold value-tick">
                   {totalSources.toLocaleString()} sources
                 </strong>
                 ,{' '}
-                <strong className="text-[var(--ink-primary)] font-semibold">
+                <strong className="text-[var(--ink-primary)] font-semibold value-tick">
                   {totalNotes.toLocaleString()} notes
                 </strong>
                 ,{' '}
-                <strong className="text-[var(--accent-midnight)] font-semibold">
+                <strong className="text-[var(--accent-midnight)] font-semibold value-tick">
                   {totalConcepts.toLocaleString()} concepts
                 </strong>
                 , and{' '}
-                <strong className="text-[var(--accent-terracotta)] font-semibold">
+                <strong className="text-[var(--accent-terracotta)] font-semibold value-tick">
                   {totalConnections.toLocaleString()} connections
                 </strong>{' '}
                 {topicDistribution.length > 0
@@ -302,9 +302,10 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                 <button
                   type="button"
                   onClick={() => onNavigateToDestination('observatory')}
-                  className="text-[var(--accent-terracotta)] hover:underline font-medium flex items-center gap-1 focus:outline-none"
+                  className="text-[var(--accent-terracotta)] hover:underline font-medium flex items-center gap-1 focus:outline-none cursor-pointer group"
                 >
-                  <span>Explore in Observatory ↗</span>
+                  <span>Explore in Observatory</span>
+                  <span className="nudge-x">↗</span>
                 </button>
               </div>
             </div>
@@ -334,6 +335,8 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                         strokeWidth="11"
                         strokeDasharray={`${strokeLen} ${circum - strokeLen}`}
                         strokeDashoffset={`-${prevOffset}`}
+                        className="ring-segment"
+                        style={{ '--i': idx } as React.CSSProperties}
                       />
                     );
                   })}
@@ -342,7 +345,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
                   <span className="mono text-[10px] text-[var(--ink-tertiary)] uppercase tracking-wider">TOPICS</span>
-                  <span className="serif text-base font-semibold text-[var(--ink-primary)] leading-none">
+                  <span className="serif text-base font-semibold text-[var(--ink-primary)] leading-none value-tick">
                     {topicDistribution.length || 0} Areas
                   </span>
                 </div>
@@ -377,14 +380,14 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
           
           {/* ================= LEFT REGION (COLUMNS 1–7): CONTINUE WORKING & ACTIVITY ================= */}
           <div className="lg:col-span-7 flex flex-col gap-8">
-                     {/* SECTION 1: CONTINUE WORKING (Current Study Desk) */}
-            <section>
+            {/* SECTION 1: CONTINUE WORKING (Current Study Desk) */}
+            <section className="reveal" style={{ '--i': 1 } as React.CSSProperties}>
               <div className="flex items-center justify-between mb-3.5">
                 <h2 className="serif-italic text-2xl font-medium text-[var(--ink-primary)]">Continue Working</h2>
               </div>
 
               {/* Main Resumption Card */}
-              <div className="instrument-panel p-6">
+              <div className="instrument-panel p-6 lift">
                 <div className="panel-bracket-tl" />
                 <div className="panel-bracket-br" />
 
@@ -490,7 +493,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                             else onNavigateToDestination('library');
                           }
                         }}
-                        className="card-surface p-3.5 flex items-start gap-3 cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
+                        className="card-surface p-3.5 flex items-start gap-3 cursor-pointer group lift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
                       >
                         <div className="w-8 h-8 rounded-lg bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] flex items-center justify-center text-[var(--accent-midnight)] shrink-0 mt-0.5">
                           <i className="ph ph-article text-base group-hover:scale-110 transition-transform" />
@@ -516,19 +519,19 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
             </section>
 
             {/* SECTION 2: RECENT KNOWLEDGE ACTIVITY (Spatial Activity Pulse) */}
-            <section>
+            <section className="reveal" style={{ '--i': 2 } as React.CSSProperties}>
               <div className="flex items-center justify-between mb-3.5">
                 <h2 className="serif-italic text-2xl font-medium text-[var(--ink-primary)]">Knowledge Activity Pulse</h2>
               </div>
 
-              <div className="instrument-panel p-6">
+              <div className="instrument-panel p-6 lift">
                 <div className="panel-bracket-tl" />
                 <div className="panel-bracket-br" />
 
                 <div className="flex flex-col md:flex-row items-center gap-6">
                   {/* Orbital Diagram of Real Active Concepts */}
                   <div className="relative w-full md:w-60 h-52 shrink-0 bg-white rounded-xl border border-[var(--border-parchment)] overflow-hidden flex items-center justify-center">
-                    <svg viewBox="0 0 240 200" className="w-full h-full">
+                    <svg viewBox="0 0 240 200" className="w-full h-full orbital-reveal">
                       <circle cx="120" cy="100" r="30" fill="none" stroke="rgba(70,60,50,0.10)" strokeDasharray="2,2" />
                       <circle cx="120" cy="100" r="60" fill="none" stroke="rgba(70,60,50,0.12)" />
                       <circle cx="120" cy="100" r="88" fill="none" stroke="rgba(70,60,50,0.08)" strokeDasharray="4,4" />
@@ -666,7 +669,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
           <div className="lg:col-span-5 flex flex-col gap-8">
             
             {/* SECTION 3: NEW CONNECTIONS (Meaningful Discovered Relationships) */}
-            <section>
+            <section className="reveal" style={{ '--i': 3 } as React.CSSProperties}>
               <div className="flex items-center justify-between mb-3.5">
                 <h2 className="serif-italic text-2xl font-medium text-[var(--ink-primary)]">Discovered Connections</h2>
               </div>
@@ -682,7 +685,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                     const confidencePct = Math.round(edge.confidence * 100);
 
                     return (
-                      <div key={edge.id} className="p-4 rounded-xl border border-[var(--border-parchment)] bg-white hover:border-[var(--border-strong)] transition-all">
+                      <div key={edge.id} className="p-4 rounded-xl border border-[var(--border-parchment)] bg-white hover:border-[var(--border-strong)] transition-all lift group">
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2 text-xs font-semibold text-[var(--ink-primary)]">
                             <span className="truncate max-w-[120px]">{sourceName}</span>
@@ -739,9 +742,10 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                                   onNavigateToDestination('observatory');
                                 }
                               }}
-                              className="text-xs font-medium text-[var(--accent-terracotta)] hover:underline flex items-center gap-1 focus:outline-none cursor-pointer"
+                              className="text-xs font-medium text-[var(--accent-terracotta)] hover:underline flex items-center gap-1 focus:outline-none cursor-pointer group/link"
                             >
-                              <span>Inspect in Observatory ↗</span>
+                              <span>Inspect in Observatory</span>
+                              <span className="nudge-x">↗</span>
                             </button>
                           </div>
                         </div>
@@ -756,9 +760,10 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                     <button
                       type="button"
                       onClick={() => onNavigateToDestination('library')}
-                      className="text-xs font-medium text-[var(--accent-terracotta)] hover:underline"
+                      className="text-xs font-medium text-[var(--accent-terracotta)] hover:underline cursor-pointer flex items-center justify-center gap-1 mx-auto"
                     >
-                      Extract concepts in Library →
+                      <span>Extract concepts in Library</span>
+                      <span className="nudge-x">→</span>
                     </button>
                   </div>
                 )}
@@ -766,7 +771,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
             </section>
 
             {/* SECTION 4: KNOWLEDGE HEALTH (Helpful System Status) */}
-            <section>
+            <section className="reveal" style={{ '--i': 4 } as React.CSSProperties}>
               <div className="flex items-center justify-between mb-3.5">
                 <h2 className="serif-italic text-2xl font-medium text-[var(--ink-primary)]">Knowledge Health</h2>
               </div>

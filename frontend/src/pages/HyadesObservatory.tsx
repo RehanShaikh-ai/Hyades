@@ -1809,7 +1809,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       .data(filteredLinks)
       .enter()
       .append('path')
-      .attr('class', 'celestial-link')
+      .attr('class', 'celestial-link link-reveal')
+      .style('animation-delay', (_d, i) => `${Math.min(i * 8, 300)}ms`)
       .attr('fill', 'none')
       .attr('stroke', (d) => getLinkStroke(resolveTier(d)))
       .attr('stroke-opacity', (d) => getLinkOpacity(resolveTier(d)))
@@ -1823,7 +1824,11 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       .data(filteredNodes, (d) => d.id)
       .enter()
       .append('g')
-      .attr('class', 'celestial-node cursor-pointer')
+      .attr('class', 'celestial-node cursor-pointer star-reveal')
+      .style('animation-delay', (d, i) => {
+        const tierOffset = d.hierarchy === 'core' ? 0 : d.hierarchy === 'subtopic' ? 70 : 140;
+        return `${tierOffset + Math.min(i * 8, 220)}ms`;
+      })
       .attr('data-id', (d) => d.id)
       .on('click', (event, d) => {
         event.stopPropagation();

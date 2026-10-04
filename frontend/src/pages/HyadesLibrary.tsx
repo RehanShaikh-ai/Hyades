@@ -1266,9 +1266,10 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                           setSelectedIndex(index);
                           if (!isRightDossierOpen) setIsRightDossierOpen(true);
                         }}
-                        className={`catalog-row px-5 py-3.5 flex items-start justify-between gap-4 cursor-pointer ${
+                        className={`catalog-row px-5 py-3.5 flex items-start justify-between gap-4 cursor-pointer stagger-row ${
                           isSelected ? 'selected' : ''
                         }`}
+                        style={{ '--i': Math.min(index, 8) } as React.CSSProperties}
                       >
                         <div className="flex items-start gap-3 flex-1 min-w-0">
                           {/* Type Icon */}
@@ -1378,7 +1379,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
           {/* ================= RIGHT FLANK: ITEM INSPECTOR & READING DOSSIER (COLUMNS 9–12) ================= */}
           {isRightDossierOpen && selectedItem && (
             <aside className="dossier-slide lg:col-span-4 flex flex-col h-full min-h-0 overflow-y-auto pl-1 transition-all duration-300">
-              <div className="instrument-panel p-6 relative min-h-full">
+              <div key={selectedItem.id} className="instrument-panel p-6 relative min-h-full content-swap">
                 <div className="panel-bracket-tl" />
                 <div className="panel-bracket-br" />
 
@@ -1559,8 +1560,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
       {/* Note Editor Modal */}
       {isEditingNote && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="instrument-panel w-full max-w-2xl bg-white shadow-2xl p-6 rounded-2xl flex flex-col gap-4 border border-[var(--border-strong)]">
+        <div className="dialog-backdrop fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="dialog-content instrument-panel w-full max-w-2xl bg-white shadow-2xl p-6 rounded-2xl flex flex-col gap-4 border border-[var(--border-strong)]">
             <div className="panel-bracket-tl" />
             <div className="panel-bracket-br" />
 
@@ -1662,8 +1663,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
       {/* Source Ingestion Modal */}
       {isImportModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="instrument-panel w-full max-w-lg bg-white shadow-2xl p-6 rounded-2xl flex flex-col gap-4 border border-[var(--border-strong)]">
+        <div className="dialog-backdrop fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="dialog-content instrument-panel w-full max-w-lg bg-white shadow-2xl p-6 rounded-2xl flex flex-col gap-4 border border-[var(--border-strong)]">
             <div className="panel-bracket-tl" />
             <div className="panel-bracket-br" />
 
