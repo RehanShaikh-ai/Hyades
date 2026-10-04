@@ -50,13 +50,21 @@ export interface CelestialLink extends d3.SimulationLinkDatum<CelestialNode> {
   weight: number;
   type: string;
   types?: string[];
+  isAsterism?: boolean;
+  isPrimaryBridge?: boolean;
 }
+
+export const POSITION_CACHE_VERSION = 'v6_celestial';
 
 function getStoredPositions(wsId: string): Map<string, { x: number; y: number }> {
   const map = new Map<string, { x: number; y: number }>();
   if (!wsId) return map;
   try {
-    const raw = localStorage.getItem(`hyades_graph_positions_${wsId}`);
+    // Purge old tangled cache from previous buggy simulation runs
+    localStorage.removeItem(`hyades_graph_positions_${wsId}`);
+    localStorage.removeItem(`hyades_graph_positions_v5_celestial_${wsId}`);
+
+    const raw = localStorage.getItem(`hyades_graph_positions_${POSITION_CACHE_VERSION}_${wsId}`);
     if (raw) {
       const parsed = JSON.parse(raw);
       for (const [id, pos] of Object.entries(parsed)) {
@@ -78,7 +86,9 @@ function saveStoredPositions(wsId: string, map: Map<string, { x: number; y: numb
     map.forEach((pos, id) => {
       obj[id] = { x: Math.round(pos.x * 10) / 10, y: Math.round(pos.y * 10) / 10 };
     });
-    localStorage.setItem(`hyades_graph_positions_${wsId}`, JSON.stringify(obj));
+    const serialized = JSON.stringify(obj);
+    localStorage.setItem(`hyades_graph_positions_${POSITION_CACHE_VERSION}_${wsId}`, serialized);
+    localStorage.setItem(`hyades_graph_positions_${wsId}`, serialized);
   } catch {
     // Quota or private mode fallback
   }
@@ -106,7 +116,8 @@ function computeCelestialCoords(id: string): { coords: string; catalog: string }
 export function computeClusterAnchors(
   clusterKeys: string[],
   centerX: number,
-  centerY: number
+  centerY: number,
+  clusterSizes?: Map<string, number>
 ): Map<string, { x: number; y: number }> {
   const anchors = new Map<string, { x: number; y: number }>();
   const n = clusterKeys.length;
@@ -116,8 +127,6 @@ export function computeClusterAnchors(
     return anchors;
   }
 
-  // Organic celestial distribution using deterministic hashing (§1)
-  // Avoids symmetrical Ferris wheels, concentric circles, or uniform radial spacing.
   const hashStr = (str: string) => {
     let h = 0;
     for (let i = 0; i < str.length; i++) {
@@ -126,32 +135,47 @@ export function computeClusterAnchors(
     return Math.abs(h);
   };
 
-  // Base angles distributed via golden angle with per-cluster seed jitter
-  // Clusters have varied radial distances (360px to 620px)
-  const goldenAngle = 2.3999632; // ~137.5 degrees, creates natural celestial spiral/corridor packing
-  const positions: Array<{ key: string; x: number; y: number }> = [];
-
-  clusterKeys.forEach((key, i) => {
-    const seed = hashStr(key);
-    // Irregular angular spacing with deterministic offset
-    const angleJitter = (((seed % 61) - 30) / 180) * Math.PI * 0.35;
-    const angle = i * goldenAngle + angleJitter - Math.PI / 2;
-
-    // Irregular radial distance based on cluster index and seed (no uniform rings!)
-    const rBase = n <= 4 ? 410 : n <= 8 ? 470 : 540;
-    const rVar = ((seed % 140) - 70) * 1.2;
-    const radius = Math.max(340, rBase + (i % 2 === 0 ? 35 : -35) + rVar);
-
-    // Subtle elliptical celestial distortion (natural celestial projection)
-    const ax = centerX + Math.cos(angle) * radius;
-    const ay = centerY + Math.sin(angle) * (radius * 0.84);
-
-    positions.push({ key, x: ax, y: ay });
+  // Sort clusters descending by size so prominent constellations get prime placement
+  const sortedKeys = [...clusterKeys].sort((a, b) => {
+    const sA = clusterSizes?.get(a) || 1;
+    const sB = clusterSizes?.get(b) || 1;
+    return sB - sA;
   });
 
-  // Relaxation pass ensuring cluster anchors maintain generous separation (> 380px)
-  const minClusterDist = 380;
-  for (let it = 0; it < 35; it++) {
+  const goldenAngle = 2.3999632; // ~137.5 degrees, celestial golden spiral distribution
+  const positions: Array<{ key: string; x: number; y: number; radius: number }> = [];
+
+  sortedKeys.forEach((key, i) => {
+    const seed = hashStr(key);
+    const size = clusterSizes?.get(key) || 6;
+    // Bounding radius for this constellation based on number of stars
+    const cBoundRadius = 160 + Math.sqrt(size) * 36;
+
+    // Multi-tier celestial radial distribution: ensures constellations have generous spacing
+    let rBase: number;
+    if (n <= 3) {
+      rBase = 480;
+    } else if (n <= 7) {
+      rBase = i < 3 ? 480 : 760;
+    } else {
+      const tier = i % 3;
+      rBase = tier === 0 ? 480 : tier === 1 ? 800 : 1140;
+    }
+
+    const rVar = ((seed % 80) - 40) * 1.0;
+    const radius = Math.max(420, rBase + rVar);
+
+    const angleJitter = (((seed % 41) - 20) / 180) * Math.PI * 0.25;
+    const angle = i * goldenAngle + angleJitter - Math.PI / 2;
+
+    const ax = centerX + Math.cos(angle) * radius;
+    const ay = centerY + Math.sin(angle) * (radius * 0.90);
+
+    positions.push({ key, x: ax, y: ay, radius: cBoundRadius });
+  });
+
+  // Generous relaxation pass: guarantees clusters maintain ample clearance proportional to their sizes
+  for (let it = 0; it < 45; it++) {
     for (let i = 0; i < positions.length; i++) {
       for (let j = i + 1; j < positions.length; j++) {
         const p1 = positions[i];
@@ -159,18 +183,31 @@ export function computeClusterAnchors(
         let dx = p2.x - p1.x;
         let dy = p2.y - p1.y;
         let d = Math.hypot(dx, dy);
-        if (d < minClusterDist) {
+        const neededDist = p1.radius + p2.radius + 120;
+        if (d < neededDist) {
           if (d === 0) {
             dx = 1;
             dy = 0;
             d = 1;
           }
-          const push = ((minClusterDist - d) / d) * 0.5;
+          const push = ((neededDist - d) / d) * 0.45;
           p1.x -= dx * push;
           p1.y -= dy * push;
           p2.x += dx * push;
           p2.y += dy * push;
         }
+      }
+    }
+    // Repulsion from center to prevent any cluster from collapsing inside minimum celestial radius (>= 400px)
+    for (let i = 0; i < positions.length; i++) {
+      const p = positions[i];
+      const cdx = p.x - centerX;
+      const cdy = p.y - centerY;
+      const cd = Math.hypot(cdx, cdy);
+      if (cd < 400 && cd > 0) {
+        const scale = 400 / cd;
+        p.x = centerX + cdx * scale;
+        p.y = centerY + cdy * scale;
       }
     }
   }
@@ -207,7 +244,10 @@ export function computeObservatoryLayout(
     (a, b) => b[1].length - a[1].length
   );
   const clusterKeys = sortedClusters.map(([k]) => k);
-  const clusterAnchors = computeClusterAnchors(clusterKeys, centerX, centerY);
+  const clusterSizes = new Map<string, number>();
+  sortedClusters.forEach(([k, cNodes]) => clusterSizes.set(k, cNodes.length));
+
+  const clusterAnchors = computeClusterAnchors(clusterKeys, centerX, centerY, clusterSizes);
 
   // Build adjacency
   const adj = new Map<string, Set<string>>();
@@ -230,8 +270,6 @@ export function computeObservatoryLayout(
   };
 
   // 2. Lay out each cluster as an organic constellation inspired by celestial atlas geometry (§6)
-  // Central core star anchors the constellation, with subtopics in loose orbital arcs
-  // and related concepts forming satellite mini-clusters and orbital chains.
   sortedClusters.forEach(([cKey, cNodes]) => {
     const anchor = clusterAnchors.get(cKey) || { x: centerX, y: centerY };
     const cSeed = hashStr(cKey);
@@ -250,49 +288,54 @@ export function computeObservatoryLayout(
 
     const cores = sorted.filter((n) => n.hierarchy === 'core');
     const subtopics = sorted.filter((n) => n.hierarchy === 'subtopic');
-    const related = sorted.filter((n) => n.hierarchy === 'related');
 
-    // Asymmetric orientation axis and elliptical eccentricity for this constellation
+    // If no core stars, promote highest degree node to anchor the constellation
+    const effectiveCores = cores.length > 0 ? cores : [sorted[0]];
+    const effectiveSubtopics =
+      subtopics.length > 0
+        ? subtopics
+        : sorted.slice(
+            effectiveCores.length,
+            Math.min(
+              sorted.length,
+              effectiveCores.length + Math.max(2, Math.min(10, Math.ceil(sorted.length * 0.22)))
+            )
+          );
+    const effectiveRelated = sorted.filter(
+      (n) => !effectiveCores.some((c) => c.id === n.id) && !effectiveSubtopics.some((s) => s.id === n.id)
+    );
+
     const baseAngle = ((cSeed % 360) * Math.PI) / 180;
-    const aspectY = 0.88 + ((cSeed % 25) / 100); // 0.88 to 1.13 slight celestial tilt
+    const aspectY = 0.88 + ((cSeed % 22) / 100);
 
-    // A. Central Core Star(s) (§6, §7): Primary core visually anchors the local constellation
+    // A. Central Core Star(s)
     const parentPositions = new Map<string, { x: number; y: number }>();
-    if (cores.length > 0) {
-      // Primary core star placed directly at celestial anchor
-      result.set(cores[0].id, { x: anchor.x, y: anchor.y });
-      parentPositions.set(cores[0].id, { x: anchor.x, y: anchor.y });
+    result.set(effectiveCores[0].id, { x: anchor.x, y: anchor.y });
+    parentPositions.set(effectiveCores[0].id, { x: anchor.x, y: anchor.y });
 
-      // Secondary cores placed as prominent companion hubs along the cluster axis
-      for (let i = 1; i < cores.length; i++) {
-        const offset = (i % 2 === 1 ? 1 : -1) * (70 + i * 25);
-        const secAngle = baseAngle + (i * 0.4);
-        const cx = anchor.x + Math.cos(secAngle) * offset;
-        const cy = anchor.y + Math.sin(secAngle) * (offset * aspectY);
-        result.set(cores[i].id, { x: cx, y: cy });
-        parentPositions.set(cores[i].id, { x: cx, y: cy });
-      }
-    } else if (subtopics.length === 0 && related.length > 0) {
-      // If no core or subtopics, anchor with the highest degree node
-      result.set(sorted[0].id, { x: anchor.x, y: anchor.y });
-      parentPositions.set(sorted[0].id, { x: anchor.x, y: anchor.y });
+    for (let i = 1; i < effectiveCores.length; i++) {
+      const offset = (i % 2 === 1 ? 1 : -1) * (120 + i * 40);
+      const secAngle = baseAngle + (i * 0.55);
+      const cx = anchor.x + Math.cos(secAngle) * offset;
+      const cy = anchor.y + Math.sin(secAngle) * (offset * aspectY);
+      result.set(effectiveCores[i].id, { x: cx, y: cy });
+      parentPositions.set(effectiveCores[i].id, { x: cx, y: cy });
     }
 
-    // B. Subtopics (Level 2 Major Hubs): Arranged in loose orbital arcs or asymmetric lobes (§6)
-    // Leaves an open celestial corridor (not a closed symmetrical circle!)
-    const nSubs = subtopics.length;
-    const arcSpan = Math.PI * (1.25 + ((cSeed % 40) / 100)); // 1.25pi to 1.65pi partial arc
+    // B. Subtopics (Major Hubs): arranged along loose orbital branches with generous spacing
+    const nSubs = effectiveSubtopics.length;
+    const arcSpan = Math.PI * (1.30 + ((cSeed % 35) / 100)); // 1.3pi to 1.65pi open arc
 
-    subtopics.forEach((sub, i) => {
+    effectiveSubtopics.forEach((sub, i) => {
       const subSeed = hashStr(sub.id);
       const normT = nSubs > 1 ? i / (nSubs - 1) : 0.5;
       const angleJitter = (((subSeed % 31) - 15) / 180) * Math.PI;
       const ang = baseAngle + normT * arcSpan + angleJitter;
 
-      // Varied orbital reach (135px to 225px from core anchor)
-      const reachBase = 145 + Math.min(65, nSubs * 7);
-      const reachVar = ((subSeed % 61) - 25) * 1.3;
-      const reach = Math.max(125, reachBase + reachVar);
+      // Generous orbital reach (180px to 340px)
+      const reachBase = 180 + Math.min(140, nSubs * 16);
+      const reachVar = ((subSeed % 55) - 25) * 1.2;
+      const reach = Math.max(160, reachBase + reachVar);
 
       const sx = anchor.x + Math.cos(ang) * reach;
       const sy = anchor.y + Math.sin(ang) * (reach * aspectY);
@@ -301,66 +344,100 @@ export function computeObservatoryLayout(
       parentPositions.set(sub.id, { x: sx, y: sy });
     });
 
-    // C. Related Stars (Level 3): Satellite groupings and orbital bridge chains (§6)
-    // Form miniature planetary satellite systems around their subtopic hubs or loose chains around the core
-    related.forEach((rel, i) => {
-      const relSeed = hashStr(rel.id);
-      const nbrs = adj.get(rel.id);
+    // C. Related Stars (Satellites): group by parent hub and distribute in outward petal fans
+    const hubSatellites = new Map<string, CelestialNode[]>();
+    effectiveSubtopics.forEach((s) => hubSatellites.set(s.id, []));
+    hubSatellites.set(effectiveCores[0].id, []);
 
-      // Find connected parent in this constellation
-      let parentPos = anchor;
-      let hasSubtopicParent = false;
+    effectiveRelated.forEach((rel) => {
+      const nbrs = adj.get(rel.id);
+      let assignedHubId: string | null = null;
       if (nbrs && nbrs.size > 0) {
-        for (const nbrId of nbrs) {
-          if (parentPositions.has(nbrId)) {
-            parentPos = parentPositions.get(nbrId)!;
-            hasSubtopicParent = parentPos !== anchor;
+        for (const sub of effectiveSubtopics) {
+          if (nbrs.has(sub.id)) {
+            assignedHubId = sub.id;
             break;
           }
         }
-      } else if (subtopics.length > 0) {
-        const assignedSub = subtopics[i % subtopics.length];
-        parentPos = parentPositions.get(assignedSub.id) || anchor;
-        hasSubtopicParent = true;
       }
-
-      if (hasSubtopicParent) {
-        // Satellite mini-cluster: orbit closely on the outward/lateral side of subtopic
-        const outDx = parentPos.x - anchor.x;
-        const outDy = parentPos.y - anchor.y;
-        const baseOutAngle = Math.atan2(outDy, outDx);
-        const satelliteAngle = baseOutAngle + (((relSeed % 140) - 70) / 180) * Math.PI;
-        const distFromSub = 46 + (relSeed % 38); // 46px to 84px satellite radius
-
-        const rx = parentPos.x + Math.cos(satelliteAngle) * distFromSub;
-        const ry = parentPos.y + Math.sin(satelliteAngle) * (distFromSub * 0.92);
-        result.set(rel.id, { x: rx, y: ry });
-      } else {
-        // Orbital chain star: loose orbital companion around the core anchor
-        const chainAngle = baseAngle + ((relSeed % 360) / 180) * Math.PI;
-        const distFromCore = 75 + (relSeed % 48); // 75px to 123px intermediate radius
-
-        const rx = anchor.x + Math.cos(chainAngle) * distFromCore;
-        const ry = anchor.y + Math.sin(chainAngle) * (distFromCore * aspectY);
-        result.set(rel.id, { x: rx, y: ry });
+      if (!assignedHubId) {
+        if (effectiveSubtopics.length > 0) {
+          let minCount = Infinity;
+          for (const sub of effectiveSubtopics) {
+            const count = hubSatellites.get(sub.id)?.length || 0;
+            if (count < minCount) {
+              minCount = count;
+              assignedHubId = sub.id;
+            }
+          }
+        } else {
+          assignedHubId = effectiveCores[0].id;
+        }
       }
+      const list = hubSatellites.get(assignedHubId!) || [];
+      list.push(rel);
+      hubSatellites.set(assignedHubId!, list);
+    });
+
+    // Place satellites fanning outward into clear celestial space around each hub
+    effectiveSubtopics.forEach((sub) => {
+      const satellites = hubSatellites.get(sub.id) || [];
+      if (satellites.length === 0) return;
+
+      const subPos = parentPositions.get(sub.id)!;
+      const outDx = subPos.x - anchor.x;
+      const outDy = subPos.y - anchor.y;
+      const baseOutAngle = Math.atan2(outDy, outDx);
+      const m = satellites.length;
+
+      const fanSpan = Math.min(Math.PI * 0.85, 0.45 * Math.max(1, m - 1));
+
+      satellites.forEach((sat, j) => {
+        const normJ = m > 1 ? (j / (m - 1)) - 0.5 : 0;
+        let satAngle = baseOutAngle + normJ * fanSpan;
+        let satRadius: number;
+
+        if (m <= 4) {
+          satRadius = 85 + (j % 2) * 20;
+        } else {
+          const shell = j % 2 === 0 ? 1 : 2;
+          satRadius = shell === 1 ? 85 : 135;
+          if (shell === 2) satAngle += 0.22;
+        }
+
+        const rx = subPos.x + Math.cos(satAngle) * satRadius;
+        const ry = subPos.y + Math.sin(satAngle) * (satRadius * 0.92);
+        result.set(sat.id, { x: rx, y: ry });
+      });
+    });
+
+    // Place satellites assigned directly to the Core in open orbital sectors
+    const coreSatellites = hubSatellites.get(effectiveCores[0].id) || [];
+    const coreM = coreSatellites.length;
+    coreSatellites.forEach((sat, j) => {
+      const satSeed = hashStr(sat.id);
+      const normJ = coreM > 1 ? j / coreM : 0;
+      const satAngle = baseAngle + arcSpan + 0.4 + normJ * (Math.PI * 2 - arcSpan - 0.8);
+      const satDist = 110 + ((satSeed % 35) * 1.2);
+
+      const rx = anchor.x + Math.cos(satAngle) * satDist;
+      const ry = anchor.y + Math.sin(satAngle) * (satDist * aspectY);
+      result.set(sat.id, { x: rx, y: ry });
     });
   });
 
-  // 3. Fast synchronous local relaxation ensuring guaranteed minimum clearance (>= 42px)
-  // Ensures stars do not collide while preserving their organic constellation shapes
-  const minClearance = 42;
+  // 3. Fast relaxation across ALL nodes ensuring guaranteed minimum clearance (>= 70px) and label clearance
+  const minClearance = 70;
   const nodeArray = nodes.map((n) => ({
     id: n.id,
     clusterKey: n.clusterKey || `grp_${n.group || 1}`,
     pos: result.get(n.id) || { x: centerX, y: centerY },
   }));
 
-  for (let it = 0; it < 30; it++) {
+  for (let it = 0; it < 35; it++) {
     for (let i = 0; i < nodeArray.length; i++) {
       const p1 = nodeArray[i].pos;
       for (let j = i + 1; j < nodeArray.length; j++) {
-        if (nodeArray[i].clusterKey !== nodeArray[j].clusterKey) continue;
         const p2 = nodeArray[j].pos;
         let dx = p2.x - p1.x;
         let dy = p2.y - p1.y;
@@ -371,11 +448,21 @@ export function computeObservatoryLayout(
             dy = 0;
             d = 1;
           }
-          const push = ((minClearance - d) / d) * 0.5;
+          const push = ((minClearance - d) / d) * 0.40;
           p1.x -= dx * push;
           p1.y -= dy * push;
           p2.x += dx * push;
           p2.y += dy * push;
+        }
+
+        // Horizontal label collision relief
+        if (Math.abs(dy) < 22 && Math.abs(dx) < 80) {
+          const pushY = (22 - Math.abs(dy)) * 0.25 * (dy >= 0 ? -1 : 1);
+          const pushX = (80 - Math.abs(dx)) * 0.12 * (dx >= 0 ? -1 : 1);
+          p1.y += pushY;
+          p2.y -= pushY;
+          p1.x += pushX;
+          p2.x -= pushX;
         }
       }
     }
@@ -394,8 +481,8 @@ export function computeObservatoryLayout(
 /**
  * Untangle is a LOCAL CLEANUP operation (§5).
  * Strictly preserves the overall constellation arrangement, cluster locations, and orientations.
- * Identifies local overlaps (distance < 44px) and label collisions (|dy| < 20px, |dx| < 62px),
- * and moves ONLY problematic nodes with tiny, damped radial pushes (clamped to max 20px).
+ * Identifies local overlaps (distance < 68px) and label collisions (|dy| < 24px, |dx| < 75px),
+ * and moves ONLY problematic nodes with tiny, damped radial pushes (clamped to max 35px).
  * Does NOT rotate clusters. Does NOT redistribute nodes. Does NOT create radial patterns.
  * Non-colliding nodes move 0 pixels.
  */
@@ -426,16 +513,15 @@ export function performLocalUntangle(
     orig: originalPos.get(n.id)!,
   }));
 
-  const minClearance = 44; // Minimum comfortable distance between stars
-  const maxDisplacement = 20; // Very small gentle nudge: strictly preserves constellation landmarks!
+  const minClearance = 68; // Minimum comfortable distance between stars
+  const maxDisplacement = 35; // Gentle displacement: strictly preserves constellation landmarks while relieving collisions
 
-  // 10 gentle local relaxation steps
-  for (let it = 0; it < 10; it++) {
+  // 15 gentle local relaxation steps
+  for (let it = 0; it < 15; it++) {
     // 1. Star-star overlap relief (pure radial push away from colliding partner)
     for (let i = 0; i < nodeArray.length; i++) {
       const p1 = nodeArray[i].pos;
       for (let j = i + 1; j < nodeArray.length; j++) {
-        if (nodeArray[i].clusterKey !== nodeArray[j].clusterKey) continue;
         const p2 = nodeArray[j].pos;
         let dx = p2.x - p1.x;
         let dy = p2.y - p1.y;
@@ -447,7 +533,7 @@ export function performLocalUntangle(
             dy = 0;
             d = 1;
           }
-          const push = ((minClearance - d) / d) * 0.25;
+          const push = ((minClearance - d) / d) * 0.35;
           p1.x -= dx * push;
           p1.y -= dy * push;
           p2.x += dx * push;
@@ -455,15 +541,15 @@ export function performLocalUntangle(
         }
 
         // 2. Label collision relief (labels extend horizontally below nodes)
-        if (Math.abs(dy) < 20 && Math.abs(dx) < 62) {
-          const pushY = (20 - Math.abs(dy)) * 0.2 * (dy >= 0 ? -1 : 1);
+        if (Math.abs(dy) < 24 && Math.abs(dx) < 75) {
+          const pushY = (24 - Math.abs(dy)) * 0.25 * (dy >= 0 ? -1 : 1);
           p1.y += pushY;
           p2.y -= pushY;
         }
       }
     }
 
-    // 2. Clamping: strictly enforce maxDisplacement (20px) from original position
+    // 2. Clamping: strictly enforce maxDisplacement (35px) from original position
     // Guarantees the constellation arrangement and landmarks remain completely recognizable!
     for (let i = 0; i < nodeArray.length; i++) {
       const p = nodeArray[i].pos;
@@ -888,10 +974,42 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
     const links: CelestialLink[] = Array.from(linkMap.values());
 
-    // 7. Ensure every node has established layout coordinates immediately (§4, §5)
+    // 7. Track cross-cluster bridge counts to avoid 20+ parallel cables between clusters (§8)
+    const clusterPairBridges = new Map<string, number>();
+    // Sort links descending by confidence weight so highest quality bridges are prioritized
+    const sortedLinks = [...links].sort((a, b) => b.weight - a.weight);
+
+    sortedLinks.forEach((l) => {
+      const sId = typeof l.source === 'string' ? l.source : (l.source as any).id;
+      const tId = typeof l.target === 'string' ? l.target : (l.target as any).id;
+      const sCluster = nodeClusterMap.get(sId)?.key;
+      const tCluster = nodeClusterMap.get(tId)?.key;
+
+      if (sCluster && tCluster && sCluster === tCluster) {
+        // Same-cluster: asterism backbone link connects Core or Subtopics, or small cluster (<= 12 nodes)
+        const isCoreOrSub =
+          coreNodeIds.has(sId) ||
+          coreNodeIds.has(tId) ||
+          (subtopicNodeIds.has(sId) && subtopicNodeIds.has(tId));
+        const clusterSize = clusterNodesMap.get(sCluster)?.length || 0;
+        l.isAsterism = isCoreOrSub || clusterSize <= 12;
+      } else if (sCluster && tCluster) {
+        // Cross-cluster: limit resting visible bridges to top 2 highest confidence per cluster pair
+        const pairKey = sCluster < tCluster ? `${sCluster}::${tCluster}` : `${tCluster}::${sCluster}`;
+        const count = clusterPairBridges.get(pairKey) || 0;
+        if (count < 2) {
+          l.isPrimaryBridge = true;
+          clusterPairBridges.set(pairKey, count + 1);
+        } else {
+          l.isPrimaryBridge = false;
+        }
+      }
+    });
+
+    // 8. Ensure every node has established layout coordinates immediately (§4, §5)
     // If cache is empty or has missing positions, compute layout once and cache it.
     const missingCount = nodes.filter((n) => !nodePositionsRef.current.has(n.id)).length;
-    if (missingCount > nodes.length * 0.25) {
+    if (missingCount > 0 || nodePositionsRef.current.size === 0) {
       const width =
         containerRef.current?.clientWidth ||
         (typeof window !== 'undefined' ? window.innerWidth : 1600);
@@ -1581,7 +1699,10 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       const sNode = nodeLookup.get(sId);
       const tNode = nodeLookup.get(tId);
       const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-      return isSame ? '#4A3C39' : '#726360';
+      if (isSame) {
+        return d.isAsterism !== false ? '#4A3C39' : '#8A7B76';
+      }
+      return '#726360';
     };
 
     const getLinkOpacity = (d: CelestialLink) => {
@@ -1590,7 +1711,10 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       const sNode = nodeLookup.get(sId);
       const tNode = nodeLookup.get(tId);
       const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-      return isSame ? 0.58 : 0.36;
+      if (isSame) {
+        return d.isAsterism !== false ? 0.58 : 0.14;
+      }
+      return d.isPrimaryBridge !== false ? 0.36 : 0.05;
     };
 
     const getLinkWidth = (d: CelestialLink) => {
@@ -1599,7 +1723,10 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       const sNode = nodeLookup.get(sId);
       const tNode = nodeLookup.get(tId);
       const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-      return isSame ? 1.25 + (d.weight || 0.8) * 0.45 : 0.95;
+      if (isSame) {
+        return d.isAsterism !== false ? 1.25 + (d.weight || 0.8) * 0.45 : 0.8;
+      }
+      return 0.95;
     };
 
     // Links Layer
@@ -2160,20 +2287,28 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           .attr('stroke-dasharray', 'none');
       } else if (selectedId) {
         // A node is selected: slightly reduce unrelated edges, keeping cross-cluster visible (§3, §5)
+        const isSame = isSameCluster;
+        const op = isSame
+          ? (d.isAsterism !== false ? 0.26 : 0.08)
+          : (d.isPrimaryBridge !== false ? 0.18 : 0.02);
         el.classed('is-active-link', false)
-          .attr('stroke', isSameCluster ? '#4A3C39' : '#726360')
-          .attr('stroke-opacity', isSameCluster ? 0.26 : 0.18)
-          .attr('stroke-width', isSameCluster ? 1.1 : 0.85)
-          .attr('stroke-dasharray', isSameCluster ? 'none' : '4,4');
+          .attr('stroke', isSame ? (d.isAsterism !== false ? '#4A3C39' : '#8A7B76') : '#726360')
+          .attr('stroke-opacity', op)
+          .attr('stroke-width', isSame ? (d.isAsterism !== false ? 1.1 : 0.7) : 0.85)
+          .attr('stroke-dasharray', isSame ? 'none' : '4,4');
       } else {
         // NEUTRAL RESTING STATE (§4, §5):
-        // SAME-CLUSTER EDGES -> normal visibility
-        // CROSS-CLUSTER EDGES -> lighter/thinner/dashed
+        // SAME-CLUSTER EDGES -> normal visibility (asterism backbone) / delicate (secondary)
+        // CROSS-CLUSTER EDGES -> lighter/thinner/dashed (primary bridges) / ethereal
+        const isSame = isSameCluster;
+        const op = isSame
+          ? (d.isAsterism !== false ? 0.58 : 0.14)
+          : (d.isPrimaryBridge !== false ? 0.36 : 0.05);
         el.classed('is-active-link', false)
-          .attr('stroke', isSameCluster ? '#4A3C39' : '#726360')
-          .attr('stroke-opacity', isSameCluster ? 0.58 : 0.36)
-          .attr('stroke-width', isSameCluster ? 1.25 + (d.weight || 0.8) * 0.45 : 0.95)
-          .attr('stroke-dasharray', isSameCluster ? 'none' : '4,4');
+          .attr('stroke', isSame ? (d.isAsterism !== false ? '#4A3C39' : '#8A7B76') : '#726360')
+          .attr('stroke-opacity', op)
+          .attr('stroke-width', isSame ? (d.isAsterism !== false ? 1.25 + (d.weight || 0.8) * 0.45 : 0.8) : 0.95)
+          .attr('stroke-dasharray', isSame ? 'none' : '4,4');
       }
     });
   }, [selectedNode, hoveredNode, celestialNodes]);
