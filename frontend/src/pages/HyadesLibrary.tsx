@@ -2,12 +2,15 @@ import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { listNotes, createNote, updateNote } from '@/api/notes';
 import { listSources, uploadSource } from '@/api/sources';
 import { listClusters } from '@/api/clusters';
+import { getWorkspaceGraph } from '@/api/graph';
 import { triggerExtraction, triggerReindex } from '@/api/graph_index';
 import { getJobStatus } from '@/api/jobs';
 import { getUsers } from '@/api/users';
 import { Note } from '@/types/note';
+import { Tag } from '@/types/tag';
 import { Source } from '@/types/source';
 import { ClusterResponse } from '@/types/cluster';
+import { GraphNodeResponse } from '@/types/graph';
 import libraryScriptorium from '@/assets/plates/library-scriptorium.jpg';
 import libraryCatalogFolio from '@/assets/plates/library-catalog-folio.jpg';
 import { ObservatoryTarget, StellaContext } from '@/types/navigation';
@@ -16,6 +19,8 @@ interface HyadesLibraryProps {
   workspaceId: string;
   userId?: string;
   initialNoteId?: string;
+  initialAction?: 'create-note' | null;
+  onClearInitialAction?: () => void;
   onNavigateToObservatory?: (target?: ObservatoryTarget) => void;
   onNavigateToStella?: (context?: StellaContext) => void;
   environmentIndex?: number;
@@ -32,6 +37,7 @@ interface UnifiedItem {
   excerpt: string;
   topic: string;
   topicColor: string;
+  clusterId?: string;
   status: string;
   statusColor: string;
   conceptCount: number;
@@ -47,6 +53,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   workspaceId,
   userId,
   initialNoteId,
+  initialAction,
+  onClearInitialAction,
   onNavigateToObservatory,
   onNavigateToStella,
   environmentIndex = 0,
@@ -58,10 +66,15 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
   // Filters & Search
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
-  const [activeTopic, setActiveTopic] = useState<string | null>(null);
+  const [activeTopicId, setActiveTopicId] = useState<string | null>(null);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const [activeAttention, setActiveAttention] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSortAsc, setIsSortAsc] = useState(false);
+
+  // Connected concepts for currently selected note/source
+  const [connectedConcepts, setConnectedConcepts] = useState<GraphNodeResponse[]>([]);
+  const [isLoadingConcepts, setIsLoadingConcepts] = useState(false);
 
   // Sidebars
   const [isLeftShelfOpen, setIsLeftShelfOpen] = useState(true);
@@ -135,7 +148,20 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
     fetchData();
   }, [fetchData]);
 
-  // Real Topic Shelves dynamically computed from clusters or note tags
+  // Map note ID to its cluster if clustered
+  const noteClusterMap = useMemo(() => {
+    const map = new Map<string, { id: string; label: string }>();
+    clusters.forEach((c) => {
+      c.members?.forEach((m) => {
+        if (m.note_id) {
+          map.set(m.note_id, { id: c.id, label: c.label });
+        }
+      });
+    });
+    return map;
+  }, [clusters]);
+
+  // Real Topic Shelves dynamically computed from clusters using real relationships
   const topicShelves = useMemo(() => {
     if (clusters.length > 0) {
       const colors = [
@@ -146,46 +172,50 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
         'bg-emerald-700',
         'bg-purple-800',
       ];
-      return clusters.map((c, idx) => ({
-        key: c.id,
-        label: c.label,
-        count: c.member_count ?? c.members?.length ?? 0,
-        color: colors[idx % colors.length],
-        memberNoteIds: new Set(c.members?.map((m) => m.note_id) || []),
-      }));
+      return clusters
+        .map((c, idx) => {
+          const memberIds = new Set(c.members?.map((m) => m.note_id).filter(Boolean) || []);
+          const realMatchingNotes = notes.filter((n) => memberIds.has(n.id));
+          const count = realMatchingNotes.length > 0 ? realMatchingNotes.length : (c.member_count ?? c.members?.length ?? 0);
+          return {
+            key: c.id,
+            label: c.label,
+            count,
+            color: colors[idx % colors.length],
+            memberNoteIds: memberIds,
+          };
+        })
+        .filter((shelf) => shelf.count > 0);
     }
+    return [];
+  }, [clusters, notes]);
 
+  // Real Tags computed from notes metadata
+  const tagShelves = useMemo(() => {
     const tagCounts: Record<string, number> = {};
     notes.forEach((n) => {
-      n.tags?.forEach((t) => {
-        const tagName = typeof t === 'string' ? t : t.name;
-        tagCounts[tagName] = (tagCounts[tagName] || 0) + 1;
+      n.tags?.forEach((t: Tag | string) => {
+        const tagName = typeof t === 'string' ? t : (t as Tag).name;
+        if (tagName) {
+          tagCounts[tagName] = (tagCounts[tagName] || 0) + 1;
+        }
       });
     });
 
     const entries = Object.entries(tagCounts);
-    if (entries.length > 0) {
-      const colors = [
-        'bg-[var(--accent-midnight)]',
-        'bg-[var(--accent-terracotta)]',
-        'bg-[var(--accent-brass)]',
-        'bg-[var(--accent-stone)]',
-      ];
-      return entries.map(([tag, count], idx) => ({
+    return entries
+      .map(([tag, count]) => ({
         key: tag,
         label: tag,
         count,
-        color: colors[idx % colors.length],
         memberNoteIds: new Set(
           notes
-            .filter((n) => n.tags?.some((t) => (typeof t === 'string' ? t : t.name) === tag))
+            .filter((n) => n.tags?.some((t: Tag | string) => (typeof t === 'string' ? t : (t as Tag).name) === tag))
             .map((n) => n.id)
         ),
-      }));
-    }
-
-    return [];
-  }, [clusters, notes]);
+      }))
+      .filter((t) => t.count > 0);
+  }, [notes]);
 
   // Disconnected notes count
   const unconnectedNotesCount = useMemo(
@@ -199,14 +229,16 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
     // Sources mapping
     sources.forEach((s, idx) => {
-      const isPdf = s.title?.toLowerCase().endsWith('.pdf') || s.source_type === 'pdf';
+      const sWithExtras = s as Source & { name?: string; type?: string };
+      const sourceTitle = s.title || sWithExtras.name || s.file_name || `Archival Source ${idx + 1}`;
+      const isPdf = sourceTitle.toLowerCase().endsWith('.pdf') || s.source_type === 'pdf' || sWithExtras.type === 'pdf';
       list.push({
         id: s.id,
         type: 'source',
         format: isPdf ? 'PDF' : 'Book',
-        title: s.title || `Archival Source ${idx + 1}`,
-        authorOrMeta: s.source_type ? `${s.source_type.toUpperCase()} · Ingested Source` : 'Ingested Source',
-        excerpt: s.extracted_text?.slice(0, 240) || s.title || 'Knowledge document indexed in your Hyades repository.',
+        title: sourceTitle,
+        authorOrMeta: s.source_type || sWithExtras.type ? `${((s.source_type || sWithExtras.type) as string).toUpperCase()} · Ingested Source` : 'Ingested Source',
+        excerpt: s.extracted_text?.slice(0, 240) || sourceTitle || 'Knowledge document indexed in your Hyades repository.',
         topic: 'Sources',
         topicColor: 'var(--accent-terracotta)',
         status: 'Indexed Source',
@@ -220,23 +252,26 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
     // Notes mapping
     notes.forEach((n) => {
+      const clusterInfo = noteClusterMap.get(n.id);
       const firstTag =
         n.tags && n.tags.length > 0
           ? typeof n.tags[0] === 'string'
             ? n.tags[0]
             : n.tags[0].name
-          : 'General';
+          : null;
+      const topicLabel = clusterInfo?.label || firstTag || 'General';
       const tagLabels = n.tags?.map((t) => (typeof t === 'string' ? t : t.name)).join(', ') || '';
       list.push({
         id: n.id,
         type: 'note',
         format: 'Note',
         title: n.title || 'Untitled Note',
-        authorOrMeta: tagLabels ? `Tags: ${tagLabels}` : 'Research Note',
+        authorOrMeta: tagLabels ? `Tags: ${tagLabels}` : (clusterInfo ? `Topic: ${clusterInfo.label}` : 'Research Note'),
         excerpt: n.content ? n.content.slice(0, 220).replace(/[#*`_]/g, '') : 'No content recorded.',
-        topic: firstTag,
+        topic: topicLabel,
         topicColor: 'var(--accent-midnight)',
-        status: (n.tags && n.tags.length > 0) ? `${n.tags.length} Tags Attached` : 'No Tags',
+        clusterId: clusterInfo?.id,
+        status: (n.tags && n.tags.length > 0) ? `${n.tags.length} Tags Attached` : (clusterInfo ? 'Clustered' : 'Unclustered'),
         statusColor: 'text-[var(--ink-secondary)]',
         conceptCount: 0,
         linkCount: 0,
@@ -246,7 +281,14 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
     });
 
     return list;
-  }, [sources, notes]);
+  }, [sources, notes, noteClusterMap]);
+
+  // Active topic label lookup
+  const activeTopicLabel = useMemo(() => {
+    if (!activeTopicId) return null;
+    const shelf = topicShelves.find((s) => s.key === activeTopicId);
+    return shelf ? shelf.label : activeTopicId;
+  }, [activeTopicId, topicShelves]);
 
   // Filtered Items
   const filteredItems = useMemo(() => {
@@ -255,8 +297,23 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
       if (activeCategory === 'sources' && item.type !== 'source') return false;
       if (activeCategory === 'notes' && item.type !== 'note') return false;
 
-      // Topic filter
-      if (activeTopic && !item.topic.toLowerCase().includes(activeTopic.toLowerCase())) return false;
+      // Topic filter (using stable cluster ID)
+      if (activeTopicId) {
+        const selectedShelf = topicShelves.find((s) => s.key === activeTopicId);
+        if (selectedShelf) {
+          if (!selectedShelf.memberNoteIds.has(item.id)) return false;
+        } else if (item.clusterId !== activeTopicId && item.topic.toLowerCase() !== activeTopicId.toLowerCase()) {
+          return false;
+        }
+      }
+
+      // Tag filter
+      if (activeTag) {
+        const itemTags = (item.rawNote?.tags || []).map((t: Tag | string) =>
+          typeof t === 'string' ? t.toLowerCase() : (t as Tag).name.toLowerCase()
+        );
+        if (!itemTags.includes(activeTag.toLowerCase())) return false;
+      }
 
       // Attention filter
       if (activeAttention === 'unconnected' && item.linkCount > 0) return false;
@@ -268,12 +325,13 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
         const matchesTitle = item.title.toLowerCase().includes(q);
         const matchesMeta = item.authorOrMeta.toLowerCase().includes(q);
         const matchesExcerpt = item.excerpt.toLowerCase().includes(q);
-        if (!matchesTitle && !matchesMeta && !matchesExcerpt) return false;
+        const matchesTopic = item.topic.toLowerCase().includes(q);
+        if (!matchesTitle && !matchesMeta && !matchesExcerpt && !matchesTopic) return false;
       }
 
       return true;
     }).sort((a, b) => (isSortAsc ? a.title.localeCompare(b.title) : b.title.localeCompare(a.title)));
-  }, [unifiedItems, activeCategory, activeTopic, activeAttention, searchQuery, isSortAsc]);
+  }, [unifiedItems, activeCategory, activeTopicId, topicShelves, activeTag, activeAttention, searchQuery, isSortAsc]);
 
   // Auto-select initial note if specified
   useEffect(() => {
@@ -284,6 +342,36 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   }, [initialNoteId, filteredItems]);
 
   const selectedItem: UnifiedItem | undefined = filteredItems[selectedIndex] || filteredItems[0];
+  const selectedItemId = selectedItem?.id;
+  const selectedItemType = selectedItem?.type;
+
+  // Fetch real connected concepts from the graph for the currently selected item
+  useEffect(() => {
+    let active = true;
+    if (!selectedItemId || selectedItemType !== 'note') {
+      setConnectedConcepts([]);
+      setIsLoadingConcepts(false);
+      return;
+    }
+
+    setIsLoadingConcepts(true);
+    getWorkspaceGraph(workspaceId, { note_id: selectedItemId })
+      .then((res) => {
+        if (!active) return;
+        setConnectedConcepts(res.nodes || []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setConnectedConcepts([]);
+      })
+      .finally(() => {
+        if (active) setIsLoadingConcepts(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [workspaceId, selectedItemId, selectedItemType]);
 
   // Actions with real ARQ polling
   const handleTriggerReindex = async () => {
@@ -423,14 +511,22 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   const isValidUUID = (id?: string | null): boolean =>
     typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
-  const handleCreateNewNote = () => {
+  const handleCreateNewNote = useCallback(() => {
     setEditingNoteId(null);
     setEditTitle('');
     setEditContent('');
     setSaveNoteError(null);
     setIsSavingNote(false);
     setIsEditingNote(true);
-  };
+  }, []);
+
+  // Handle external navigation action: automatically open note editor
+  useEffect(() => {
+    if (initialAction === 'create-note') {
+      handleCreateNewNote();
+      onClearInitialAction?.();
+    }
+  }, [initialAction, handleCreateNewNote, onClearInitialAction]);
 
   const handleOpenEditNote = (item: UnifiedItem) => {
     setEditingNoteId(item.type === 'note' && item.id && !item.id.startsWith('canon-') ? item.id : null);
@@ -530,7 +626,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
     try {
       const uploaded = await uploadSource(workspaceId, importFile);
-      setActionFeedback(`Source "${uploaded.file_name || (uploaded as any).filename || importFile.name}" imported and queued for indexing.`);
+      const uploadedName = uploaded.file_name || (uploaded as { filename?: string }).filename || importFile.name;
+      setActionFeedback(`Source "${uploadedName}" imported and queued for indexing.`);
       setImportFile(null);
       setIsImportModalOpen(false);
       setActiveCategory('sources');
@@ -634,40 +731,15 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
       <main className="relative z-10 max-w-[1560px] w-full mx-auto px-6 sm:px-8 pt-5 pb-5 flex-1 min-h-0 flex flex-col overflow-hidden">
         
         {/* Top Archive Header */}
-        <div className="shrink-0 flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 pb-4 border-b border-[var(--border-parchment)] mb-4">
+        <div className="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border-parchment)] mb-4">
           <div>
-            <div className="flex items-center gap-2 text-[11px] mono uppercase tracking-wider text-[var(--accent-terracotta)] font-semibold mb-1">
-              <span className="w-2 h-2 rounded-full bg-[var(--accent-terracotta)]" />
-              <span>THE KNOWLEDGE ARCHIVE</span>
-            </div>
             <h1 className="serif text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--ink-primary)] leading-tight">
               Library Catalog <span className="serif-italic font-normal text-[var(--accent-midnight)] text-2xl sm:text-3xl ml-1">· Your Collection</span>
             </h1>
           </div>
 
-          {/* Quick summary stats & Action Buttons */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-4 text-xs text-[var(--ink-secondary)]">
-              <div className="flex items-center gap-1.5">
-                <i className="ph ph-file-text text-sm text-[var(--accent-midnight)]" />
-                <span className="font-medium text-[var(--ink-primary)]">{sources.length}</span>
-                <span>Sources</span>
-              </div>
-              <div className="w-px h-3 bg-[var(--border-parchment)]" />
-              <div className="flex items-center gap-1.5">
-                <i className="ph ph-note-pencil text-sm text-[var(--accent-terracotta)]" />
-                <span className="font-medium text-[var(--ink-primary)]">{notes.length}</span>
-                <span>Notes</span>
-              </div>
-              <div className="w-px h-3 bg-[var(--border-parchment)]" />
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-600" />
-                <span>Workspace Synced</span>
-              </div>
-            </div>
-
-            <div className="hidden sm:block w-px h-4 bg-[var(--border-parchment)] mx-1" />
-
+          {/* Action Buttons */}
+          <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => {
@@ -732,12 +804,14 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
                   <div className="flex flex-col gap-1">
                     <div
+                      data-testid="shelf-all-items"
                       onClick={() => {
                         setActiveCategory('all');
-                        setActiveTopic(null);
+                        setActiveTopicId(null);
+                        setActiveTag(null);
                         setActiveAttention(null);
                       }}
-                      className={`shelf-item ${activeCategory === 'all' && !activeTopic && !activeAttention ? 'active' : ''}`}
+                      className={`shelf-item ${activeCategory === 'all' && !activeTopicId && !activeTag && !activeAttention ? 'active' : ''}`}
                     >
                       <span className="flex items-center gap-2.5">
                         <i className="ph ph-squares-four text-sm text-[var(--accent-midnight)]" />
@@ -747,9 +821,11 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                     </div>
 
                     <div
+                      data-testid="shelf-sources"
                       onClick={() => {
                         setActiveCategory('sources');
-                        setActiveTopic(null);
+                        setActiveTopicId(null);
+                        setActiveTag(null);
                         setActiveAttention(null);
                       }}
                       className={`shelf-item ${activeCategory === 'sources' ? 'active' : ''}`}
@@ -764,9 +840,11 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                     </div>
 
                     <div
+                      data-testid="shelf-notes"
                       onClick={() => {
                         setActiveCategory('notes');
-                        setActiveTopic(null);
+                        setActiveTopicId(null);
+                        setActiveTag(null);
                         setActiveAttention(null);
                       }}
                       className={`shelf-item ${activeCategory === 'notes' ? 'active' : ''}`}
@@ -793,10 +871,10 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                         <span className="text-[10px] mono text-[var(--ink-tertiary)]">({topicShelves.length})</span>
                       )}
                     </div>
-                    {activeTopic && (
+                    {activeTopicId && (
                       <button
                         type="button"
-                        onClick={() => setActiveTopic(null)}
+                        onClick={() => setActiveTopicId(null)}
                         className="text-[10px] text-[var(--accent-terracotta)] hover:underline cursor-pointer"
                       >
                         Clear
@@ -812,8 +890,11 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                       topicShelves.map((topic) => (
                         <div
                           key={topic.key}
-                          onClick={() => setActiveTopic(activeTopic === topic.label ? null : topic.label)}
-                          className={`shelf-item ${activeTopic === topic.label ? 'active' : ''} flex items-center justify-between gap-2`}
+                          onClick={() => {
+                            setActiveTopicId(activeTopicId === topic.key ? null : topic.key);
+                            setActiveTag(null);
+                          }}
+                          className={`shelf-item ${activeTopicId === topic.key ? 'active' : ''} flex items-center justify-between gap-2`}
                           title={`${topic.label} (${topic.count} items)`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -834,6 +915,50 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                     )}
                   </div>
                 </div>
+
+                {/* Section: Tags */}
+                {tagShelves.length > 0 && (
+                  <>
+                    <div className="w-full h-px bg-[var(--border-parchment)] mb-3 shrink-0" />
+                    <div className="flex flex-col mb-3 shrink-0">
+                      <div className="flex items-center justify-between mb-1.5 shrink-0">
+                        <div className="flex items-center gap-2">
+                          <span className="serif-italic text-sm text-[var(--ink-secondary)]">Tags</span>
+                          <span className="text-[10px] mono text-[var(--ink-tertiary)]">({tagShelves.length})</span>
+                        </div>
+                        {activeTag && (
+                          <button
+                            type="button"
+                            onClick={() => setActiveTag(null)}
+                            className="text-[10px] text-[var(--accent-terracotta)] hover:underline cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
+                        {tagShelves.map((tag) => (
+                          <button
+                            key={tag.key}
+                            type="button"
+                            onClick={() => {
+                              setActiveTag(activeTag === tag.key ? null : tag.key);
+                              setActiveTopicId(null);
+                            }}
+                            className={`px-2 py-0.5 rounded text-xs border transition-colors cursor-pointer flex items-center gap-1.5 ${
+                              activeTag === tag.key
+                                ? 'bg-[var(--accent-midnight)] text-white border-[var(--accent-midnight)]'
+                                : 'bg-white border-[var(--border-parchment)] text-[var(--ink-secondary)] hover:border-[var(--accent-midnight)]'
+                            }`}
+                          >
+                            <span>#{tag.label}</span>
+                            <span className="mono text-[10px] opacity-75">({tag.count})</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div className="w-full h-px bg-[var(--border-parchment)] mb-3 shrink-0" />
 
@@ -936,86 +1061,106 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
             } flex flex-col h-full min-h-0 gap-3 transition-all duration-300`}
           >
             {/* Filter & Search Toolbar */}
-            <div className="shrink-0 instrument-panel p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
-              {/* Type Filter Tabs */}
-              <div className="flex items-center gap-1 bg-[var(--bg-panel-subtle)] p-1 rounded-lg border border-[var(--border-parchment)] w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={() => setActiveCategory('all')}
-                  className={`filter-tab text-xs flex-1 sm:flex-initial text-center ${
-                    activeCategory === 'all' ? 'active' : ''
-                  }`}
-                >
-                  All
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveCategory('sources')}
-                  className={`filter-tab text-xs flex-1 sm:flex-initial text-center ${
-                    activeCategory === 'sources' ? 'active' : ''
-                  }`}
-                >
-                  Sources
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveCategory('notes')}
-                  className={`filter-tab text-xs flex-1 sm:flex-initial text-center ${
-                    activeCategory === 'notes' ? 'active' : ''
-                  }`}
-                >
-                  Notes
-                </button>
-              </div>
-
-              {/* In-Catalog Search, Sort & Quick Actions */}
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <div className="relative flex-1 sm:w-52">
+            <div className="shrink-0 instrument-panel p-3 flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-3">
+                {/* Search Input */}
+                <div className="relative flex-1 max-w-md">
                   <i className="ph ph-magnifying-glass absolute left-2.5 top-2.5 text-xs text-[var(--ink-tertiary)]" />
                   <input
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     type="text"
-                    placeholder="Filter title or author..."
+                    placeholder="Search by title, topic, or content..."
                     className="w-full pl-7 pr-3 py-1.5 bg-white border border-[var(--border-strong)] rounded-lg text-xs text-[var(--ink-primary)] placeholder:text-[var(--ink-tertiary)] outline-none focus:border-[var(--accent-midnight)]"
                   />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setIsSortAsc((prev) => !prev)}
-                  className="p-2 bg-white border border-[var(--border-strong)] rounded-lg text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors shrink-0 cursor-pointer"
-                  title="Sort items"
-                >
-                  <i className="ph ph-arrows-down-up text-xs" />
-                </button>
-
-                <div className="hidden sm:block w-px h-4 bg-[var(--border-parchment)] mx-0.5" />
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setImportFile(null);
-                    setImportError(null);
-                    setIsImportModalOpen(true);
-                  }}
-                  className="py-1.5 px-2.5 bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] rounded-lg text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-                  title="Import source documents"
-                >
-                  <i className="ph ph-upload-simple text-xs text-[var(--accent-midnight)]" />
-                  <span className="hidden md:inline">Import</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleCreateNewNote}
-                  className="py-1.5 px-2.5 bg-[var(--accent-midnight)] hover:bg-[var(--accent-midnight-light)] text-[#FAF8F2] rounded-lg text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer shrink-0 shadow-2xs"
-                  title="Create new note"
-                >
-                  <i className="ph ph-plus text-xs" />
-                  <span className="hidden md:inline">Note</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <span className="mono text-[11px] text-[var(--ink-tertiary)]">
+                    {filteredItems.length} {filteredItems.length === 1 ? 'item' : 'items'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsSortAsc((prev) => !prev)}
+                    className="p-1.5 bg-white border border-[var(--border-strong)] rounded-lg text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors shrink-0 cursor-pointer flex items-center gap-1 text-xs"
+                    title={isSortAsc ? 'Sorted A to Z' : 'Sorted Z to A'}
+                  >
+                    <i className="ph ph-arrows-down-up text-xs" />
+                    <span className="hidden sm:inline mono text-[10px] uppercase">{isSortAsc ? 'Asc' : 'Desc'}</span>
+                  </button>
+                </div>
               </div>
+
+              {/* Active Filter Indicator Bar */}
+              {(activeTopicId || activeTag || activeAttention || searchQuery) && (
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--border-parchment)] text-xs">
+                  <span className="text-[var(--ink-tertiary)] mono uppercase text-[10px] font-semibold">Active Filter:</span>
+                  {activeTopicId && (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-white border border-[var(--border-strong)] text-[var(--accent-midnight)] font-medium">
+                      <span>Topic: {activeTopicLabel}</span>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTopicId(null)}
+                        className="text-[var(--ink-tertiary)] hover:text-[var(--accent-terracotta)] cursor-pointer"
+                        title="Clear topic filter"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  )}
+                  {activeTag && (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-white border border-[var(--border-strong)] text-[var(--accent-terracotta)] font-medium">
+                      <span>Tag: #{activeTag}</span>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTag(null)}
+                        className="text-[var(--ink-tertiary)] hover:text-[var(--accent-terracotta)] cursor-pointer"
+                        title="Clear tag filter"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  )}
+                  {activeAttention && (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-white border border-[var(--border-strong)] text-[var(--accent-brass)] font-medium">
+                      <span>Attention: {activeAttention}</span>
+                      <button
+                        type="button"
+                        onClick={() => setActiveAttention(null)}
+                        className="text-[var(--ink-tertiary)] hover:text-[var(--accent-terracotta)] cursor-pointer"
+                        title="Clear attention filter"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  )}
+                  {searchQuery && (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-white border border-[var(--border-strong)] text-[var(--ink-secondary)] font-medium">
+                      <span>Query: "{searchQuery}"</span>
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        className="text-[var(--ink-tertiary)] hover:text-[var(--accent-terracotta)] cursor-pointer"
+                        title="Clear search"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTopicId(null);
+                      setActiveTag(null);
+                      setActiveAttention(null);
+                      setSearchQuery('');
+                    }}
+                    className="text-[11px] text-[var(--accent-terracotta)] hover:underline ml-auto cursor-pointer font-medium"
+                  >
+                    Clear All
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Catalog Ledger Table */}
@@ -1038,7 +1183,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                     No items in library
                   </p>
                   <p className="text-xs text-[var(--ink-secondary)] max-w-sm mt-1 mb-4">
-                    {searchQuery || activeTopic || activeCategory !== 'all'
+                    {searchQuery || activeTopicId || activeTag || activeCategory !== 'all'
                       ? 'No items match your active filter or search criteria.'
                       : 'This workspace archive is currently empty. Add notes or ingest sources to begin.'}
                   </p>
@@ -1121,9 +1266,24 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                             </div>
 
                             <div className="flex items-center gap-2 text-[10.5px] text-[var(--ink-tertiary)] mt-1">
-                              <span className="font-medium" style={{ color: item.topicColor }}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (item.clusterId) {
+                                    setActiveTopicId(item.clusterId);
+                                    setActiveTag(null);
+                                  } else {
+                                    setActiveTopicId(item.topic);
+                                    setActiveTag(null);
+                                  }
+                                }}
+                                className="font-medium hover:underline cursor-pointer"
+                                style={{ color: item.topicColor }}
+                                title={`Filter by topic: ${item.topic}`}
+                              >
                                 {item.topic}
-                              </span>
+                              </button>
                               <span>·</span>
                               <span className={item.statusColor}>{item.status}</span>
                             </div>
@@ -1196,10 +1356,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                   <div>
                     <div className="flex items-center gap-2 mb-1.5">
                       <span className="px-2 py-0.5 rounded bg-blue-50 text-[10px] text-[var(--accent-midnight)] font-semibold border border-blue-200 uppercase tracking-wider">
-                        {selectedItem.type === 'note' ? 'Personal Synthesis Note' : `Source Document · ${selectedItem.format}`}
-                      </span>
-                      <span className="px-2 py-0.5 rounded bg-emerald-50 text-[10px] text-emerald-800 font-semibold border border-emerald-200">
-                        {selectedItem.type === 'note' ? 'Active Note' : 'Indexed'}
+                        {selectedItem.type === 'note' ? 'Note' : `Source · ${selectedItem.format}`}
                       </span>
                     </div>
 
@@ -1232,78 +1389,56 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                   </p>
                 </div>
 
-                {/* Connected Concepts */}
+                {/* Connected Concepts (Real graph entities belonging to this item) */}
                 <div className="mb-5">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] uppercase tracking-wider font-semibold text-[var(--ink-tertiary)] mono">
-                      CONNECTED CONCEPTS ({selectedItem.conceptCount})
+                      CONNECTED CONCEPTS ({connectedConcepts.length})
                     </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onNavigateToObservatory &&
-                        onNavigateToObservatory({
-                          noteId: selectedItem.id,
-                          sourceId: (selectedItem as any).source_id || selectedItem.id,
-                          entityName: selectedItem.title,
-                        })
-                      }
-                      className="text-[11px] text-[var(--accent-terracotta)] hover:underline flex items-center gap-1 font-medium cursor-pointer"
-                    >
-                      <span>View in Sky</span>
-                      <i className="ph ph-arrow-up-right text-xs" />
-                    </button>
+                    {connectedConcepts.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onNavigateToObservatory &&
+                          onNavigateToObservatory({
+                            noteId: selectedItem.id,
+                            entityName: selectedItem.title,
+                          })
+                        }
+                        className="text-[11px] text-[var(--accent-terracotta)] hover:underline flex items-center gap-1 font-medium cursor-pointer"
+                      >
+                        <span>View in Sky</span>
+                        <i className="ph ph-arrow-up-right text-xs" />
+                      </button>
+                    )}
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5">
-                    {(() => {
-                      const tags = (selectedItem.rawNote?.tags || []).map((t: any) =>
-                        typeof t === 'string' ? t : t.name
-                      );
-                      const concepts = tags.length > 0
-                        ? tags
-                        : [selectedItem.topic, 'Active Knowledge'].filter(Boolean);
-                      return concepts.slice(0, 5).map((concept: string) => (
+                  {isLoadingConcepts ? (
+                    <div className="text-xs text-[var(--ink-secondary)] italic py-1">
+                      Loading connected concepts...
+                    </div>
+                  ) : connectedConcepts.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {connectedConcepts.map((concept) => (
                         <button
-                          key={concept}
+                          key={concept.id}
                           type="button"
                           onClick={() =>
                             onNavigateToObservatory &&
-                            onNavigateToObservatory({ entityName: concept })
+                            onNavigateToObservatory({ entityId: concept.id, entityName: concept.name })
                           }
                           className="px-2 py-1 rounded bg-[var(--bg-panel-subtle)] hover:bg-[var(--accent-terracotta-soft)] hover:text-[var(--accent-terracotta)] border border-[var(--border-parchment)] text-xs text-[var(--accent-midnight)] font-medium transition-colors cursor-pointer"
-                          title={`Locate "${concept}" in Observatory`}
+                          title={`Locate "${concept.name}" (${concept.entity_type}) in Observatory`}
                         >
-                          {concept}
+                          {concept.name}
                         </button>
-                      ));
-                    })()}
-                  </div>
-                </div>
-
-                {/* Metadata & Citation Provenance */}
-                <div className="mb-5 bg-[var(--bg-panel-subtle)] p-3 rounded-lg border border-[var(--border-parchment)] text-xs">
-                  <div className="text-[10px] uppercase tracking-wider font-semibold text-[var(--ink-tertiary)] mono mb-2">
-                    ARCHIVE METRICS
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-[11px] mono">
-                    <div>
-                      <span className="text-[var(--ink-tertiary)]">Type:</span>{' '}
-                      <span className="text-[var(--ink-primary)]">{selectedItem.format}</span>
+                      ))}
                     </div>
-                    <div>
-                      <span className="text-[var(--ink-tertiary)]">Chunks:</span>{' '}
-                      <span className="text-[var(--ink-primary)]">18 Chunks</span>
+                  ) : (
+                    <div className="text-xs text-[var(--ink-tertiary)] italic py-1">
+                      No connected concepts recorded in the graph for this item.
                     </div>
-                    <div>
-                      <span className="text-[var(--ink-tertiary)]">Topic:</span>{' '}
-                      <span className="text-[var(--accent-terracotta)]">{selectedItem.topic}</span>
-                    </div>
-                    <div>
-                      <span className="text-[var(--ink-tertiary)]">Citation Rank:</span>{' '}
-                      <span className="text-emerald-700">0.942</span>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Direct Execution Actions */}
@@ -1334,8 +1469,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                       onClick={() =>
                         onNavigateToObservatory &&
                         onNavigateToObservatory({
-                          noteId: selectedItem.id,
-                          sourceId: (selectedItem as any).source_id || selectedItem.id,
+                          noteId: selectedItem.type === 'note' ? selectedItem.id : undefined,
+                          sourceId: selectedItem.type === 'source' ? selectedItem.id : undefined,
                           entityName: selectedItem.title,
                         })
                       }
@@ -1356,7 +1491,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                             : `Synthesize the findings and core concepts from source "${selectedItem.title}".`,
                           noteId: selectedItem.type === 'note' ? selectedItem.id : undefined,
                           noteTitle: selectedItem.type === 'note' ? selectedItem.title : undefined,
-                          sourceId: selectedItem.type === 'source' ? selectedItem.id : (selectedItem as any).source_id,
+                          sourceId: selectedItem.type === 'source' ? selectedItem.id : undefined,
                           sourceTitle: selectedItem.type === 'source' ? selectedItem.title : undefined,
                         });
                       }

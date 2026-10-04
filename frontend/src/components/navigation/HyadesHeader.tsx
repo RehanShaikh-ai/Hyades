@@ -237,15 +237,17 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
           </kbd>
         </button>
 
-        {/* New Note Action */}
-        <button
-          type="button"
-          onClick={onNewNote}
-          className="bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-all px-3.5 py-1.5 rounded-lg flex items-center gap-2 shadow-2xs border border-[#233552] text-xs font-medium active:scale-95 shrink-0"
-        >
-          <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
-          <span className="hidden sm:inline">New Note</span>
-        </button>
+        {/* New Note Action (Hidden on Library where Library's dedicated action is canonical) */}
+        {currentDestination !== 'library' && (
+          <button
+            type="button"
+            onClick={onNewNote}
+            className="bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-all px-3.5 py-1.5 rounded-lg flex items-center gap-2 shadow-2xs border border-[#233552] text-xs font-medium active:scale-95 shrink-0"
+          >
+            <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
+            <span className="hidden sm:inline">New Note</span>
+          </button>
+        )}
 
         {/* Architectural Environment Perspective Toggle */}
         {onCycleEnvironment && (

@@ -148,11 +148,14 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
   };
 
 
+  const [libraryInitialAction, setLibraryInitialAction] = useState<'create-note' | null>(null);
+
   const handleCycleEnvironment = () => {
     setEnvironmentIndex((prev) => prev + 1);
   };
 
   const handleNewNote = () => {
+    setLibraryInitialAction('create-note');
     setCurrentDestination('library');
   };
 
@@ -202,6 +205,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
             onNavigateToObservatory={handleNavigateToObservatory}
             onNavigateToStella={handleNavigateToStella}
             onNavigateToNote={handleNavigateToNote}
+            onNewNote={handleNewNote}
             environmentIndex={environmentIndex}
           />
         )}
@@ -211,6 +215,8 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
             workspaceId={effectiveWorkspaceId}
             userId={selectedUser?.id || initialUserId || selectedWorkspace?.owner_id || users[0]?.id}
             initialNoteId={activeNoteId}
+            initialAction={libraryInitialAction}
+            onClearInitialAction={() => setLibraryInitialAction(null)}
             onNavigateToObservatory={handleNavigateToObservatory}
             onNavigateToStella={handleNavigateToStella}
             environmentIndex={environmentIndex}

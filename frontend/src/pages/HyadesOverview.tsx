@@ -17,10 +17,48 @@ interface HyadesOverviewProps {
   onNavigateToObservatory?: (target?: ObservatoryTarget) => void;
   onNavigateToStella?: (context: StellaContext) => void;
   onNavigateToNote?: (noteId: string) => void;
+  onNewNote?: () => void;
   environmentIndex?: number;
 }
 
 const PLATES = [classicalElevation, classicalAtrium, classicalColonnade];
+
+// Largest Remainder Method (Hamilton/Hare-Niemeyer method) for strictly summing percentages to 100%
+function allocatePercentages(items: { id: string; label: string; count: number; color: string }[]): {
+  id: string;
+  label: string;
+  count: number;
+  percentage: number;
+  color: string;
+}[] {
+  if (items.length === 0) return [];
+  const total = items.reduce((acc, item) => acc + item.count, 0);
+  if (total <= 0) {
+    return items.map((item) => ({ ...item, percentage: 0 }));
+  }
+
+  const unrounded = items.map((item, idx) => {
+    const exact = (item.count / total) * 100;
+    const floor = Math.floor(exact);
+    const remainder = exact - floor;
+    return { item, floor, remainder, idx };
+  });
+
+  const assignedSum = unrounded.reduce((acc, u) => acc + u.floor, 0);
+  const remainderToDistribute = 100 - assignedSum;
+
+  // Sort descending by remainder to distribute the shortfall
+  const sortedByRemainder = [...unrounded].sort((a, b) => b.remainder - a.remainder);
+  const extraIndices = new Set<number>();
+  for (let i = 0; i < remainderToDistribute && i < sortedByRemainder.length; i++) {
+    extraIndices.add(sortedByRemainder[i].idx);
+  }
+
+  return unrounded.map((u) => ({
+    ...u.item,
+    percentage: u.floor + (extraIndices.has(u.idx) ? 1 : 0),
+  }));
+}
 
 export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
   workspaceId,
@@ -28,6 +66,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
   onNavigateToObservatory,
   onNavigateToStella,
   onNavigateToNote,
+  onNewNote,
   environmentIndex = 0,
 }) => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -92,44 +131,88 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
     return map;
   }, [graphData]);
 
-  // Real topic breakdown from clusters or tag distribution
+  // Real topic breakdown from clusters or tag distribution strictly adding up to 100%
   const topicDistribution = useMemo(() => {
+    const palette = [
+      'var(--accent-midnight)',
+      'var(--accent-terracotta)',
+      'var(--accent-brass)',
+      'var(--accent-stone)',
+      '#2D5A27',
+      '#6B21A8',
+    ];
+
     if (clusters.length > 0) {
-      const totalMembers = clusters.reduce((acc, c) => acc + (c.member_count || 1), 0) || 1;
-      const colors = [
-        'var(--accent-midnight)',
-        'var(--accent-terracotta)',
-        'var(--accent-brass)',
-        'var(--accent-stone)',
-        '#2D5A27',
-        '#6B21A8',
-      ];
-      return clusters.slice(0, 4).map((c, i) => {
-        const count = c.member_count || 1;
-        const pct = Math.round((count / totalMembers) * 100);
-        return {
+      // Sort clusters by member count descending
+      const sortedClusters = [...clusters].sort((a, b) => (b.member_count || 1) - (a.member_count || 1));
+
+      let itemsToAllocate: { id: string; label: string; count: number; color: string }[] = [];
+
+      if (sortedClusters.length <= 5) {
+        itemsToAllocate = sortedClusters.map((c, i) => ({
           id: c.id,
           label: c.label,
-          count,
-          percentage: pct,
-          color: colors[i % colors.length],
-        };
-      });
+          count: c.member_count || 1,
+          color: palette[i % palette.length],
+        }));
+      } else {
+        const top4 = sortedClusters.slice(0, 4);
+        const remainder = sortedClusters.slice(4);
+        const otherCount = remainder.reduce((acc, c) => acc + (c.member_count || 1), 0);
+
+        itemsToAllocate = [
+          ...top4.map((c, i) => ({
+            id: c.id,
+            label: c.label,
+            count: c.member_count || 1,
+            color: palette[i % palette.length],
+          })),
+          {
+            id: 'other-topics',
+            label: 'Other Topics',
+            count: otherCount,
+            color: 'var(--accent-stone)',
+          },
+        ];
+      }
+
+      return allocatePercentages(itemsToAllocate);
     }
 
     if (stats?.tag_distribution && stats.tag_distribution.length > 0) {
-      const totalTagged = stats.tag_distribution.reduce((acc, t) => acc + t.note_count, 0) || 1;
-      const colors = ['var(--accent-midnight)', 'var(--accent-terracotta)', 'var(--accent-brass)', 'var(--accent-stone)'];
-      return stats.tag_distribution.slice(0, 4).map((t, i) => {
-        const pct = Math.round((t.note_count / totalTagged) * 100);
-        return {
+      const sortedTags = [...stats.tag_distribution].sort((a, b) => b.note_count - a.note_count);
+
+      let itemsToAllocate: { id: string; label: string; count: number; color: string }[] = [];
+
+      if (sortedTags.length <= 5) {
+        itemsToAllocate = sortedTags.map((t, i) => ({
           id: t.tag,
           label: t.tag,
           count: t.note_count,
-          percentage: pct,
-          color: colors[i % colors.length],
-        };
-      });
+          color: palette[i % palette.length],
+        }));
+      } else {
+        const top4 = sortedTags.slice(0, 4);
+        const remainder = sortedTags.slice(4);
+        const otherCount = remainder.reduce((acc, t) => acc + t.note_count, 0);
+
+        itemsToAllocate = [
+          ...top4.map((t, i) => ({
+            id: t.tag,
+            label: t.tag,
+            count: t.note_count,
+            color: palette[i % palette.length],
+          })),
+          {
+            id: 'other-tags',
+            label: 'Other Topics',
+            count: otherCount,
+            color: 'var(--accent-stone)',
+          },
+        ];
+      }
+
+      return allocatePercentages(itemsToAllocate);
     }
 
     return [];
@@ -396,8 +479,8 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                     <p className="text-xs text-[var(--ink-secondary)] mb-4">No notes created yet in this workspace.</p>
                     <button
                       type="button"
-                      onClick={() => onNavigateToDestination('library')}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] text-xs font-medium"
+                      onClick={() => (onNewNote ? onNewNote() : onNavigateToDestination('library'))}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] text-xs font-medium cursor-pointer"
                     >
                       <i className="ph ph-plus text-sm" />
                       <span>Create First Note in Library</span>
