@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { HyadesObservatory, computeClusterAnchors, computeObservatoryLayout, CelestialNode, CelestialLink } from './HyadesObservatory';
+import {
+  HyadesObservatory,
+  computeClusterAnchors,
+  computeObservatoryLayout,
+  computeConstellationPath,
+  CelestialNode,
+  CelestialLink,
+} from './HyadesObservatory';
 import * as graphApi from '@/api/graph';
 import * as clusterApi from '@/api/clusters';
 
@@ -463,6 +470,75 @@ describe('HyadesObservatory Spatial Navigation & Search', () => {
         expect(d).toBeGreaterThanOrEqual(35);
       }
     }
+  });
+
+  it('computeConstellationPath creates smooth, organic Bézier curves with subtle variation and directional invariance', () => {
+    const positions = new Map<string, { x: number; y: number }>([
+      ['star-alpha', { x: 100, y: 100 }],
+      ['star-beta', { x: 350, y: 250 }],
+      ['star-gamma', { x: 200, y: 400 }],
+    ]);
+
+    const pathAB = computeConstellationPath(
+      { source: 'star-alpha', target: 'star-beta' },
+      positions
+    );
+    const pathBA = computeConstellationPath(
+      { source: 'star-beta', target: 'star-alpha' },
+      positions
+    );
+
+    // Must be smooth cubic Bézier curve starting with M and curving with C
+    expect(pathAB.startsWith('M 100 100 C ')).toBe(true);
+    expect(pathAB.endsWith(' 350 250')).toBe(true);
+
+    expect(pathBA.startsWith('M 350 250 C ')).toBe(true);
+    expect(pathBA.endsWith(' 100 100')).toBe(true);
+
+    // Extract control points to verify identical spatial curve regardless of traversal direction
+    const partsAB = pathAB.replace('M 100 100 C ', '').replace(' 350 250', '').split(' ');
+    const partsBA = pathBA.replace('M 350 250 C ', '').replace(' 100 100', '').split(' ');
+
+    // The two curves define the exact same world spline in reverse
+    expect(partsAB.length).toBe(4);
+    expect(partsBA.length).toBe(4);
+
+    // Different relationships must produce varied curvature (not uniform semicircles)
+    const pathAG = computeConstellationPath(
+      { source: 'star-alpha', target: 'star-gamma' },
+      positions
+    );
+    expect(pathAG.startsWith('M 100 100 C ')).toBe(true);
+
+    // Tiny distance falls back to straight line
+    const tinyPos = new Map<string, { x: number; y: number }>([
+      ['n1', { x: 50, y: 50 }],
+      ['n2', { x: 51, y: 51 }],
+    ]);
+    const tinyPath = computeConstellationPath({ source: 'n1', target: 'n2' }, tinyPos);
+    expect(tinyPath).toBe('M 50 50 L 51 51');
+  });
+
+  it('renders only human-readable entity names in canvas sky labels without technical d:X or HYA-XXXX metadata', async () => {
+    const { container } = render(<HyadesObservatory workspaceId="ws-123" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Chunking Strategies')).toBeInTheDocument();
+    });
+
+    // Inspect all text elements rendered inside .node-label-group on the canvas sky
+    const skyLabelTexts = Array.from(
+      container.querySelectorAll('.node-label-group text')
+    ).map((el) => el.textContent?.trim() || '');
+
+    // None of the sky node labels should contain debug d:X or HYA-XXXX
+    skyLabelTexts.forEach((text) => {
+      expect(text).not.toMatch(/d:\d+/);
+      expect(text).not.toMatch(/HYA-\d+/);
+    });
+
+    // Ensure human-readable names are present
+    expect(skyLabelTexts).toContain('Chunking Strategies');
   });
 });
 

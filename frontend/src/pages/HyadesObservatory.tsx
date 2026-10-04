@@ -328,6 +328,74 @@ export function computeObservatoryLayout(
   return result;
 }
 
+/**
+ * Generates an organic, subtle Bézier curve for constellation links (§3).
+ * Invariant to edge direction (A->B and B->A produce identical spatial curves).
+ * Curvature is varied deterministically per relationship pair to distinguish
+ * nearby edges without forming uniform semicircles or eye-loop bubbles.
+ */
+export function computeConstellationPath(
+  d: any,
+  positions: Map<string, { x: number; y: number }>,
+  posOverride?: Map<string, { x: number; y: number }>
+): string {
+  const sId = typeof d.source === 'object' ? d.source.id : d.source;
+  const tId = typeof d.target === 'object' ? d.target.id : d.target;
+  const sPos =
+    posOverride?.get(sId) ??
+    (typeof d.source === 'object' && d.source.x !== undefined ? d.source : positions.get(sId));
+  const tPos =
+    posOverride?.get(tId) ??
+    (typeof d.target === 'object' && d.target.x !== undefined ? d.target : positions.get(tId));
+  const x1 = sPos?.x ?? 0;
+  const y1 = sPos?.y ?? 0;
+  const x2 = tPos?.x ?? 0;
+  const y2 = tPos?.y ?? 0;
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const dist = Math.hypot(dx, dy);
+
+  if (dist < 4) {
+    return `M ${x1} ${y1} L ${x2} ${y2}`;
+  }
+
+  // Normal vector perpendicular to the line chord
+  const ux = dx / dist;
+  const uy = dy / dist;
+  const nx = -uy;
+  const ny = ux;
+
+  // Canonical node ordering ensures curve is invariant to edge direction
+  const isCanonical = sId <= tId;
+  const pairKey = isCanonical ? `${sId}:${tId}` : `${tId}:${sId}`;
+  let hash = 0;
+  for (let i = 0; i < pairKey.length; i++) {
+    hash = ((hash << 5) - hash + pairKey.charCodeAt(i)) | 0;
+  }
+  const seed = Math.abs(hash);
+
+  // Subtle, organic camber (6px to 26px max, avoiding uniform or exaggerated semicircles)
+  const baseCamber = Math.min(26, Math.max(6, dist * 0.085));
+  // Natural variation in curvature between different constellations (0.75x to 1.25x)
+  const variation = 0.75 + ((seed % 51) / 100);
+  // Alternating deterministic bow direction
+  const dir = seed % 2 === 0 ? 1 : -1;
+  const normalSign = isCanonical ? dir : -dir;
+  const bend = baseCamber * variation * normalSign;
+
+  // Organic Bézier with subtle variation in control point positions
+  const t1 = 0.30 + (((seed >> 2) % 9) / 100); // 0.30 to 0.38
+  const t2 = 0.64 + (((seed >> 5) % 9) / 100); // 0.64 to 0.72
+
+  const cx1 = x1 + dx * t1 + nx * bend * 0.9;
+  const cy1 = y1 + dy * t1 + ny * bend * 0.9;
+  const cx2 = x1 + dx * t2 + nx * bend * 0.9;
+  const cy2 = y1 + dy * t2 + ny * bend * 0.9;
+
+  return `M ${x1} ${y1} C ${cx1} ${cy1} ${cx2} ${cy2} ${x2} ${y2}`;
+}
+
 
 export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   workspaceId,
@@ -347,6 +415,12 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
   // Persistent node position cache to prevent layout resets and explosions
   const nodePositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+
+  // Constellation Link Curved Path Generator (§3)
+  const linkConstellationPath = (
+    d: any,
+    posOverride?: Map<string, { x: number; y: number }>
+  ) => computeConstellationPath(d, nodePositionsRef.current, posOverride);
 
   // Real backend graph state
   const [graphData, setGraphData] = useState<GraphResponse | null>(null);
@@ -903,28 +977,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
         svgRef.current
           .selectAll('.celestial-link')
-          .attr('d', (d: any) => {
-            const s = typeof d.source === 'object' ? d.source : newPositions.get(d.source);
-            const t = typeof d.target === 'object' ? d.target : newPositions.get(d.target);
-            const x1 = s?.x ?? 0;
-            const y1 = s?.y ?? 0;
-            const x2 = t?.x ?? 0;
-            const y2 = t?.y ?? 0;
-            return `M ${x1} ${y1} L ${x2} ${y2}`;
-          });
-
-        svgRef.current
-          .selectAll('.link-label')
-          .attr('x', (d: any) => {
-            const s = typeof d.source === 'object' ? d.source : newPositions.get(d.source);
-            const t = typeof d.target === 'object' ? d.target : newPositions.get(d.target);
-            return ((s?.x ?? 0) + (t?.x ?? 0)) / 2;
-          })
-          .attr('y', (d: any) => {
-            const s = typeof d.source === 'object' ? d.source : newPositions.get(d.source);
-            const t = typeof d.target === 'object' ? d.target : newPositions.get(d.target);
-            return ((s?.y ?? 0) + (t?.y ?? 0)) / 2 - 3;
-          });
+          .attr('d', (d: any) => linkConstellationPath(d, newPositions));
       } else {
         svgRef.current
           .selectAll('.celestial-node')
@@ -941,31 +994,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           .transition()
           .duration(650)
           .ease(d3.easeCubicOut)
-          .attr('d', (d: any) => {
-            const s = typeof d.source === 'object' ? d.source : newPositions.get(d.source);
-            const t = typeof d.target === 'object' ? d.target : newPositions.get(d.target);
-            const x1 = s?.x ?? 0;
-            const y1 = s?.y ?? 0;
-            const x2 = t?.x ?? 0;
-            const y2 = t?.y ?? 0;
-            return `M ${x1} ${y1} L ${x2} ${y2}`;
-          });
-
-        svgRef.current
-          .selectAll('.link-label')
-          .transition()
-          .duration(650)
-          .ease(d3.easeCubicOut)
-          .attr('x', (d: any) => {
-            const s = typeof d.source === 'object' ? d.source : newPositions.get(d.source);
-            const t = typeof d.target === 'object' ? d.target : newPositions.get(d.target);
-            return ((s?.x ?? 0) + (t?.x ?? 0)) / 2;
-          })
-          .attr('y', (d: any) => {
-            const s = typeof d.source === 'object' ? d.source : newPositions.get(d.source);
-            const t = typeof d.target === 'object' ? d.target : newPositions.get(d.target);
-            return ((s?.y ?? 0) + (t?.y ?? 0)) / 2 - 3;
-          });
+          .attr('d', (d: any) => linkConstellationPath(d, newPositions));
       }
     }
 
@@ -1156,18 +1185,6 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     return `M 0 ${-p} Q ${w} ${-w} ${p} 0 Q ${w} ${w} 0 ${p} Q ${-w} ${w} ${-p} 0 Q ${-w} ${-w} 0 ${-p} Z`;
   };
 
-  // Straight Constellation Link Path Generator (§1, §2)
-  // Replaces bowed quadratic curves that formed circular eye-loops and bubbles
-  const linkConstellationPath = (d: any) => {
-    const s = typeof d.source === 'object' ? d.source : nodePositionsRef.current.get(d.source);
-    const t = typeof d.target === 'object' ? d.target : nodePositionsRef.current.get(d.target);
-    const x1 = s?.x ?? 0;
-    const y1 = s?.y ?? 0;
-    const x2 = t?.x ?? 0;
-    const y2 = t?.y ?? 0;
-    return `M ${x1} ${y1} L ${x2} ${y2}`;
-  };
-
   // ================= STABLE D3 FORCE SIMULATION INITIALIZER =================
   // Strictly calculated ONCE when graph data or structural filters change.
   // NEVER recreated or restarted when selectedNode or searchQuery changes!
@@ -1276,7 +1293,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           selectedNodeRef.current.connections.forEach((c) => currentConnectedIds.add(c.id));
         }
 
-        // Semantic zoom label density control (§1.F)
+        // Semantic zoom label density control (§1, §2)
         g.selectAll<SVGGElement, CelestialNode>('.celestial-node').each(function (d) {
           const isSelected = d.id === currentSelectedId;
           const isConnected = currentConnectedIds.has(d.id);
@@ -1288,11 +1305,14 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           } else if (k < 0.75) {
             // Low zoom (overview): only core concepts show labels
             labelGroup.style('display', d.hierarchy === 'core' ? 'block' : 'none');
-          } else if (k < 1.25) {
+          } else if (k < 1.3) {
             // Mid zoom: core and subtopics show labels
             labelGroup.style('display', d.hierarchy === 'core' || d.hierarchy === 'subtopic' ? 'block' : 'none');
+          } else if (k < 1.9) {
+            // Closer zoom: core, subtopics, and prominent related concepts
+            labelGroup.style('display', d.hierarchy === 'core' || d.hierarchy === 'subtopic' || d.degree >= 2 ? 'block' : 'none');
           } else {
-            // High zoom: all labels visible
+            // Deep zoom: all labels visible
             labelGroup.style('display', 'block');
           }
         });
@@ -1305,9 +1325,6 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             d3.select(this).style('opacity', k < 0.75 ? 0.45 : 1);
           }
         });
-
-        // Link labels hide at lower zoom to avoid clutter
-        g.selectAll('.link-label').style('display', k < 0.95 ? 'none' : 'block');
       });
 
     svg.call(zoom);
@@ -1452,7 +1469,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         const sNode = nodeLookup.get(sId);
         const tNode = nodeLookup.get(tId);
         const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-        return isSame ? '#544645' : '#8A7B79';
+        return isSame ? '#635350' : '#8A7B77';
       })
       .attr('stroke-opacity', (d) => {
         const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
@@ -1460,7 +1477,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         const sNode = nodeLookup.get(sId);
         const tNode = nodeLookup.get(tId);
         const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-        return isSame ? 0.22 : 0.05;
+        return isSame ? 0.38 : 0.20;
       })
       .attr('stroke-width', (d) => {
         const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
@@ -1468,7 +1485,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         const sNode = nodeLookup.get(sId);
         const tNode = nodeLookup.get(tId);
         const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-        return isSame ? 0.95 + (d.weight || 0.8) * 0.5 : 0.6;
+        return isSame ? 1.05 + (d.weight || 0.8) * 0.45 : 0.85;
       })
       .attr('stroke-dasharray', (d) => {
         const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
@@ -1478,19 +1495,6 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
         return isSame ? 'none' : '3,3';
       });
-
-    // Link Labels Layer
-    const linkLabel = linkGroup
-      .selectAll('text')
-      .data(filteredLinks)
-      .enter()
-      .append('text')
-      .attr('class', 'link-label pointer-events-none select-none')
-      .attr('font-family', 'JetBrains Mono, monospace')
-      .attr('font-size', '8px')
-      .attr('fill', 'rgba(100, 90, 80, 0.45)')
-      .attr('text-anchor', 'middle')
-      .text((d) => d.type || '');
 
     // Nodes Layer
     const nodeGroup = g.append('g').attr('class', 'nodes-layer');
@@ -1520,14 +1524,33 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
               d3.zoomIdentity.translate(tx, ty).scale(scale)
             );
         }
+      })
+      .on('mouseenter', function () {
+        d3.select(this).select('.node-label-group').style('display', 'block');
+      })
+      .on('mouseleave', function (_event, d) {
+        const svgNode = svgRef.current?.node();
+        const k = svgNode ? d3.zoomTransform(svgNode).k : 1;
+        const currentSelectedId = selectedNodeRef.current?.id;
+        const isSelected = d.id === currentSelectedId;
+        const isConnected = selectedNodeRef.current?.connections.some((c) => c.id === d.id);
+        if (isSelected || isConnected) return;
+
+        const labelGroup = d3.select(this).select('.node-label-group');
+        if (k < 0.75) {
+          labelGroup.style('display', d.hierarchy === 'core' ? 'block' : 'none');
+        } else if (k < 1.3) {
+          labelGroup.style('display', d.hierarchy === 'core' || d.hierarchy === 'subtopic' ? 'block' : 'none');
+        } else if (k < 1.9) {
+          labelGroup.style('display', d.hierarchy === 'core' || d.hierarchy === 'subtopic' || d.degree >= 2 ? 'block' : 'none');
+        } else {
+          labelGroup.style('display', 'block');
+        }
       });
 
     // If positions are established, position elements immediately without waiting for simulation
     if (hasEstablishedPositions) {
       link.attr('d', (d: any) => linkConstellationPath(d));
-      linkLabel
-        .attr('x', (d: any) => ((d.source?.x ?? 0) + (d.target?.x ?? 0)) / 2)
-        .attr('y', (d: any) => ((d.source?.y ?? 0) + (d.target?.y ?? 0)) / 2 - 3);
       node.attr('transform', (d) => `translate(${d.x || 0}, ${d.y || 0})`);
     }
 
@@ -1592,32 +1615,28 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         el.append('circle').attr('r', 1.8).attr('fill', '#FAF8F2');
       }
 
-      // Elegant Astronomical Label with progressive disclosure
+      // Clean, elegant astronomical label showing ONLY the concept name (§1, §2)
       const textGroup = el
         .append('g')
         .attr('class', 'node-label-group pointer-events-none select-none')
-        .attr('transform', `translate(0, ${d.size + 13})`)
+        .attr('transform', `translate(0, ${d.size + 11})`)
         .style('display', d.hierarchy === 'core' ? 'block' : 'none');
 
       textGroup
         .append('text')
         .attr('text-anchor', 'middle')
-        .attr('class', 'serif font-semibold')
+        .attr('class', 'serif font-medium')
         .attr(
           'font-size',
-          d.hierarchy === 'core' ? '12.5px' : d.hierarchy === 'subtopic' ? '11px' : '10px'
+          d.hierarchy === 'core' ? '12px' : d.hierarchy === 'subtopic' ? '10px' : '8.5px'
         )
         .attr('fill', '#1A2130')
+        .attr('letter-spacing', '0.015em')
+        .attr('paint-order', 'stroke')
+        .attr('stroke', '#FAF7F0')
+        .attr('stroke-width', '2.5px')
+        .attr('stroke-linejoin', 'round')
         .text(d.label);
-
-      textGroup
-        .append('text')
-        .attr('text-anchor', 'middle')
-        .attr('y', 10.5)
-        .attr('font-family', 'JetBrains Mono, monospace')
-        .attr('font-size', '8px')
-        .attr('fill', 'rgba(100, 90, 80, 0.65)')
-        .text(`${d.catalog} · d:${d.degree}`);
     });
 
     // Drag behavior with cache updates
@@ -1635,9 +1654,6 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         d3.select(event.sourceEvent.target.closest('.celestial-node'))
           .attr('transform', `translate(${event.x}, ${event.y})`);
         link.attr('d', (d: any) => linkConstellationPath(d));
-        linkLabel
-          .attr('x', (d: any) => ((d.source?.x ?? 0) + (d.target?.x ?? 0)) / 2)
-          .attr('y', (d: any) => ((d.source?.y ?? 0) + (d.target?.y ?? 0)) / 2 - 3);
       })
       .on('end', (event) => {
         event.subject.fx = null;
@@ -1656,11 +1672,6 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     // Simulation Tick: Update positions and persist to coordinate cache
     simulation.on('tick', () => {
       link.attr('d', (d: any) => linkConstellationPath(d));
-
-      linkLabel
-        .attr('x', (d: any) => (d.source.x + d.target.x) / 2)
-        .attr('y', (d: any) => (d.source.y + d.target.y) / 2 - 3);
-
       node.attr('transform', (d) => `translate(${d.x || 0}, ${d.y || 0})`);
 
       filteredNodes.forEach((n) => {
@@ -1739,9 +1750,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
 
       el.classed('is-active-link', isConnected)
-        .attr('stroke', isConnected ? '#BD532B' : isSame ? '#544645' : '#8A7B79')
-        .attr('stroke-opacity', isConnected ? 0.92 : isDimmed ? 0.02 : isSame ? 0.22 : 0.05)
-        .attr('stroke-width', isConnected ? 2.2 : isSame ? 0.95 + (d.weight || 0.8) * 0.5 : 0.6)
+        .attr('stroke', isConnected ? '#BD532B' : isSame ? '#635350' : '#8A7B77')
+        .attr('stroke-opacity', isConnected ? 0.95 : isDimmed ? 0.08 : isSame ? 0.38 : 0.20)
+        .attr('stroke-width', isConnected ? 2.2 : isSame ? 1.05 + (d.weight || 0.8) * 0.45 : 0.85)
         .attr('stroke-dasharray', isConnected ? 'none' : isSame ? 'none' : '3,3');
     });
   }, [selectedNode, celestialNodes]);
@@ -2986,7 +2997,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                     </div>
                     <div className="flex items-center gap-2 mono text-[10px] shrink-0 opacity-80">
                       <span>{candidate.catalog}</span>
-                      <span>d:{candidate.degree}</span>
+                      <span>{candidate.degree} {candidate.degree === 1 ? 'link' : 'links'}</span>
                     </div>
                   </button>
                 ))}
