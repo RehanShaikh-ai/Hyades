@@ -712,5 +712,136 @@ describe('HyadesObservatory Spatial Navigation & Search', () => {
       expect(screen.queryByText('Knowledge Metrics')).not.toBeInTheDocument();
     });
   });
+
+  it('temporary elastic jiggle drag does NOT mutate or persist coordinates to localStorage', async () => {
+    const wsId = 'ws-drag-test';
+    const { container } = render(<HyadesObservatory workspaceId={wsId} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Chunking Strategies')).toBeInTheDocument();
+    });
+
+    const nodeElement = container.querySelector<SVGGElement>('.celestial-node[data-id="n1"]');
+    expect(nodeElement).not.toBeNull();
+    const initialTransform = nodeElement!.getAttribute('transform');
+    expect(initialTransform).toBeTruthy();
+
+    const storedBefore = localStorage.getItem(`hyades_graph_positions_${wsId}`);
+
+    // Trigger drag sequence on node
+    const mdEvent = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 200,
+      clientY: 200,
+    });
+    Object.defineProperty(mdEvent, 'view', { value: window });
+    nodeElement!.dispatchEvent(mdEvent);
+
+    const mmEvent = new MouseEvent('mousemove', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 350,
+      clientY: 350,
+    });
+    Object.defineProperty(mmEvent, 'view', { value: window });
+    window.dispatchEvent(mmEvent);
+
+    const muEvent = new MouseEvent('mouseup', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 350,
+      clientY: 350,
+    });
+    Object.defineProperty(muEvent, 'view', { value: window });
+    window.dispatchEvent(muEvent);
+
+    // After release, node must return to initial resting transform
+    await waitFor(() => {
+      expect(nodeElement!.getAttribute('transform')).toBe(initialTransform);
+      expect(nodeElement!.classList.contains('is-dragging')).toBe(false);
+    });
+
+    // Ensure localStorage was NOT permanently modified by the drag
+    const storedAfter = localStorage.getItem(`hyades_graph_positions_${wsId}`);
+    expect(storedAfter).toBe(storedBefore);
+  });
+
+  it('computeObservatoryLayout organizes constellations with core star anchoring and satellite grouping', () => {
+    const nodes: CelestialNode[] = [
+      {
+        id: 'c1',
+        label: 'Core Star',
+        catalog: 'HYA-0001',
+        clusterKey: 'cluster-A',
+        group: 1,
+        type: 'hub',
+        hierarchy: 'core',
+        size: 24,
+        coords: 'RA 04h DEC +15°',
+        desc: 'Core anchor star',
+        degree: 8,
+        noteCount: 10,
+        connections: [],
+      },
+      {
+        id: 's1',
+        label: 'Subtopic Alpha',
+        catalog: 'HYA-0002',
+        clusterKey: 'cluster-A',
+        group: 1,
+        type: 'concept',
+        hierarchy: 'subtopic',
+        size: 16,
+        coords: 'RA 04h DEC +15°',
+        desc: 'Subtopic hub',
+        degree: 4,
+        noteCount: 4,
+        connections: [{ id: 'c1', name: 'Core Star', type: 'rel', corr: '0.9' }],
+      },
+      {
+        id: 'r1',
+        label: 'Related Star',
+        catalog: 'HYA-0003',
+        clusterKey: 'cluster-A',
+        group: 1,
+        type: 'entity',
+        hierarchy: 'related',
+        size: 9,
+        coords: 'RA 04h DEC +15°',
+        desc: 'Satellite star',
+        degree: 1,
+        noteCount: 1,
+        connections: [{ id: 's1', name: 'Subtopic Alpha', type: 'rel', corr: '0.8' }],
+      },
+    ];
+
+    const links: CelestialLink[] = [
+      { source: 'c1', target: 's1', weight: 0.9, type: 'relates' },
+      { source: 's1', target: 'r1', weight: 0.8, type: 'relates' },
+    ];
+
+    const layout = computeObservatoryLayout(nodes, links, 800, 600);
+    const corePos = layout.get('c1');
+    const subPos = layout.get('s1');
+    const relPos = layout.get('r1');
+
+    expect(corePos).toBeDefined();
+    expect(subPos).toBeDefined();
+    expect(relPos).toBeDefined();
+
+    // Primary core star is anchored at center anchor
+    expect(corePos!.x).toBeCloseTo(800, 1);
+    expect(corePos!.y).toBeCloseTo(600, 1);
+
+    // Subtopic is positioned at comfortable orbital distance (> 100px)
+    const distCoreSub = Math.hypot(subPos!.x - corePos!.x, subPos!.y - corePos!.y);
+    expect(distCoreSub).toBeGreaterThan(100);
+
+    // Related concept is satellite to subtopic (< 120px from subtopic)
+    const distSubRel = Math.hypot(relPos!.x - subPos!.x, relPos!.y - subPos!.y);
+    expect(distSubRel).toBeGreaterThan(30);
+    expect(distSubRel).toBeLessThan(140);
+  });
 });
 

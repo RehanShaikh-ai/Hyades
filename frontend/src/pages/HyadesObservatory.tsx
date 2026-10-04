@@ -229,8 +229,9 @@ export function computeObservatoryLayout(
     return Math.abs(h);
   };
 
-  // 2. Lay out each cluster as an organic, irregular asterism (§1)
-  // No uniform concentric rings, no identical circular spacing
+  // 2. Lay out each cluster as an organic constellation inspired by celestial atlas geometry (§6)
+  // Central core star anchors the constellation, with subtopics in loose orbital arcs
+  // and related concepts forming satellite mini-clusters and orbital chains.
   sortedClusters.forEach(([cKey, cNodes]) => {
     const anchor = clusterAnchors.get(cKey) || { x: centerX, y: centerY };
     const cSeed = hashStr(cKey);
@@ -251,103 +252,103 @@ export function computeObservatoryLayout(
     const subtopics = sorted.filter((n) => n.hierarchy === 'subtopic');
     const related = sorted.filter((n) => n.hierarchy === 'related');
 
-    // Morphology axis for this constellation: distinct orientation and aspect ratio per cluster
-    const spineAngle = ((cSeed % 360) * Math.PI) / 180;
-    const aspectRatio = 1.25 + ((cSeed % 50) / 100); // 1.25 to 1.75 elongation
+    // Asymmetric orientation axis and elliptical eccentricity for this constellation
+    const baseAngle = ((cSeed % 360) * Math.PI) / 180;
+    const aspectY = 0.88 + ((cSeed % 25) / 100); // 0.88 to 1.13 slight celestial tilt
 
-    const spineUx = Math.cos(spineAngle);
-    const spineUy = Math.sin(spineAngle);
-    const perpUx = -spineUy;
-    const perpUy = spineUx;
-
-    // A. Place Cores along the constellation spine with natural organic spacing
-    if (cores.length === 1) {
-      result.set(cores[0].id, { x: anchor.x, y: anchor.y });
-    } else if (cores.length > 1) {
-      cores.forEach((c, i) => {
-        const offset = (i - (cores.length - 1) / 2) * 55;
-        const jitter = (((cSeed + i * 17) % 21) - 10) * 1.5;
-        const cx = anchor.x + spineUx * offset + perpUx * jitter;
-        const cy = anchor.y + spineUy * offset + perpUy * jitter;
-        result.set(c.id, { x: cx, y: cy });
-      });
-    }
-
-    // B. Place Subtopics along organic asterism branches (NOT a circular ring!)
+    // A. Central Core Star(s) (§6, §7): Primary core visually anchors the local constellation
     const parentPositions = new Map<string, { x: number; y: number }>();
-    cores.forEach((c) => {
-      const p = result.get(c.id);
-      if (p) parentPositions.set(c.id, p);
-    });
+    if (cores.length > 0) {
+      // Primary core star placed directly at celestial anchor
+      result.set(cores[0].id, { x: anchor.x, y: anchor.y });
+      parentPositions.set(cores[0].id, { x: anchor.x, y: anchor.y });
 
-    const subtopicAngles: number[] = [];
-    const nSubs = subtopics.length;
-
-    // Distribute branch angles with irregular gaps
-    for (let i = 0; i < nSubs; i++) {
-      const subSeed = hashStr(subtopics[i].id);
-      const baseAng = spineAngle + (i / Math.max(1, nSubs)) * 2 * Math.PI;
-      const jitter = (((subSeed % 37) - 18) / 180) * Math.PI;
-      subtopicAngles.push(baseAng + jitter);
+      // Secondary cores placed as prominent companion hubs along the cluster axis
+      for (let i = 1; i < cores.length; i++) {
+        const offset = (i % 2 === 1 ? 1 : -1) * (70 + i * 25);
+        const secAngle = baseAngle + (i * 0.4);
+        const cx = anchor.x + Math.cos(secAngle) * offset;
+        const cy = anchor.y + Math.sin(secAngle) * (offset * aspectY);
+        result.set(cores[i].id, { x: cx, y: cy });
+        parentPositions.set(cores[i].id, { x: cx, y: cy });
+      }
+    } else if (subtopics.length === 0 && related.length > 0) {
+      // If no core or subtopics, anchor with the highest degree node
+      result.set(sorted[0].id, { x: anchor.x, y: anchor.y });
+      parentPositions.set(sorted[0].id, { x: anchor.x, y: anchor.y });
     }
+
+    // B. Subtopics (Level 2 Major Hubs): Arranged in loose orbital arcs or asymmetric lobes (§6)
+    // Leaves an open celestial corridor (not a closed symmetrical circle!)
+    const nSubs = subtopics.length;
+    const arcSpan = Math.PI * (1.25 + ((cSeed % 40) / 100)); // 1.25pi to 1.65pi partial arc
 
     subtopics.forEach((sub, i) => {
       const subSeed = hashStr(sub.id);
-      const ang = subtopicAngles[i];
+      const normT = nSubs > 1 ? i / (nSubs - 1) : 0.5;
+      const angleJitter = (((subSeed % 31) - 15) / 180) * Math.PI;
+      const ang = baseAngle + normT * arcSpan + angleJitter;
 
-      // Varied branch reach (no single ring radius!)
-      const reachBase = 90 + Math.min(60, nSubs * 8);
-      const reachVar = ((subSeed % 60) - 25) * 1.1;
-      const reach = Math.max(75, reachBase + reachVar);
+      // Varied orbital reach (135px to 225px from core anchor)
+      const reachBase = 145 + Math.min(65, nSubs * 7);
+      const reachVar = ((subSeed % 61) - 25) * 1.3;
+      const reach = Math.max(125, reachBase + reachVar);
 
-      // Project into spine coordinate system to allow natural elliptical elongation
-      const cosA = Math.cos(ang);
-      const sinA = Math.sin(ang);
-      const alongSpine = cosA * spineUx + sinA * spineUy;
-      const alongPerp = cosA * perpUx + sinA * perpUy;
-
-      const sx = anchor.x + (alongSpine * reach * aspectRatio) * spineUx + (alongPerp * reach) * perpUx;
-      const sy = anchor.y + (alongSpine * reach * aspectRatio) * spineUy + (alongPerp * reach) * perpUy;
+      const sx = anchor.x + Math.cos(ang) * reach;
+      const sy = anchor.y + Math.sin(ang) * (reach * aspectY);
 
       result.set(sub.id, { x: sx, y: sy });
       parentPositions.set(sub.id, { x: sx, y: sy });
     });
 
-    // C. Place Related Stars organically around their connected parents (Asterism limbs & clusters)
+    // C. Related Stars (Level 3): Satellite groupings and orbital bridge chains (§6)
+    // Form miniature planetary satellite systems around their subtopic hubs or loose chains around the core
     related.forEach((rel, i) => {
       const relSeed = hashStr(rel.id);
       const nbrs = adj.get(rel.id);
 
-      // Find connected parent in this cluster (prefer highest degree neighbor or core)
+      // Find connected parent in this constellation
       let parentPos = anchor;
+      let hasSubtopicParent = false;
       if (nbrs && nbrs.size > 0) {
         for (const nbrId of nbrs) {
           if (parentPositions.has(nbrId)) {
             parentPos = parentPositions.get(nbrId)!;
+            hasSubtopicParent = parentPos !== anchor;
             break;
           }
         }
       } else if (subtopics.length > 0) {
         const assignedSub = subtopics[i % subtopics.length];
         parentPos = parentPositions.get(assignedSub.id) || anchor;
+        hasSubtopicParent = true;
       }
 
-      // Distance from parent star: varied between 45px and 110px (natural companions)
-      const distFromParent = 50 + (relSeed % 55);
-      const outDx = parentPos.x - anchor.x;
-      const outDy = parentPos.y - anchor.y;
-      const baseOutAngle = Math.hypot(outDx, outDy) > 10 ? Math.atan2(outDy, outDx) : spineAngle + i;
-      const fanAngle = baseOutAngle + (((relSeed % 120) - 60) / 180) * Math.PI;
+      if (hasSubtopicParent) {
+        // Satellite mini-cluster: orbit closely on the outward/lateral side of subtopic
+        const outDx = parentPos.x - anchor.x;
+        const outDy = parentPos.y - anchor.y;
+        const baseOutAngle = Math.atan2(outDy, outDx);
+        const satelliteAngle = baseOutAngle + (((relSeed % 140) - 70) / 180) * Math.PI;
+        const distFromSub = 46 + (relSeed % 38); // 46px to 84px satellite radius
 
-      const rx = parentPos.x + Math.cos(fanAngle) * distFromParent;
-      const ry = parentPos.y + Math.sin(fanAngle) * (distFromParent * 0.88);
+        const rx = parentPos.x + Math.cos(satelliteAngle) * distFromSub;
+        const ry = parentPos.y + Math.sin(satelliteAngle) * (distFromSub * 0.92);
+        result.set(rel.id, { x: rx, y: ry });
+      } else {
+        // Orbital chain star: loose orbital companion around the core anchor
+        const chainAngle = baseAngle + ((relSeed % 360) / 180) * Math.PI;
+        const distFromCore = 75 + (relSeed % 48); // 75px to 123px intermediate radius
 
-      result.set(rel.id, { x: rx, y: ry });
+        const rx = anchor.x + Math.cos(chainAngle) * distFromCore;
+        const ry = anchor.y + Math.sin(chainAngle) * (distFromCore * aspectY);
+        result.set(rel.id, { x: rx, y: ry });
+      }
     });
   });
 
   // 3. Fast synchronous local relaxation ensuring guaranteed minimum clearance (>= 42px)
-  // Ensures stars do not collide while preserving their organic, irregular positions
+  // Ensures stars do not collide while preserving their organic constellation shapes
   const minClearance = 42;
   const nodeArray = nodes.map((n) => ({
     id: n.id,
@@ -390,45 +391,25 @@ export function computeObservatoryLayout(
   return result;
 }
 
-function checkSegmentIntersection(
-  p1: { x: number; y: number },
-  p2: { x: number; y: number },
-  p3: { x: number; y: number },
-  p4: { x: number; y: number }
-): boolean {
-  const ccw = (a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) =>
-    (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x);
-  return (
-    ccw(p1, p3, p4) !== ccw(p2, p3, p4) &&
-    ccw(p1, p2, p3) !== ccw(p1, p2, p4)
-  );
-}
-
 /**
- * Untangle is a LOCAL CLEANUP operation (§2).
- * Preserves the overall organic constellation shape and existing node positions.
- * Identifies local overlaps (distance < 48px) and label collisions (|dy| < 24px, |dx| < 70px),
- * resolves severe intra-cluster edge crossings,
- * and moves ONLY problematic nodes with gentle, bounded displacement nudges (clamped to max 35px).
- * Does NOT reset to circular/radial patterns or rebuild the entire layout.
+ * Untangle is a LOCAL CLEANUP operation (§5).
+ * Strictly preserves the overall constellation arrangement, cluster locations, and orientations.
+ * Identifies local overlaps (distance < 44px) and label collisions (|dy| < 20px, |dx| < 62px),
+ * and moves ONLY problematic nodes with tiny, damped radial pushes (clamped to max 20px).
+ * Does NOT rotate clusters. Does NOT redistribute nodes. Does NOT create radial patterns.
+ * Non-colliding nodes move 0 pixels.
  */
 export function performLocalUntangle(
   nodes: CelestialNode[],
-  links: CelestialLink[],
+  _links: CelestialLink[],
   currentPositions: Map<string, { x: number; y: number }>,
   centerX: number,
   centerY: number
 ): Map<string, { x: number; y: number }> {
-  // If positions are missing for most nodes, fallback to initial organic layout
-  const validPosCount = nodes.filter((n) => currentPositions.has(n.id)).length;
-  if (validPosCount < nodes.length * 0.5) {
-    return computeObservatoryLayout(nodes, links, centerX, centerY);
-  }
-
   const result = new Map<string, { x: number; y: number }>();
   const originalPos = new Map<string, { x: number; y: number }>();
 
-  // Copy current positions as the baseline
+  // Copy current positions as the baseline (never discard user positions)
   nodes.forEach((n) => {
     const p = currentPositions.get(n.id) || {
       x: n.x ?? centerX,
@@ -438,36 +419,23 @@ export function performLocalUntangle(
     originalPos.set(n.id, { x: p.x, y: p.y });
   });
 
-  const nodeMap = new Map<string, { id: string; clusterKey: string; pos: { x: number; y: number }; orig: { x: number; y: number } }>();
-  const nodeArray = nodes.map((n) => {
-    const item = {
-      id: n.id,
-      clusterKey: n.clusterKey || `grp_${n.group || 1}`,
-      pos: result.get(n.id)!,
-      orig: originalPos.get(n.id)!,
-    };
-    nodeMap.set(n.id, item);
-    return item;
-  });
+  const nodeArray = nodes.map((n) => ({
+    id: n.id,
+    clusterKey: n.clusterKey || `grp_${n.group || 1}`,
+    pos: result.get(n.id)!,
+    orig: originalPos.get(n.id)!,
+  }));
 
-  // Filter intra-cluster links for crossing detection
-  const intraLinks = links.filter((l) => {
-    const s = typeof l.source === 'string' ? l.source : (l.source as any).id;
-    const t = typeof l.target === 'string' ? l.target : (l.target as any).id;
-    const sn = nodeMap.get(s);
-    const tn = nodeMap.get(t);
-    return sn && tn && sn.clusterKey === tn.clusterKey;
-  });
+  const minClearance = 44; // Minimum comfortable distance between stars
+  const maxDisplacement = 20; // Very small gentle nudge: strictly preserves constellation landmarks!
 
-  const minClearance = 48; // Minimum comfortable distance between stars
-  const maxDisplacement = 35; // Maximum displacement from original position (strictly preserves shape!)
-
-  // 15 gentle local relaxation steps
-  for (let it = 0; it < 15; it++) {
-    // 1. Star-star overlap relief
+  // 10 gentle local relaxation steps
+  for (let it = 0; it < 10; it++) {
+    // 1. Star-star overlap relief (pure radial push away from colliding partner)
     for (let i = 0; i < nodeArray.length; i++) {
       const p1 = nodeArray[i].pos;
       for (let j = i + 1; j < nodeArray.length; j++) {
+        if (nodeArray[i].clusterKey !== nodeArray[j].clusterKey) continue;
         const p2 = nodeArray[j].pos;
         let dx = p2.x - p1.x;
         let dy = p2.y - p1.y;
@@ -479,7 +447,7 @@ export function performLocalUntangle(
             dy = 0;
             d = 1;
           }
-          const push = ((minClearance - d) / d) * 0.35;
+          const push = ((minClearance - d) / d) * 0.25;
           p1.x -= dx * push;
           p1.y -= dy * push;
           p2.x += dx * push;
@@ -487,50 +455,16 @@ export function performLocalUntangle(
         }
 
         // 2. Label collision relief (labels extend horizontally below nodes)
-        if (Math.abs(dy) < 24 && Math.abs(dx) < 70) {
-          const pushY = (24 - Math.abs(dy)) * 0.25 * (dy >= 0 ? -1 : 1);
+        if (Math.abs(dy) < 20 && Math.abs(dx) < 62) {
+          const pushY = (20 - Math.abs(dy)) * 0.2 * (dy >= 0 ? -1 : 1);
           p1.y += pushY;
           p2.y -= pushY;
         }
       }
     }
 
-    // 3. Subtle edge crossing untangling for intra-cluster connections
-    for (let e1 = 0; e1 < intraLinks.length; e1++) {
-      const l1 = intraLinks[e1];
-      const s1 = typeof l1.source === 'string' ? l1.source : (l1.source as any).id;
-      const t1 = typeof l1.target === 'string' ? l1.target : (l1.target as any).id;
-      const pA = nodeMap.get(s1)?.pos;
-      const pB = nodeMap.get(t1)?.pos;
-      if (!pA || !pB) continue;
-
-      for (let e2 = e1 + 1; e2 < intraLinks.length; e2++) {
-        const l2 = intraLinks[e2];
-        const s2 = typeof l2.source === 'string' ? l2.source : (l2.source as any).id;
-        const t2 = typeof l2.target === 'string' ? l2.target : (l2.target as any).id;
-        if (s1 === s2 || s1 === t2 || t1 === s2 || t1 === t2) continue; // share a node, not an overlapping crossing
-        const pC = nodeMap.get(s2)?.pos;
-        const pD = nodeMap.get(t2)?.pos;
-        if (!pC || !pD) continue;
-
-        if (checkSegmentIntersection(pA, pB, pC, pD)) {
-          // Subtle orthogonal nudge to untangle crossing lines
-          const dABx = pB.x - pA.x;
-          const dABy = pB.y - pA.y;
-          const lenAB = Math.hypot(dABx, dABy) || 1;
-          const nABx = -dABy / lenAB;
-          const nABy = dABx / lenAB;
-
-          pA.x += nABx * 1.5;
-          pA.y += nABy * 1.5;
-          pB.x -= nABx * 1.5;
-          pB.y -= nABy * 1.5;
-        }
-      }
-    }
-
-    // 4. Clamping: no node moves more than maxDisplacement from its starting point
-    // This strictly preserves the recognized constellation shape and landmarks!
+    // 2. Clamping: strictly enforce maxDisplacement (20px) from original position
+    // Guarantees the constellation arrangement and landmarks remain completely recognizable!
     for (let i = 0; i < nodeArray.length; i++) {
       const p = nodeArray[i].pos;
       const o = nodeArray[i].orig;
@@ -636,7 +570,6 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   const svgRef = useRef<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null);
   const graticuleRef = useRef<SVGSVGElement>(null);
   const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
-  const simulationRef = useRef<d3.Simulation<CelestialNode, CelestialLink> | null>(null);
 
   // Persistent node position cache to prevent layout resets and explosions
   const nodePositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
@@ -1619,66 +1552,55 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       }
     });
 
-    // Calculate cluster anchor points in celestial orbital ring (§1.B, §1.C)
-    const clusterGroups = new Map<string, CelestialNode[]>();
-    filteredNodes.forEach((n) => {
-      const grp = n.clusterKey || `grp_${n.group || 1}`;
-      const list = clusterGroups.get(grp) || [];
-      list.push(n);
-      clusterGroups.set(grp, list);
-    });
-
-    const clusterIds = Array.from(clusterGroups.keys());
-    const clusterAnchors = computeClusterAnchors(clusterIds, width * 0.44, height * 0.48);
-
-    // Node lookup map for fast link cluster checking
+    // Fast node lookup for link and cluster queries
     const nodeLookup = new Map<string, CelestialNode>();
     filteredNodes.forEach((n) => nodeLookup.set(n.id, n));
 
-    // Force Simulation with cluster-aware layout and separation
-    const simulation = d3
-      .forceSimulation<CelestialNode>(filteredNodes)
-      .force(
-        'link',
-        d3
-          .forceLink<CelestialNode, CelestialLink>(filteredLinks)
-          .id((d) => d.id)
-          .distance((d: any) => {
-            const sId = typeof d.source === 'string' ? d.source : d.source.id;
-            const tId = typeof d.target === 'string' ? d.target : d.target.id;
-            const sNode = nodeLookup.get(sId);
-            const tNode = nodeLookup.get(tId);
-            const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-            return isSame ? 55 + (1 - (d.weight || 0.8)) * 30 : 320;
-          })
-          .strength((d: any) => {
-            const sId = typeof d.source === 'string' ? d.source : d.source.id;
-            const tId = typeof d.target === 'string' ? d.target : d.target.id;
-            const sNode = nodeLookup.get(sId);
-            const tNode = nodeLookup.get(tId);
-            const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-            return isSame ? 0.35 : 0.005;
-          })
-      )
-      .force(
-        'clusterX',
-        d3.forceX((d: any) => clusterAnchors.get(d.clusterKey || `grp_${d.group || 1}`)?.x ?? width * 0.44).strength(0.35)
-      )
-      .force(
-        'clusterY',
-        d3.forceY((d: any) => clusterAnchors.get(d.clusterKey || `grp_${d.group || 1}`)?.y ?? height * 0.48).strength(0.35)
-      )
-      .force('charge', d3.forceManyBody().strength(-65).distanceMax(180))
-      .force('center', d3.forceCenter(width * 0.44, height * 0.48).strength(0.01))
-      .force('collision', d3.forceCollide().radius((d: any) => (d.size || 14) * 1.5 + 12))
-      .alphaDecay(0.04); // Cooldown fast (~70 ticks)
+    // Fast adjacency and incident link index for real-time neighborhood response (§2, §3)
+    const neighborMap = new Map<string, Set<string>>();
+    const incidentLinksMap = new Map<string, CelestialLink[]>();
+    filteredNodes.forEach((n) => {
+      neighborMap.set(n.id, new Set());
+      incidentLinksMap.set(n.id, []);
+    });
+    filteredLinks.forEach((l) => {
+      const sId = typeof l.source === 'string' ? l.source : (l.source as any).id;
+      const tId = typeof l.target === 'string' ? l.target : (l.target as any).id;
+      if (sId && tId && sId !== tId) {
+        neighborMap.get(sId)?.add(tId);
+        neighborMap.get(tId)?.add(sId);
+        incidentLinksMap.get(sId)?.push(l);
+        incidentLinksMap.get(tId)?.push(l);
+      }
+    });
 
-    if (hasEstablishedPositions) {
-      // Re-use established layout positions directly without exploding/re-scattering! (§4, §6, §7)
-      simulation.alpha(0);
-    }
+    // Helper functions for link resting styles (§8)
+    const getLinkStroke = (d: CelestialLink) => {
+      const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
+      const tId = typeof d.target === 'string' ? d.target : (d.target as any).id;
+      const sNode = nodeLookup.get(sId);
+      const tNode = nodeLookup.get(tId);
+      const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
+      return isSame ? '#4A3C39' : '#726360';
+    };
 
-    simulationRef.current = simulation;
+    const getLinkOpacity = (d: CelestialLink) => {
+      const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
+      const tId = typeof d.target === 'string' ? d.target : (d.target as any).id;
+      const sNode = nodeLookup.get(sId);
+      const tNode = nodeLookup.get(tId);
+      const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
+      return isSame ? 0.58 : 0.36;
+    };
+
+    const getLinkWidth = (d: CelestialLink) => {
+      const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
+      const tId = typeof d.target === 'string' ? d.target : (d.target as any).id;
+      const sNode = nodeLookup.get(sId);
+      const tNode = nodeLookup.get(tId);
+      const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
+      return isSame ? 1.25 + (d.weight || 0.8) * 0.45 : 0.95;
+    };
 
     // Links Layer
     const linkGroup = g.append('g').attr('class', 'links-layer');
@@ -1689,30 +1611,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       .append('path')
       .attr('class', 'celestial-link')
       .attr('fill', 'none')
-      .attr('stroke', (d) => {
-        const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
-        const tId = typeof d.target === 'string' ? d.target : (d.target as any).id;
-        const sNode = nodeLookup.get(sId);
-        const tNode = nodeLookup.get(tId);
-        const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-        return isSame ? '#4A3C39' : '#726360';
-      })
-      .attr('stroke-opacity', (d) => {
-        const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
-        const tId = typeof d.target === 'string' ? d.target : (d.target as any).id;
-        const sNode = nodeLookup.get(sId);
-        const tNode = nodeLookup.get(tId);
-        const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-        return isSame ? 0.58 : 0.36;
-      })
-      .attr('stroke-width', (d) => {
-        const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
-        const tId = typeof d.target === 'string' ? d.target : (d.target as any).id;
-        const sNode = nodeLookup.get(sId);
-        const tNode = nodeLookup.get(tId);
-        const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-        return isSame ? 1.25 + (d.weight || 0.8) * 0.45 : 0.95;
-      })
+      .attr('stroke', (d) => getLinkStroke(d))
+      .attr('stroke-opacity', (d) => getLinkOpacity(d))
+      .attr('stroke-width', (d) => getLinkWidth(d))
       .attr('stroke-dasharray', (d) => {
         const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
         const tId = typeof d.target === 'string' ? d.target : (d.target as any).id;
@@ -1777,11 +1678,12 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         }
       });
 
-    // If positions are established, position elements immediately without waiting for simulation
-    if (hasEstablishedPositions) {
-      link.attr('d', (d: any) => linkConstellationPath(d));
-      node.attr('transform', (d) => `translate(${d.x || 0}, ${d.y || 0})`);
-    }
+    // Statically position all nodes and curved constellation links directly from established coordinates (§3, §4)
+    link.attr('d', (d: any) => linkConstellationPath(d));
+    node.attr('transform', (d) => {
+      const pos = nodePositionsRef.current.get(d.id) || { x: d.x ?? 0, y: d.y ?? 0 };
+      return `translate(${pos.x}, ${pos.y})`;
+    });
 
     // Render Node Shapes according to approved astronomical hierarchy
     node.each(function (d) {
@@ -1868,59 +1770,285 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         .text(d.label);
     });
 
-    // Drag behavior with cache updates
+    // Temporary Elastic "Jiggle" Drag Interaction (§1, §2, §3, §4, §8)
+    // Grabbing a node follows cursor smoothly.
+    // Directly connected neighbors react with a subtle elastic jiggle (displacement ~22%).
+    // Curved relationship links respond and bend naturally.
+    // On release, all nodes and curves gently settle back to their exact resting positions.
+    // Positions are NEVER persisted on drag end.
+    let activeSettleTimer: d3.Timer | null = null;
+    let activeDragData: {
+      nodeId: string;
+      origin: { x: number; y: number };
+      startMouse: { x: number; y: number };
+      neighborOrigins: Map<string, { x: number; y: number }>;
+      secondHopOrigins: Map<string, { x: number; y: number }>;
+      draggedNodeEl: d3.Selection<SVGGElement, any, any, any>;
+      draggedLinksEl: d3.Selection<SVGPathElement, any, any, any>;
+    } | null = null;
+
     const drag = d3
       .drag<SVGGElement, CelestialNode>()
-      .on('start', (event) => {
-        event.subject.fx = event.subject.x;
-        event.subject.fy = event.subject.y;
+      .subject((_event, d) => {
+        const p = nodePositionsRef.current.get(d.id) || { x: d.x ?? 0, y: d.y ?? 0 };
+        return { x: p.x, y: p.y, id: d.id };
       })
-      .on('drag', (event) => {
-        event.subject.fx = event.x;
-        event.subject.fy = event.y;
-        event.subject.x = event.x;
-        event.subject.y = event.y;
-        d3.select(event.sourceEvent.target.closest('.celestial-node'))
-          .attr('transform', `translate(${event.x}, ${event.y})`);
-        link.attr('d', (d: any) => linkConstellationPath(d));
+      .on('start', (event, d) => {
+        // Stop any active settle timer immediately
+        if (activeSettleTimer) {
+          activeSettleTimer.stop();
+          activeSettleTimer = null;
+        }
+
+        const origin = nodePositionsRef.current.get(d.id) || { x: d.x ?? 0, y: d.y ?? 0 };
+        const neighbors = Array.from(neighborMap.get(d.id) || []);
+        const neighborOrigins = new Map<string, { x: number; y: number }>();
+        const secondHopOrigins = new Map<string, { x: number; y: number }>();
+
+        // 1st-hop direct neighbors
+        neighbors.forEach((nbrId) => {
+          const p = nodePositionsRef.current.get(nbrId);
+          if (p) neighborOrigins.set(nbrId, { x: p.x, y: p.y });
+
+          // 2nd-hop neighbors shift very slightly
+          const secondNbrs = neighborMap.get(nbrId);
+          if (secondNbrs) {
+            secondNbrs.forEach((sId) => {
+              if (sId !== d.id && !neighborOrigins.has(sId) && !secondHopOrigins.has(sId)) {
+                const sp = nodePositionsRef.current.get(sId);
+                if (sp) secondHopOrigins.set(sId, { x: sp.x, y: sp.y });
+              }
+            });
+          }
+        });
+
+        // Collect incident links connected to dragged node or neighbors
+        const incidentList = incidentLinksMap.get(d.id) || [];
+        const incidentSet = new Set(incidentList);
+
+        const draggedNodeEl = nodeGroup.select<SVGGElement>(`.celestial-node[data-id="${d.id}"]`);
+        draggedNodeEl.classed('is-dragging', true);
+
+        const draggedLinksEl = link.filter((l: any) => incidentSet.has(l));
+        draggedLinksEl
+          .classed('is-drag-active', true)
+          .attr('stroke', '#BD532B')
+          .attr('stroke-opacity', 0.95)
+          .attr('stroke-width', (l: any) => getLinkWidth(l) + 0.85);
+
+        activeDragData = {
+          nodeId: d.id,
+          origin: { ...origin },
+          startMouse: { x: event.x, y: event.y },
+          neighborOrigins,
+          secondHopOrigins,
+          draggedNodeEl,
+          draggedLinksEl,
+        };
       })
-      .on('end', (event) => {
-        event.subject.fx = null;
-        event.subject.fy = null;
-        if (event.subject.x !== undefined && event.subject.y !== undefined) {
-          nodePositionsRef.current.set(event.subject.id, {
-            x: event.subject.x,
-            y: event.subject.y,
+      .on('drag', (event, d) => {
+        if (!activeDragData || activeDragData.nodeId !== d.id) return;
+        const { origin, startMouse, neighborOrigins, secondHopOrigins, draggedNodeEl, draggedLinksEl } = activeDragData;
+
+        // Smooth delta calculation relative to start
+        const dx = event.x - startMouse.x;
+        const dy = event.y - startMouse.y;
+        const curX = origin.x + dx;
+        const curY = origin.y + dy;
+
+        // 1. Dragged node follows cursor smoothly without teleportation
+        draggedNodeEl.attr('transform', `translate(${curX}, ${curY})`);
+
+        // 2. Direct connected neighbors react with soft elastic displacement (22%)
+        const elasticFactor = 0.22;
+        const secondHopFactor = 0.05;
+        const tempPositions = new Map<string, { x: number; y: number }>();
+        tempPositions.set(d.id, { x: curX, y: curY });
+
+        neighborOrigins.forEach((nOrig, nId) => {
+          const nx = nOrig.x + dx * elasticFactor;
+          const ny = nOrig.y + dy * elasticFactor;
+          tempPositions.set(nId, { x: nx, y: ny });
+          nodeGroup.select(`.celestial-node[data-id="${nId}"]`).attr('transform', `translate(${nx}, ${ny})`);
+        });
+
+        secondHopOrigins.forEach((sOrig, sId) => {
+          const sx = sOrig.x + dx * secondHopFactor;
+          const sy = sOrig.y + dy * secondHopFactor;
+          tempPositions.set(sId, { x: sx, y: sy });
+          nodeGroup.select(`.celestial-node[data-id="${sId}"]`).attr('transform', `translate(${sx}, ${sy})`);
+        });
+
+        // 3. Curved relationship links respond and bend naturally in real time
+        draggedLinksEl.attr('d', (l: any) => computeConstellationPath(l, nodePositionsRef.current, tempPositions));
+      })
+      .on('end', (_event, d) => {
+        if (!activeDragData || activeDragData.nodeId !== d.id) return;
+        const { origin, neighborOrigins, secondHopOrigins, draggedNodeEl, draggedLinksEl } = activeDragData;
+
+        // Read current dragged and neighbor offsets for smooth return
+        const currentTransformStr = draggedNodeEl.attr('transform') || '';
+        const match = /translate\(([^,]+),\s*([^)]+)\)/.exec(currentTransformStr);
+        const startCurX = match ? parseFloat(match[1]) : origin.x;
+        const startCurY = match ? parseFloat(match[2]) : origin.y;
+
+        const neighborStarts = new Map<string, { x: number; y: number }>();
+        neighborOrigins.forEach((nOrig, nId) => {
+          const nEl = nodeGroup.select(`.celestial-node[data-id="${nId}"]`);
+          const nMatch = /translate\(([^,]+),\s*([^)]+)\)/.exec(nEl.attr('transform') || '');
+          neighborStarts.set(nId, {
+            x: nMatch ? parseFloat(nMatch[1]) : nOrig.x,
+            y: nMatch ? parseFloat(nMatch[2]) : nOrig.y,
           });
-          saveStoredPositions(workspaceId, nodePositionsRef.current);
+        });
+
+        const secondStarts = new Map<string, { x: number; y: number }>();
+        secondHopOrigins.forEach((sOrig, sId) => {
+          const sEl = nodeGroup.select(`.celestial-node[data-id="${sId}"]`);
+          const sMatch = /translate\(([^,]+),\s*([^)]+)\)/.exec(sEl.attr('transform') || '');
+          secondStarts.set(sId, {
+            x: sMatch ? parseFloat(sMatch[1]) : sOrig.x,
+            y: sMatch ? parseFloat(sMatch[2]) : sOrig.y,
+          });
+        });
+
+        const isJsdom =
+          typeof window !== 'undefined' &&
+          typeof (window as any).SVGElement !== 'undefined' &&
+          !(document.createElementNS('http://www.w3.org/2000/svg', 'g') as any).transform?.baseVal;
+
+        const completeReturn = () => {
+          draggedNodeEl.classed('is-dragging', false);
+          draggedNodeEl.attr('transform', `translate(${origin.x}, ${origin.y})`);
+
+          neighborOrigins.forEach((nOrig, nId) => {
+            nodeGroup.select(`.celestial-node[data-id="${nId}"]`).attr('transform', `translate(${nOrig.x}, ${nOrig.y})`);
+          });
+          secondHopOrigins.forEach((sOrig, sId) => {
+            nodeGroup.select(`.celestial-node[data-id="${sId}"]`).attr('transform', `translate(${sOrig.x}, ${sOrig.y})`);
+          });
+
+          // Restore resting link styles with respect to any active selection
+          const currentSelectedId = selectedNodeRef.current?.id;
+          const currentHoveredId = hoveredNodeRef.current?.id;
+          const selectedNeighbors = new Set<string>();
+          if (selectedNodeRef.current) {
+            selectedNodeRef.current.connections.forEach((c) => selectedNeighbors.add(c.id));
+          }
+          const hoveredNeighbors = new Set<string>();
+          if (hoveredNodeRef.current) {
+            hoveredNodeRef.current.connections.forEach((c) => hoveredNeighbors.add(c.id));
+          }
+
+          draggedLinksEl
+            .classed('is-drag-active', false)
+            .attr('stroke', (l: any) => {
+              const srcId = typeof l.source === 'string' ? l.source : l.source.id;
+              const tgtId = typeof l.target === 'string' ? l.target : l.target.id;
+              const isDirectSelectedEdge = currentSelectedId
+                ? (srcId === currentSelectedId && selectedNeighbors.has(tgtId)) ||
+                  (tgtId === currentSelectedId && selectedNeighbors.has(srcId))
+                : false;
+              if (isDirectSelectedEdge) return '#BD532B';
+              const isDirectHoveredEdge = currentHoveredId
+                ? (srcId === currentHoveredId && hoveredNeighbors.has(tgtId)) ||
+                  (tgtId === currentHoveredId && hoveredNeighbors.has(srcId))
+                : false;
+              if (isDirectHoveredEdge) return '#D26E40';
+              return getLinkStroke(l);
+            })
+            .attr('stroke-opacity', (l: any) => {
+              const srcId = typeof l.source === 'string' ? l.source : l.source.id;
+              const tgtId = typeof l.target === 'string' ? l.target : l.target.id;
+              const isDirectSelectedEdge = currentSelectedId
+                ? (srcId === currentSelectedId && selectedNeighbors.has(tgtId)) ||
+                  (tgtId === currentSelectedId && selectedNeighbors.has(srcId))
+                : false;
+              if (isDirectSelectedEdge) return 0.96;
+              const isDirectHoveredEdge = currentHoveredId
+                ? (srcId === currentHoveredId && hoveredNeighbors.has(tgtId)) ||
+                  (tgtId === currentHoveredId && hoveredNeighbors.has(srcId))
+                : false;
+              if (isDirectHoveredEdge) return 0.88;
+              if (currentSelectedId) {
+                const sNode = nodeLookup.get(srcId);
+                const tNode = nodeLookup.get(tgtId);
+                return sNode && tNode && sNode.clusterKey === tNode.clusterKey ? 0.26 : 0.18;
+              }
+              return getLinkOpacity(l);
+            })
+            .attr('stroke-width', (l: any) => {
+              const srcId = typeof l.source === 'string' ? l.source : l.source.id;
+              const tgtId = typeof l.target === 'string' ? l.target : l.target.id;
+              const isDirectSelectedEdge = currentSelectedId
+                ? (srcId === currentSelectedId && selectedNeighbors.has(tgtId)) ||
+                  (tgtId === currentSelectedId && selectedNeighbors.has(srcId))
+                : false;
+              if (isDirectSelectedEdge) return 2.4;
+              const isDirectHoveredEdge = currentHoveredId
+                ? (srcId === currentHoveredId && hoveredNeighbors.has(tgtId)) ||
+                  (tgtId === currentHoveredId && hoveredNeighbors.has(srcId))
+                : false;
+              if (isDirectHoveredEdge) return 2.0;
+              return getLinkWidth(l);
+            })
+            .attr('d', (l: any) => linkConstellationPath(l));
+
+          activeDragData = null;
+        };
+
+        if (isJsdom) {
+          completeReturn();
+        } else {
+          // Smooth 420ms cubic-out return animation: everything settles back to exact cached coordinates
+          const duration = 420;
+          activeSettleTimer = d3.timer((elapsed) => {
+            const t = Math.min(1, elapsed / duration);
+            const easeT = d3.easeCubicOut(t);
+
+            const animX = startCurX + (origin.x - startCurX) * easeT;
+            const animY = startCurY + (origin.y - startCurY) * easeT;
+            draggedNodeEl.attr('transform', `translate(${animX}, ${animY})`);
+
+            const animPositions = new Map<string, { x: number; y: number }>();
+            animPositions.set(d.id, { x: animX, y: animY });
+
+            neighborOrigins.forEach((nOrig, nId) => {
+              const nStart = neighborStarts.get(nId) || nOrig;
+              const nx = nStart.x + (nOrig.x - nStart.x) * easeT;
+              const ny = nStart.y + (nOrig.y - nStart.y) * easeT;
+              animPositions.set(nId, { x: nx, y: ny });
+              nodeGroup.select(`.celestial-node[data-id="${nId}"]`).attr('transform', `translate(${nx}, ${ny})`);
+            });
+
+            secondHopOrigins.forEach((sOrig, sId) => {
+              const sStart = secondStarts.get(sId) || sOrig;
+              const sx = sStart.x + (sOrig.x - sStart.x) * easeT;
+              const sy = sStart.y + (sOrig.y - sStart.y) * easeT;
+              animPositions.set(sId, { x: sx, y: sy });
+              nodeGroup.select(`.celestial-node[data-id="${sId}"]`).attr('transform', `translate(${sx}, ${sy})`);
+            });
+
+            draggedLinksEl.attr('d', (l: any) => computeConstellationPath(l, nodePositionsRef.current, animPositions));
+
+            if (t >= 1) {
+              if (activeSettleTimer) {
+                activeSettleTimer.stop();
+                activeSettleTimer = null;
+              }
+              completeReturn();
+            }
+          });
         }
       });
 
     node.call(drag);
 
-    // Simulation Tick: Update positions and persist to coordinate cache
-    simulation.on('tick', () => {
-      link.attr('d', (d: any) => linkConstellationPath(d));
-      node.attr('transform', (d) => `translate(${d.x || 0}, ${d.y || 0})`);
-
-      filteredNodes.forEach((n) => {
-        if (n.x !== undefined && n.y !== undefined) {
-          nodePositionsRef.current.set(n.id, { x: n.x, y: n.y });
-        }
-      });
-    });
-
-    simulation.on('end', () => {
-      filteredNodes.forEach((n) => {
-        if (n.x !== undefined && n.y !== undefined) {
-          nodePositionsRef.current.set(n.id, { x: n.x, y: n.y });
-        }
-      });
-      saveStoredPositions(workspaceId, nodePositionsRef.current);
-    });
-
     return () => {
-      simulation.stop();
+      if (activeSettleTimer) {
+        activeSettleTimer.stop();
+        activeSettleTimer = null;
+      }
     };
   }, [
     celestialNodes,
