@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { HyadesObservatory } from './HyadesObservatory';
+import { HyadesObservatory, computeClusterAnchors, computeObservatoryLayout, CelestialNode, CelestialLink } from './HyadesObservatory';
 import * as graphApi from '@/api/graph';
 import * as clusterApi from '@/api/clusters';
 
@@ -277,4 +277,192 @@ describe('HyadesObservatory Spatial Navigation & Search', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByText('Knowledge Metrics')).not.toBeInTheDocument();
   });
+
+  it('filters out self-loops from visualization and local pathway counts without crashing', async () => {
+    const graphWithSelfLoop = {
+      nodes: [
+        {
+          id: 'n1',
+          name: 'Self Referential Node',
+          entity_type: 'concept',
+          degree: 1,
+          note_count: 1,
+          cluster_id: 'cl-1',
+          description: 'A node with a self-loop relationship.',
+        },
+        {
+          id: 'n2',
+          name: 'Partner Node',
+          entity_type: 'concept',
+          degree: 1,
+          note_count: 1,
+          cluster_id: 'cl-1',
+          description: 'Another node.',
+        },
+      ],
+      edges: [
+        {
+          id: 'e-self',
+          source_entity_id: 'n1',
+          target_entity_id: 'n1', // SELF-LOOP
+          relationship_type: 'references_self',
+          confidence: 0.95,
+        },
+        {
+          id: 'e-valid',
+          source_entity_id: 'n1',
+          target_entity_id: 'n2',
+          relationship_type: 'connects_to',
+          confidence: 0.88,
+        },
+      ],
+      clusters: [],
+      stats: {
+        node_count: 2,
+        edge_count: 2,
+        cluster_count: 1,
+        manual_node_count: 0,
+        manual_edge_count: 0,
+        truncated: false,
+      },
+      truncated: false,
+    };
+
+    vi.mocked(graphApi.getWorkspaceGraph).mockResolvedValueOnce(graphWithSelfLoop as any);
+
+    render(
+      <HyadesObservatory
+        workspaceId="ws-self-loop-test"
+        initialTarget={{ entityId: 'n1', entityName: 'Self Referential Node' }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Knowledge Metrics')).toBeInTheDocument();
+    });
+
+    // Self loop must NOT show in Local Constellation active pathways (only 1 valid pathway to Partner Node)
+    expect(screen.getByText('1 ACTIVE PATHWAYS')).toBeInTheDocument();
+    expect(screen.getAllByText('Partner Node').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Self Referential Node', { selector: '.card-surface .font-medium' })).not.toBeInTheDocument();
+  });
+
+  it('computeClusterAnchors separates clusters across balanced rings without collapsing to center', () => {
+    const clusterKeys = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'c10'];
+    const cx = 800;
+    const cy = 500;
+    const anchors = computeClusterAnchors(clusterKeys, cx, cy);
+
+    expect(anchors.size).toBe(10);
+    // None of the clusters should sit directly at (cx, cy)
+    clusterKeys.forEach((key) => {
+      const pos = anchors.get(key)!;
+      const distFromCenter = Math.hypot(pos.x - cx, pos.y - cy);
+      expect(distFromCenter).toBeGreaterThan(300);
+    });
+
+    // Check minimum distance between any 2 cluster centers is large (> 350px)
+    const anchorList = Array.from(anchors.values());
+    for (let i = 0; i < anchorList.length; i++) {
+      for (let j = i + 1; j < anchorList.length; j++) {
+        const d = Math.hypot(anchorList[i].x - anchorList[j].x, anchorList[i].y - anchorList[j].y);
+        expect(d).toBeGreaterThan(350);
+      }
+    }
+  });
+
+  it('computeObservatoryLayout provides clean clearance between stars and avoids collapsing into a void', () => {
+    const mockNodes: CelestialNode[] = [
+      {
+        id: 'c1-hub',
+        label: 'Core ML',
+        catalog: 'HYA-0001',
+        clusterKey: 'cl-ml',
+        group: 1,
+        type: 'hub',
+        hierarchy: 'core',
+        size: 24,
+        coords: 'RA 04h DEC +15°',
+        desc: '',
+        degree: 10,
+        noteCount: 5,
+        connections: [],
+      },
+      {
+        id: 'c1-sub1',
+        label: 'Neural Nets',
+        catalog: 'HYA-0002',
+        clusterKey: 'cl-ml',
+        group: 1,
+        type: 'concept',
+        hierarchy: 'subtopic',
+        size: 16,
+        coords: 'RA 04h DEC +15°',
+        desc: '',
+        degree: 5,
+        noteCount: 2,
+        connections: [],
+      },
+      {
+        id: 'c1-sub2',
+        label: 'Backpropagation',
+        catalog: 'HYA-0003',
+        clusterKey: 'cl-ml',
+        group: 1,
+        type: 'concept',
+        hierarchy: 'subtopic',
+        size: 16,
+        coords: 'RA 04h DEC +15°',
+        desc: '',
+        degree: 4,
+        noteCount: 2,
+        connections: [],
+      },
+      {
+        id: 'c1-rel1',
+        label: 'Activation Function',
+        catalog: 'HYA-0004',
+        clusterKey: 'cl-ml',
+        group: 1,
+        type: 'concept',
+        hierarchy: 'related',
+        size: 9,
+        coords: 'RA 04h DEC +15°',
+        desc: '',
+        degree: 2,
+        noteCount: 1,
+        connections: [],
+      },
+    ];
+
+    const mockLinks: CelestialLink[] = [
+      { source: 'c1-hub', target: 'c1-sub1', weight: 0.9, type: 'includes' },
+      { source: 'c1-hub', target: 'c1-sub2', weight: 0.9, type: 'includes' },
+      { source: 'c1-sub1', target: 'c1-rel1', weight: 0.8, type: 'uses' },
+    ];
+
+    const cx = 800;
+    const cy = 500;
+    const layout = computeObservatoryLayout(mockNodes, mockLinks, cx, cy);
+
+    expect(layout.size).toBe(4);
+
+    // Verify each node has finite coordinates
+    mockNodes.forEach((n) => {
+      const pos = layout.get(n.id)!;
+      expect(pos).toBeDefined();
+      expect(Number.isFinite(pos.x)).toBe(true);
+      expect(Number.isFinite(pos.y)).toBe(true);
+    });
+
+    // Check minimum distance between any 2 nodes is at least 35px
+    const posList = Array.from(layout.values());
+    for (let i = 0; i < posList.length; i++) {
+      for (let j = i + 1; j < posList.length; j++) {
+        const d = Math.hypot(posList[i].x - posList[j].x, posList[i].y - posList[j].y);
+        expect(d).toBeGreaterThanOrEqual(35);
+      }
+    }
+  });
 });
+
