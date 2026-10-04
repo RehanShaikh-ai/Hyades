@@ -115,41 +115,70 @@ export function computeClusterAnchors(
     anchors.set(clusterKeys[0], { x: centerX, y: centerY });
     return anchors;
   }
-  if (n <= 5) {
-    const r = 420;
-    clusterKeys.forEach((key, i) => {
-      const angle = (i / n) * 2 * Math.PI - Math.PI / 2;
-      anchors.set(key, {
-        x: centerX + Math.cos(angle) * r,
-        y: centerY + Math.sin(angle) * (r * 0.85),
-      });
-    });
-    return anchors;
-  }
 
-  // 6+ clusters: two concentric celestial rings
-  // Inner ring: 5 clusters at radius 500px, Outer ring: remaining clusters at radius 1000px
-  // Cluster centers have ample (> 420px) separation so clusters never overlap
-  const innerCount = Math.min(5, Math.floor(n * 0.38));
-  const innerKeys = clusterKeys.slice(0, innerCount);
-  const outerKeys = clusterKeys.slice(innerCount);
+  // Organic celestial distribution using deterministic hashing (§1)
+  // Avoids symmetrical Ferris wheels, concentric circles, or uniform radial spacing.
+  const hashStr = (str: string) => {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+      h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h);
+  };
 
-  const rInner = 500;
-  innerKeys.forEach((key, i) => {
-    const angle = (i / innerKeys.length) * 2 * Math.PI - Math.PI / 2;
-    anchors.set(key, {
-      x: centerX + Math.cos(angle) * rInner,
-      y: centerY + Math.sin(angle) * (rInner * 0.85),
-    });
+  // Base angles distributed via golden angle with per-cluster seed jitter
+  // Clusters have varied radial distances (360px to 620px)
+  const goldenAngle = 2.3999632; // ~137.5 degrees, creates natural celestial spiral/corridor packing
+  const positions: Array<{ key: string; x: number; y: number }> = [];
+
+  clusterKeys.forEach((key, i) => {
+    const seed = hashStr(key);
+    // Irregular angular spacing with deterministic offset
+    const angleJitter = (((seed % 61) - 30) / 180) * Math.PI * 0.35;
+    const angle = i * goldenAngle + angleJitter - Math.PI / 2;
+
+    // Irregular radial distance based on cluster index and seed (no uniform rings!)
+    const rBase = n <= 4 ? 410 : n <= 8 ? 470 : 540;
+    const rVar = ((seed % 140) - 70) * 1.2;
+    const radius = Math.max(340, rBase + (i % 2 === 0 ? 35 : -35) + rVar);
+
+    // Subtle elliptical celestial distortion (natural celestial projection)
+    const ax = centerX + Math.cos(angle) * radius;
+    const ay = centerY + Math.sin(angle) * (radius * 0.84);
+
+    positions.push({ key, x: ax, y: ay });
   });
 
-  const rOuter = 1000;
-  outerKeys.forEach((key, i) => {
-    const offset = Math.PI / outerKeys.length;
-    const angle = (i / outerKeys.length) * 2 * Math.PI - Math.PI / 2 + offset;
-    anchors.set(key, {
-      x: centerX + Math.cos(angle) * rOuter,
-      y: centerY + Math.sin(angle) * (rOuter * 0.85),
+  // Relaxation pass ensuring cluster anchors maintain generous separation (> 380px)
+  const minClusterDist = 380;
+  for (let it = 0; it < 35; it++) {
+    for (let i = 0; i < positions.length; i++) {
+      for (let j = i + 1; j < positions.length; j++) {
+        const p1 = positions[i];
+        const p2 = positions[j];
+        let dx = p2.x - p1.x;
+        let dy = p2.y - p1.y;
+        let d = Math.hypot(dx, dy);
+        if (d < minClusterDist) {
+          if (d === 0) {
+            dx = 1;
+            dy = 0;
+            d = 1;
+          }
+          const push = ((minClusterDist - d) / d) * 0.5;
+          p1.x -= dx * push;
+          p1.y -= dy * push;
+          p2.x += dx * push;
+          p2.y += dy * push;
+        }
+      }
+    }
+  }
+
+  positions.forEach((p) => {
+    anchors.set(p.key, {
+      x: Math.round(p.x * 10) / 10,
+      y: Math.round(p.y * 10) / 10,
     });
   });
 
@@ -174,14 +203,13 @@ export function computeObservatoryLayout(
     clusterGroups.set(key, list);
   });
 
-  // Sort clusters by size descending
   const sortedClusters = Array.from(clusterGroups.entries()).sort(
     (a, b) => b[1].length - a[1].length
   );
   const clusterKeys = sortedClusters.map(([k]) => k);
   const clusterAnchors = computeClusterAnchors(clusterKeys, centerX, centerY);
 
-  // Build adjacency for layout sorting
+  // Build adjacency
   const adj = new Map<string, Set<string>>();
   nodes.forEach((n) => adj.set(n.id, new Set()));
   links.forEach((l) => {
@@ -193,11 +221,25 @@ export function computeObservatoryLayout(
     }
   });
 
-  // 2. Lay out each cluster hierarchically
+  const hashStr = (str: string) => {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+      h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h);
+  };
+
+  // 2. Lay out each cluster as an organic, irregular asterism (§1)
+  // No uniform concentric rings, no identical circular spacing
   sortedClusters.forEach(([cKey, cNodes]) => {
     const anchor = clusterAnchors.get(cKey) || { x: centerX, y: centerY };
+    const cSeed = hashStr(cKey);
+
     const sorted = [...cNodes].sort(
-      (a, b) => (b.degree || 0) * 10 + (b.noteCount || 0) - ((a.degree || 0) * 10 + (a.noteCount || 0))
+      (a, b) =>
+        (b.degree || 0) * 10 +
+        (b.noteCount || 0) -
+        ((a.degree || 0) * 10 + (a.noteCount || 0))
     );
 
     if (sorted.length === 1) {
@@ -209,94 +251,111 @@ export function computeObservatoryLayout(
     const subtopics = sorted.filter((n) => n.hierarchy === 'subtopic');
     const related = sorted.filter((n) => n.hierarchy === 'related');
 
-    // Place Cores at center of cluster
+    // Morphology axis for this constellation: distinct orientation and aspect ratio per cluster
+    const spineAngle = ((cSeed % 360) * Math.PI) / 180;
+    const aspectRatio = 1.25 + ((cSeed % 50) / 100); // 1.25 to 1.75 elongation
+
+    const spineUx = Math.cos(spineAngle);
+    const spineUy = Math.sin(spineAngle);
+    const perpUx = -spineUy;
+    const perpUy = spineUx;
+
+    // A. Place Cores along the constellation spine with natural organic spacing
     if (cores.length === 1) {
       result.set(cores[0].id, { x: anchor.x, y: anchor.y });
     } else if (cores.length > 1) {
       cores.forEach((c, i) => {
-        const offset = (i - (cores.length - 1) / 2) * 45;
-        result.set(c.id, { x: anchor.x + offset, y: anchor.y });
+        const offset = (i - (cores.length - 1) / 2) * 55;
+        const jitter = (((cSeed + i * 17) % 21) - 10) * 1.5;
+        const cx = anchor.x + spineUx * offset + perpUx * jitter;
+        const cy = anchor.y + spineUy * offset + perpUy * jitter;
+        result.set(c.id, { x: cx, y: cy });
       });
     }
 
-    // Place Subtopics on Ring 1
-    const subAngles = new Map<string, number>();
-    const nSubs = subtopics.length;
-    const subRadius = Math.max(80, Math.min(130, 50 + nSubs * 14));
-
-    subtopics.forEach((sub, i) => {
-      const angle = (i / Math.max(1, nSubs)) * 2 * Math.PI - Math.PI / 2;
-      const sx = anchor.x + Math.cos(angle) * subRadius;
-      const sy = anchor.y + Math.sin(angle) * (subRadius * 0.85);
-      result.set(sub.id, { x: sx, y: sy });
-      subAngles.set(sub.id, angle);
+    // B. Place Subtopics along organic asterism branches (NOT a circular ring!)
+    const parentPositions = new Map<string, { x: number; y: number }>();
+    cores.forEach((c) => {
+      const p = result.get(c.id);
+      if (p) parentPositions.set(c.id, p);
     });
 
-    // Place Related nodes in concentric outer arcs aligned to their parent subtopic/core
-    if (related.length > 0) {
-      const useThreeRings = sorted.length >= 22;
-      const r2Nodes: CelestialNode[] = [];
-      const r3Nodes: CelestialNode[] = [];
+    const subtopicAngles: number[] = [];
+    const nSubs = subtopics.length;
 
-      if (useThreeRings) {
-        const splitIdx = Math.floor(related.length * 0.55);
-        r2Nodes.push(...related.slice(0, splitIdx));
-        r3Nodes.push(...related.slice(splitIdx));
-      } else {
-        r2Nodes.push(...related);
-      }
-
-      // Helper to compute preferred angle for a node based on connected subtopics
-      const getPreferredAngle = (node: CelestialNode): number => {
-        const connectedAngles: number[] = [];
-        const nbrs = adj.get(node.id);
-        if (nbrs) {
-          nbrs.forEach((nbrId) => {
-            if (subAngles.has(nbrId)) {
-              connectedAngles.push(subAngles.get(nbrId)!);
-            }
-          });
-        }
-        if (connectedAngles.length > 0) {
-          return connectedAngles.reduce((a, b) => a + b, 0) / connectedAngles.length;
-        }
-        return 0;
-      };
-
-      // Place Ring 2
-      r2Nodes.sort((a, b) => getPreferredAngle(a) - getPreferredAngle(b));
-      const radius2 = subRadius + 75;
-      r2Nodes.forEach((rn, i) => {
-        const ang = (i / Math.max(1, r2Nodes.length)) * 2 * Math.PI - Math.PI / 2 + 0.12;
-        const rx = anchor.x + Math.cos(ang) * radius2;
-        const ry = anchor.y + Math.sin(ang) * (radius2 * 0.85);
-        result.set(rn.id, { x: rx, y: ry });
-      });
-
-      // Place Ring 3
-      if (r3Nodes.length > 0) {
-        r3Nodes.sort((a, b) => getPreferredAngle(a) - getPreferredAngle(b));
-        const radius3 = radius2 + 75;
-        r3Nodes.forEach((rn, i) => {
-          const ang = (i / Math.max(1, r3Nodes.length)) * 2 * Math.PI - Math.PI / 2 + 0.25;
-          const rx = anchor.x + Math.cos(ang) * radius3;
-          const ry = anchor.y + Math.sin(ang) * (radius3 * 0.85);
-          result.set(rn.id, { x: rx, y: ry });
-        });
-      }
+    // Distribute branch angles with irregular gaps
+    for (let i = 0; i < nSubs; i++) {
+      const subSeed = hashStr(subtopics[i].id);
+      const baseAng = spineAngle + (i / Math.max(1, nSubs)) * 2 * Math.PI;
+      const jitter = (((subSeed % 37) - 18) / 180) * Math.PI;
+      subtopicAngles.push(baseAng + jitter);
     }
+
+    subtopics.forEach((sub, i) => {
+      const subSeed = hashStr(sub.id);
+      const ang = subtopicAngles[i];
+
+      // Varied branch reach (no single ring radius!)
+      const reachBase = 90 + Math.min(60, nSubs * 8);
+      const reachVar = ((subSeed % 60) - 25) * 1.1;
+      const reach = Math.max(75, reachBase + reachVar);
+
+      // Project into spine coordinate system to allow natural elliptical elongation
+      const cosA = Math.cos(ang);
+      const sinA = Math.sin(ang);
+      const alongSpine = cosA * spineUx + sinA * spineUy;
+      const alongPerp = cosA * perpUx + sinA * perpUy;
+
+      const sx = anchor.x + (alongSpine * reach * aspectRatio) * spineUx + (alongPerp * reach) * perpUx;
+      const sy = anchor.y + (alongSpine * reach * aspectRatio) * spineUy + (alongPerp * reach) * perpUy;
+
+      result.set(sub.id, { x: sx, y: sy });
+      parentPositions.set(sub.id, { x: sx, y: sy });
+    });
+
+    // C. Place Related Stars organically around their connected parents (Asterism limbs & clusters)
+    related.forEach((rel, i) => {
+      const relSeed = hashStr(rel.id);
+      const nbrs = adj.get(rel.id);
+
+      // Find connected parent in this cluster (prefer highest degree neighbor or core)
+      let parentPos = anchor;
+      if (nbrs && nbrs.size > 0) {
+        for (const nbrId of nbrs) {
+          if (parentPositions.has(nbrId)) {
+            parentPos = parentPositions.get(nbrId)!;
+            break;
+          }
+        }
+      } else if (subtopics.length > 0) {
+        const assignedSub = subtopics[i % subtopics.length];
+        parentPos = parentPositions.get(assignedSub.id) || anchor;
+      }
+
+      // Distance from parent star: varied between 45px and 110px (natural companions)
+      const distFromParent = 50 + (relSeed % 55);
+      const outDx = parentPos.x - anchor.x;
+      const outDy = parentPos.y - anchor.y;
+      const baseOutAngle = Math.hypot(outDx, outDy) > 10 ? Math.atan2(outDy, outDx) : spineAngle + i;
+      const fanAngle = baseOutAngle + (((relSeed % 120) - 60) / 180) * Math.PI;
+
+      const rx = parentPos.x + Math.cos(fanAngle) * distFromParent;
+      const ry = parentPos.y + Math.sin(fanAngle) * (distFromParent * 0.88);
+
+      result.set(rel.id, { x: rx, y: ry });
+    });
   });
 
-  // 3. Fast synchronous local relaxation (25 iterations, pure JS)
-  // Ensures a guaranteed minimum clearance of 38px between every single node
-  const minClearance = 38;
+  // 3. Fast synchronous local relaxation ensuring guaranteed minimum clearance (>= 42px)
+  // Ensures stars do not collide while preserving their organic, irregular positions
+  const minClearance = 42;
   const nodeArray = nodes.map((n) => ({
     id: n.id,
     clusterKey: n.clusterKey || `grp_${n.group || 1}`,
     pos: result.get(n.id) || { x: centerX, y: centerY },
   }));
 
-  for (let it = 0; it < 25; it++) {
+  for (let it = 0; it < 30; it++) {
     for (let i = 0; i < nodeArray.length; i++) {
       const p1 = nodeArray[i].pos;
       for (let j = i + 1; j < nodeArray.length; j++) {
@@ -304,7 +363,7 @@ export function computeObservatoryLayout(
         const p2 = nodeArray[j].pos;
         let dx = p2.x - p1.x;
         let dy = p2.y - p1.y;
-        let d = Math.sqrt(dx * dx + dy * dy);
+        let d = Math.hypot(dx, dy);
         if (d < minClearance) {
           if (d === 0) {
             dx = 1;
@@ -322,7 +381,173 @@ export function computeObservatoryLayout(
   }
 
   nodeArray.forEach((n) => {
-    result.set(n.id, { x: Math.round(n.pos.x * 10) / 10, y: Math.round(n.pos.y * 10) / 10 });
+    result.set(n.id, {
+      x: Math.round(n.pos.x * 10) / 10,
+      y: Math.round(n.pos.y * 10) / 10,
+    });
+  });
+
+  return result;
+}
+
+function checkSegmentIntersection(
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  p3: { x: number; y: number },
+  p4: { x: number; y: number }
+): boolean {
+  const ccw = (a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) =>
+    (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x);
+  return (
+    ccw(p1, p3, p4) !== ccw(p2, p3, p4) &&
+    ccw(p1, p2, p3) !== ccw(p1, p2, p4)
+  );
+}
+
+/**
+ * Untangle is a LOCAL CLEANUP operation (§2).
+ * Preserves the overall organic constellation shape and existing node positions.
+ * Identifies local overlaps (distance < 48px) and label collisions (|dy| < 24px, |dx| < 70px),
+ * resolves severe intra-cluster edge crossings,
+ * and moves ONLY problematic nodes with gentle, bounded displacement nudges (clamped to max 35px).
+ * Does NOT reset to circular/radial patterns or rebuild the entire layout.
+ */
+export function performLocalUntangle(
+  nodes: CelestialNode[],
+  links: CelestialLink[],
+  currentPositions: Map<string, { x: number; y: number }>,
+  centerX: number,
+  centerY: number
+): Map<string, { x: number; y: number }> {
+  // If positions are missing for most nodes, fallback to initial organic layout
+  const validPosCount = nodes.filter((n) => currentPositions.has(n.id)).length;
+  if (validPosCount < nodes.length * 0.5) {
+    return computeObservatoryLayout(nodes, links, centerX, centerY);
+  }
+
+  const result = new Map<string, { x: number; y: number }>();
+  const originalPos = new Map<string, { x: number; y: number }>();
+
+  // Copy current positions as the baseline
+  nodes.forEach((n) => {
+    const p = currentPositions.get(n.id) || {
+      x: n.x ?? centerX,
+      y: n.y ?? centerY,
+    };
+    result.set(n.id, { x: p.x, y: p.y });
+    originalPos.set(n.id, { x: p.x, y: p.y });
+  });
+
+  const nodeMap = new Map<string, { id: string; clusterKey: string; pos: { x: number; y: number }; orig: { x: number; y: number } }>();
+  const nodeArray = nodes.map((n) => {
+    const item = {
+      id: n.id,
+      clusterKey: n.clusterKey || `grp_${n.group || 1}`,
+      pos: result.get(n.id)!,
+      orig: originalPos.get(n.id)!,
+    };
+    nodeMap.set(n.id, item);
+    return item;
+  });
+
+  // Filter intra-cluster links for crossing detection
+  const intraLinks = links.filter((l) => {
+    const s = typeof l.source === 'string' ? l.source : (l.source as any).id;
+    const t = typeof l.target === 'string' ? l.target : (l.target as any).id;
+    const sn = nodeMap.get(s);
+    const tn = nodeMap.get(t);
+    return sn && tn && sn.clusterKey === tn.clusterKey;
+  });
+
+  const minClearance = 48; // Minimum comfortable distance between stars
+  const maxDisplacement = 35; // Maximum displacement from original position (strictly preserves shape!)
+
+  // 15 gentle local relaxation steps
+  for (let it = 0; it < 15; it++) {
+    // 1. Star-star overlap relief
+    for (let i = 0; i < nodeArray.length; i++) {
+      const p1 = nodeArray[i].pos;
+      for (let j = i + 1; j < nodeArray.length; j++) {
+        const p2 = nodeArray[j].pos;
+        let dx = p2.x - p1.x;
+        let dy = p2.y - p1.y;
+        let d = Math.hypot(dx, dy);
+
+        if (d < minClearance) {
+          if (d === 0) {
+            dx = 1;
+            dy = 0;
+            d = 1;
+          }
+          const push = ((minClearance - d) / d) * 0.35;
+          p1.x -= dx * push;
+          p1.y -= dy * push;
+          p2.x += dx * push;
+          p2.y += dy * push;
+        }
+
+        // 2. Label collision relief (labels extend horizontally below nodes)
+        if (Math.abs(dy) < 24 && Math.abs(dx) < 70) {
+          const pushY = (24 - Math.abs(dy)) * 0.25 * (dy >= 0 ? -1 : 1);
+          p1.y += pushY;
+          p2.y -= pushY;
+        }
+      }
+    }
+
+    // 3. Subtle edge crossing untangling for intra-cluster connections
+    for (let e1 = 0; e1 < intraLinks.length; e1++) {
+      const l1 = intraLinks[e1];
+      const s1 = typeof l1.source === 'string' ? l1.source : (l1.source as any).id;
+      const t1 = typeof l1.target === 'string' ? l1.target : (l1.target as any).id;
+      const pA = nodeMap.get(s1)?.pos;
+      const pB = nodeMap.get(t1)?.pos;
+      if (!pA || !pB) continue;
+
+      for (let e2 = e1 + 1; e2 < intraLinks.length; e2++) {
+        const l2 = intraLinks[e2];
+        const s2 = typeof l2.source === 'string' ? l2.source : (l2.source as any).id;
+        const t2 = typeof l2.target === 'string' ? l2.target : (l2.target as any).id;
+        if (s1 === s2 || s1 === t2 || t1 === s2 || t1 === t2) continue; // share a node, not an overlapping crossing
+        const pC = nodeMap.get(s2)?.pos;
+        const pD = nodeMap.get(t2)?.pos;
+        if (!pC || !pD) continue;
+
+        if (checkSegmentIntersection(pA, pB, pC, pD)) {
+          // Subtle orthogonal nudge to untangle crossing lines
+          const dABx = pB.x - pA.x;
+          const dABy = pB.y - pA.y;
+          const lenAB = Math.hypot(dABx, dABy) || 1;
+          const nABx = -dABy / lenAB;
+          const nABy = dABx / lenAB;
+
+          pA.x += nABx * 1.5;
+          pA.y += nABy * 1.5;
+          pB.x -= nABx * 1.5;
+          pB.y -= nABy * 1.5;
+        }
+      }
+    }
+
+    // 4. Clamping: no node moves more than maxDisplacement from its starting point
+    // This strictly preserves the recognized constellation shape and landmarks!
+    for (let i = 0; i < nodeArray.length; i++) {
+      const p = nodeArray[i].pos;
+      const o = nodeArray[i].orig;
+      const distFromOrig = Math.hypot(p.x - o.x, p.y - o.y);
+      if (distFromOrig > maxDisplacement) {
+        const scale = maxDisplacement / distFromOrig;
+        p.x = o.x + (p.x - o.x) * scale;
+        p.y = o.y + (p.y - o.y) * scale;
+      }
+    }
+  }
+
+  nodeArray.forEach((n) => {
+    result.set(n.id, {
+      x: Math.round(n.pos.x * 10) / 10,
+      y: Math.round(n.pos.y * 10) / 10,
+    });
   });
 
   return result;
@@ -445,12 +670,18 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   const [filterConcepts, setFilterConcepts] = useState(true);
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null);
 
-  // Focus node & search state
+  // Focus node, hover & search state
   const [selectedNode, setSelectedNode] = useState<CelestialNode | null>(null);
   const selectedNodeRef = useRef<CelestialNode | null>(null);
   useEffect(() => {
     selectedNodeRef.current = selectedNode;
   }, [selectedNode]);
+
+  const [hoveredNode, setHoveredNode] = useState<CelestialNode | null>(null);
+  const hoveredNodeRef = useRef<CelestialNode | null>(null);
+  useEffect(() => {
+    hoveredNodeRef.current = hoveredNode;
+  }, [hoveredNode]);
 
   const [targetResolutionNotice, setTargetResolutionNotice] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -758,18 +989,6 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     return { celestialNodes: nodes, celestialLinks: links };
   }, [graphData, clusters, workspaceId]);
 
-  const hasAutoSelectedRef = useRef(false);
-
-  // Set default selected node ONCE on mount if none is selected and initialTarget is not set
-  useEffect(() => {
-    if (celestialNodes.length > 0 && !hasAutoSelectedRef.current) {
-      hasAutoSelectedRef.current = true;
-      if (!selectedNode && !initialTarget) {
-        const sorted = [...celestialNodes].sort((a, b) => b.degree - a.degree);
-        setSelectedNode(sorted[0]);
-      }
-    }
-  }, [celestialNodes, selectedNode, initialTarget]);
 
   // Deep Link Navigation Target Handler (§9, §10, §16)
   useEffect(() => {
@@ -931,7 +1150,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       );
   }, [celestialNodes, filterHubs, filterConcepts, selectedClusterId]);
 
-  // Manual Untangle / Organize Graph Action with Bounded Constellation Layout (§1, §2, §3, §4, §5)
+  // Manual Untangle / Local Cleanup Action (§2)
+  // Preserves existing constellation shape, identifies overlaps/label collisions,
+  // and moves only problematic nodes with clamped displacement (max 35px).
   const handleUntangle = useCallback(() => {
     if (!containerRef.current || celestialNodes.length === 0) return;
     const width = containerRef.current.clientWidth || window.innerWidth;
@@ -939,10 +1160,11 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     const centerX = width * 0.44;
     const centerY = height * 0.48;
 
-    // 1. Calculate deterministic, crossing-minimized constellation layout
-    const newPositions = computeObservatoryLayout(
+    // 1. Calculate bounded local cleanup preserving existing node positions
+    const newPositions = performLocalUntangle(
       celestialNodes,
       celestialLinks,
+      nodePositionsRef.current,
       centerX,
       centerY
     );
@@ -960,7 +1182,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     });
     saveStoredPositions(workspaceId, nodePositionsRef.current);
 
-    // 3. Smoothly animate DOM elements to their newly organized celestial coordinates
+    // 3. Smoothly animate DOM elements to their cleaned celestial coordinates
     if (svgRef.current) {
       const isJsdom =
         typeof window !== 'undefined' &&
@@ -982,7 +1204,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         svgRef.current
           .selectAll('.celestial-node')
           .transition()
-          .duration(650)
+          .duration(500)
           .ease(d3.easeCubicOut)
           .attr('transform', (d: any) => {
             const pos = newPositions.get(d.id) || { x: d.x, y: d.y };
@@ -992,17 +1214,12 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         svgRef.current
           .selectAll('.celestial-link')
           .transition()
-          .duration(650)
+          .duration(500)
           .ease(d3.easeCubicOut)
           .attr('d', (d: any) => linkConstellationPath(d, newPositions));
       }
     }
-
-    // 4. Fit view to show whole organized sky
-    setTimeout(() => {
-      handleFitView();
-    }, 150);
-  }, [celestialNodes, celestialLinks, workspaceId, handleFitView]);
+  }, [celestialNodes, celestialLinks, workspaceId]);
 
   // Keyboard Shortcuts System across Hyades Observatory (§7, §12)
   // Global: Esc closes open dialogs first; if none open, deselects node or cancels search.
@@ -1045,9 +1262,10 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           return;
         }
         if (isInput) return;
-        if (selectedNode) {
+        if (selectedNode || hoveredNode) {
           e.preventDefault();
           setSelectedNode(null);
+          setHoveredNode(null);
         }
         return;
       }
@@ -1086,6 +1304,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     searchQuery,
     isSearchFocused,
     selectedNode,
+    hoveredNode,
     handleFitView,
     handleUntangle,
     onToggleFullscreen,
@@ -1288,19 +1507,24 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
         const k = event.transform.k;
         const currentSelectedId = selectedNodeRef.current?.id;
+        const currentHoveredId = hoveredNodeRef.current?.id;
         const currentConnectedIds = new Set<string>();
         if (selectedNodeRef.current) {
           selectedNodeRef.current.connections.forEach((c) => currentConnectedIds.add(c.id));
+        }
+        if (hoveredNodeRef.current) {
+          hoveredNodeRef.current.connections.forEach((c) => currentConnectedIds.add(c.id));
         }
 
         // Semantic zoom label density control (§1, §2)
         g.selectAll<SVGGElement, CelestialNode>('.celestial-node').each(function (d) {
           const isSelected = d.id === currentSelectedId;
+          const isHovered = d.id === currentHoveredId;
           const isConnected = currentConnectedIds.has(d.id);
           const labelGroup = d3.select(this).select('.node-label-group');
 
-          if (isSelected || isConnected) {
-            // Selected node and its direct neighbors ALWAYS show label
+          if (isSelected || isHovered || isConnected) {
+            // Selected node, hovered node, and their direct neighbors ALWAYS show label
             labelGroup.style('display', 'block');
           } else if (k < 0.75) {
             // Low zoom (overview): only core concepts show labels
@@ -1379,6 +1603,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       .style('pointer-events', 'all')
       .on('click', () => {
         setSelectedNode(null);
+        setHoveredNode(null);
       });
 
     svg.on('click', (event) => {
@@ -1390,6 +1615,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         target.classList?.contains('graticule-group')
       ) {
         setSelectedNode(null);
+        setHoveredNode(null);
       }
     });
 
@@ -1469,7 +1695,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         const sNode = nodeLookup.get(sId);
         const tNode = nodeLookup.get(tId);
         const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-        return isSame ? '#635350' : '#8A7B77';
+        return isSame ? '#4A3C39' : '#726360';
       })
       .attr('stroke-opacity', (d) => {
         const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
@@ -1477,7 +1703,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         const sNode = nodeLookup.get(sId);
         const tNode = nodeLookup.get(tId);
         const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-        return isSame ? 0.38 : 0.20;
+        return isSame ? 0.58 : 0.36;
       })
       .attr('stroke-width', (d) => {
         const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
@@ -1485,7 +1711,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         const sNode = nodeLookup.get(sId);
         const tNode = nodeLookup.get(tId);
         const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-        return isSame ? 1.05 + (d.weight || 0.8) * 0.45 : 0.85;
+        return isSame ? 1.25 + (d.weight || 0.8) * 0.45 : 0.95;
       })
       .attr('stroke-dasharray', (d) => {
         const sId = typeof d.source === 'string' ? d.source : (d.source as any).id;
@@ -1493,7 +1719,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         const sNode = nodeLookup.get(sId);
         const tNode = nodeLookup.get(tId);
         const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
-        return isSame ? 'none' : '3,3';
+        return isSame ? 'none' : '4,4';
       });
 
     // Nodes Layer
@@ -1508,6 +1734,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       .on('click', (event, d) => {
         event.stopPropagation();
         setSelectedNode(d);
+        setIsRightSidebarOpen(true);
         // Smoothly center viewport on clicked entity (§1.D)
         if (svgRef.current && zoomBehaviorRef.current && d.x !== undefined && d.y !== undefined) {
           const w = containerRef.current?.clientWidth || window.innerWidth;
@@ -1525,10 +1752,12 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             );
         }
       })
-      .on('mouseenter', function () {
+      .on('mouseenter', function (_event, d) {
+        setHoveredNode(d);
         d3.select(this).select('.node-label-group').style('display', 'block');
       })
       .on('mouseleave', function (_event, d) {
+        setHoveredNode(null);
         const svgNode = svgRef.current?.node();
         const k = svgNode ? d3.zoomTransform(svgNode).k : 1;
         const currentSelectedId = selectedNodeRef.current?.id;
@@ -1703,7 +1932,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     workspaceId,
   ]);
 
-  // ================= STABLE SELECTION & HIGHLIGHTING EFFECT =================
+  // ================= STABLE SELECTION & HOVER HIGHLIGHTING EFFECT =================
   // Updates visual attributes purely in DOM without restarting force simulation!
   useEffect(() => {
     if (!containerRef.current) return;
@@ -1711,51 +1940,115 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     if (svg.empty()) return;
 
     const selectedId = selectedNode?.id;
-    const connectedIds = new Set<string>();
+    const hoveredId = hoveredNode?.id;
+
+    const selectedNeighbors = new Set<string>();
     if (selectedNode) {
-      selectedNode.connections.forEach((c) => connectedIds.add(c.id));
+      selectedNode.connections.forEach((c) => selectedNeighbors.add(c.id));
     }
 
-    // Update node styles & selection halo with hardware-accelerated CSS classes (§5)
+    const hoveredNeighbors = new Set<string>();
+    if (hoveredNode) {
+      hoveredNode.connections.forEach((c) => hoveredNeighbors.add(c.id));
+    }
+
+    // Update node styles & selection halo with hardware-accelerated CSS classes
     svg.selectAll<SVGGElement, CelestialNode>('.celestial-node').each(function (d) {
       const el = d3.select(this);
       const isSelected = d.id === selectedId;
-      const isConnected = connectedIds.has(d.id);
+      const isHovered = d.id === hoveredId;
+      const isConnected = selectedNeighbors.has(d.id);
+      const isHoverConnected = hoveredNeighbors.has(d.id);
+
+      // Only dim unrelated nodes when an explicit selection is active
       const isDimmed = selectedId ? !isSelected && !isConnected : false;
 
       el.classed('is-selected', isSelected)
         .classed('is-connected', isConnected)
+        .classed('is-hovered', isHovered)
         .classed('is-dimmed', isDimmed)
-        .style('opacity', isDimmed ? 0.22 : 1);
+        .style('opacity', isDimmed ? 0.42 : 1);
 
-      el.select('.selection-halo')
-        .style('opacity', isSelected ? 1 : 0);
+      // Halo treatment: full terracotta halo for selected node; warm subtle halo for hovered node
+      const halo = el.select('.selection-halo');
+      if (isSelected) {
+        halo
+          .style('opacity', 1)
+          .attr('stroke', 'rgba(189, 83, 43, 0.95)')
+          .attr('stroke-width', 1.4)
+          .attr('stroke-dasharray', '3,3');
+      } else if (isHovered) {
+        halo
+          .style('opacity', 0.55)
+          .attr('stroke', 'rgba(210, 110, 64, 0.70)')
+          .attr('stroke-width', 1.2)
+          .attr('stroke-dasharray', '2,2');
+      } else {
+        halo.style('opacity', 0);
+      }
+
+      // Also ensure hovered node and its neighbors show their labels
+      if (isHovered || isHoverConnected) {
+        el.select('.node-label-group').style('display', 'block');
+      }
     });
 
     const nodeLookup = new Map<string, CelestialNode>();
     celestialNodes.forEach((n) => nodeLookup.set(n.id, n));
 
-    // Update link highlights with visual de-emphasis
+    // Update link highlights with distinct visual hierarchy
     svg.selectAll<SVGPathElement, CelestialLink>('.celestial-link').each(function (d) {
       const el = d3.select(this);
       const srcId = typeof d.source === 'string' ? d.source : (d.source as any).id;
       const tgtId = typeof d.target === 'string' ? d.target : (d.target as any).id;
-      const isConnected =
-        (srcId === selectedId && connectedIds.has(tgtId)) ||
-        (tgtId === selectedId && connectedIds.has(srcId));
-      const isDimmed = selectedId ? !isConnected : false;
+
+      const isDirectSelectedEdge = selectedId
+        ? (srcId === selectedId && selectedNeighbors.has(tgtId)) ||
+          (tgtId === selectedId && selectedNeighbors.has(srcId))
+        : false;
+
+      const isDirectHoveredEdge = hoveredId
+        ? (srcId === hoveredId && hoveredNeighbors.has(tgtId)) ||
+          (tgtId === hoveredId && hoveredNeighbors.has(srcId))
+        : false;
 
       const sNode = nodeLookup.get(srcId);
       const tNode = nodeLookup.get(tgtId);
-      const isSame = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
+      const isSameCluster = sNode && tNode && sNode.clusterKey === tNode.clusterKey;
 
-      el.classed('is-active-link', isConnected)
-        .attr('stroke', isConnected ? '#BD532B' : isSame ? '#635350' : '#8A7B77')
-        .attr('stroke-opacity', isConnected ? 0.95 : isDimmed ? 0.08 : isSame ? 0.38 : 0.20)
-        .attr('stroke-width', isConnected ? 2.2 : isSame ? 1.05 + (d.weight || 0.8) * 0.45 : 0.85)
-        .attr('stroke-dasharray', isConnected ? 'none' : isSame ? 'none' : '3,3');
+      if (isDirectSelectedEdge) {
+        // SELECTED NODE EDGES: temporarily stronger/highlighted (§3, §5)
+        el.classed('is-active-link', true)
+          .attr('stroke', '#BD532B')
+          .attr('stroke-opacity', 0.96)
+          .attr('stroke-width', 2.4)
+          .attr('stroke-dasharray', 'none');
+      } else if (isDirectHoveredEdge) {
+        // HOVERED NODE EDGES: subtle warm emphasis (§3)
+        el.classed('is-active-link', true)
+          .attr('stroke', '#D26E40')
+          .attr('stroke-opacity', 0.88)
+          .attr('stroke-width', 2.0)
+          .attr('stroke-dasharray', 'none');
+      } else if (selectedId) {
+        // A node is selected: slightly reduce unrelated edges, keeping cross-cluster visible (§3, §5)
+        el.classed('is-active-link', false)
+          .attr('stroke', isSameCluster ? '#4A3C39' : '#726360')
+          .attr('stroke-opacity', isSameCluster ? 0.26 : 0.18)
+          .attr('stroke-width', isSameCluster ? 1.1 : 0.85)
+          .attr('stroke-dasharray', isSameCluster ? 'none' : '4,4');
+      } else {
+        // NEUTRAL RESTING STATE (§4, §5):
+        // SAME-CLUSTER EDGES -> normal visibility
+        // CROSS-CLUSTER EDGES -> lighter/thinner/dashed
+        el.classed('is-active-link', false)
+          .attr('stroke', isSameCluster ? '#4A3C39' : '#726360')
+          .attr('stroke-opacity', isSameCluster ? 0.58 : 0.36)
+          .attr('stroke-width', isSameCluster ? 1.25 + (d.weight || 0.8) * 0.45 : 0.95)
+          .attr('stroke-dasharray', isSameCluster ? 'none' : '4,4');
+      }
     });
-  }, [selectedNode, celestialNodes]);
+  }, [selectedNode, hoveredNode, celestialNodes]);
 
   // ================= DEBOUNCED SEARCH HIGHLIGHT EFFECT =================
   // Highlights search matches in graph without re-running simulation

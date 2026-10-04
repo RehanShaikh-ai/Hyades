@@ -4,6 +4,7 @@ import {
   HyadesObservatory,
   computeClusterAnchors,
   computeObservatoryLayout,
+  performLocalUntangle,
   computeConstellationPath,
   CelestialNode,
   CelestialLink,
@@ -539,6 +540,177 @@ describe('HyadesObservatory Spatial Navigation & Search', () => {
 
     // Ensure human-readable names are present
     expect(skyLabelTexts).toContain('Chunking Strategies');
+  });
+
+  it('performLocalUntangle preserves existing constellation shape, relieves overlaps, and strictly clamps displacement', () => {
+    const nodes: CelestialNode[] = [
+      {
+        id: 'n-isolated',
+        label: 'Isolated Star',
+        catalog: 'HYA-001',
+        clusterKey: 'cl-1',
+        group: 1,
+        type: 'concept',
+        hierarchy: 'subtopic',
+        size: 16,
+        coords: 'RA 04h DEC +15°',
+        desc: '',
+        degree: 1,
+        noteCount: 1,
+        connections: [],
+      },
+      {
+        id: 'n-collide-1',
+        label: 'Colliding Star 1',
+        catalog: 'HYA-002',
+        clusterKey: 'cl-1',
+        group: 1,
+        type: 'concept',
+        hierarchy: 'subtopic',
+        size: 16,
+        coords: 'RA 04h DEC +15°',
+        desc: '',
+        degree: 2,
+        noteCount: 1,
+        connections: [],
+      },
+      {
+        id: 'n-collide-2',
+        label: 'Colliding Star 2',
+        catalog: 'HYA-003',
+        clusterKey: 'cl-1',
+        group: 1,
+        type: 'concept',
+        hierarchy: 'subtopic',
+        size: 16,
+        coords: 'RA 04h DEC +15°',
+        desc: '',
+        degree: 2,
+        noteCount: 1,
+        connections: [],
+      },
+    ];
+
+    const links: CelestialLink[] = [
+      { source: 'n-collide-1', target: 'n-collide-2', weight: 0.9, type: 'relates' },
+    ];
+
+    // Isolated star is far away (400, 400).
+    // Colliding stars sit almost right on top of each other (100, 100) and (105, 102).
+    const initialPositions = new Map<string, { x: number; y: number }>([
+      ['n-isolated', { x: 400, y: 400 }],
+      ['n-collide-1', { x: 100, y: 100 }],
+      ['n-collide-2', { x: 105, y: 102 }],
+    ]);
+
+    const cleaned = performLocalUntangle(nodes, links, initialPositions, 300, 300);
+
+    // 1. The isolated star had NO collision, so it should stay almost exactly where it was (distance moved <= 1px)
+    const isolatedPos = cleaned.get('n-isolated')!;
+    expect(Math.hypot(isolatedPos.x - 400, isolatedPos.y - 400)).toBeLessThan(1);
+
+    // 2. The colliding stars should have been pushed apart (distance increased from ~5.3px to >= 30px)
+    const c1Pos = cleaned.get('n-collide-1')!;
+    const c2Pos = cleaned.get('n-collide-2')!;
+    const newDist = Math.hypot(c2Pos.x - c1Pos.x, c2Pos.y - c1Pos.y);
+    expect(newDist).toBeGreaterThan(30);
+
+    // 3. Neither colliding star should move more than maxDisplacement (35px) from its original coordinate
+    const c1Disp = Math.hypot(c1Pos.x - 100, c1Pos.y - 100);
+    const c2Disp = Math.hypot(c2Pos.x - 105, c2Pos.y - 102);
+    expect(c1Disp).toBeLessThanOrEqual(35.1);
+    expect(c2Disp).toBeLessThanOrEqual(35.1);
+  });
+
+  it('supports hover interaction with subtle emphasis on hovered star and direct relationships', async () => {
+    const { container } = render(<HyadesObservatory workspaceId="ws-hover" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Chunking Strategies')).toBeInTheDocument();
+    });
+
+    const nodeElement = container.querySelector('.celestial-node[data-id="n1"]');
+    expect(nodeElement).not.toBeNull();
+
+    // Hover over node n1 ('Chunking Strategies')
+    fireEvent.mouseEnter(nodeElement!);
+
+    // Should add .is-hovered class
+    await waitFor(() => {
+      expect(nodeElement?.classList.contains('is-hovered')).toBe(true);
+    });
+
+    // Direct link between n1 and n2 or n3 should be active with #D26E40
+    const activeLink = container.querySelector('.celestial-link.is-active-link');
+    expect(activeLink).not.toBeNull();
+    expect(activeLink?.getAttribute('stroke')).toBe('#D26E40');
+    expect(Number(activeLink?.getAttribute('stroke-opacity'))).toBeGreaterThan(0.8);
+
+    // Mouse leave removes .is-hovered and active link returns to resting state
+    fireEvent.mouseLeave(nodeElement!);
+    await waitFor(() => {
+      expect(nodeElement?.classList.contains('is-hovered')).toBe(false);
+    });
+  });
+
+  it('keeps cross-cluster edges visible with dashed styling in default neutral resting state', async () => {
+    const { container } = render(<HyadesObservatory workspaceId="ws-cross-cluster" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Chunking Strategies')).toBeInTheDocument();
+    });
+
+    // In mockGraphData, e2 links n3 (cl-2) and n1 (cl-1), which is a cross-cluster edge!
+    const links = Array.from(container.querySelectorAll<SVGPathElement>('.celestial-link'));
+    expect(links.length).toBe(2);
+
+    // One edge is intra-cluster (n1-n2 in cl-1), one is cross-cluster (n3 in cl-2 to n1 in cl-1)
+    const crossClusterLink = links.find((l) => l.getAttribute('stroke-dasharray') === '4,4');
+    expect(crossClusterLink).toBeDefined();
+    expect(crossClusterLink?.getAttribute('stroke')).toBe('#726360');
+    expect(Number(crossClusterLink?.getAttribute('stroke-opacity'))).toBeCloseTo(0.36, 2);
+
+    const sameClusterLink = links.find((l) => l.getAttribute('stroke-dasharray') === 'none');
+    expect(sameClusterLink).toBeDefined();
+    expect(sameClusterLink?.getAttribute('stroke')).toBe('#4A3C39');
+    expect(Number(sameClusterLink?.getAttribute('stroke-opacity'))).toBeCloseTo(0.58, 2);
+  });
+
+  it('clicking blank space or pressing Escape returns to neutral resting state', async () => {
+    const { container } = render(
+      <HyadesObservatory
+        workspaceId="ws-resting"
+        initialTarget={{ entityId: 'n1', entityName: 'Chunking Strategies' }}
+      />
+    );
+
+    // Initially selected due to deep link
+    await waitFor(() => {
+      expect(screen.getByText('Knowledge Metrics')).toBeInTheDocument();
+    });
+
+    // Click canvas blank catcher
+    const blankCatcher = container.querySelector('.graph-blank-catcher');
+    expect(blankCatcher).not.toBeNull();
+    fireEvent.click(blankCatcher!);
+
+    // Right dossier should close and selection cleared
+    await waitFor(() => {
+      expect(screen.queryByText('Knowledge Metrics')).not.toBeInTheDocument();
+    });
+
+    // Select again via click
+    const nodeElement = container.querySelector('.celestial-node[data-id="n1"]');
+    fireEvent.click(nodeElement!);
+    await waitFor(() => {
+      expect(screen.getByText('Knowledge Metrics')).toBeInTheDocument();
+    });
+
+    // Press Escape to return to neutral resting state
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByText('Knowledge Metrics')).not.toBeInTheDocument();
+    });
   });
 });
 
