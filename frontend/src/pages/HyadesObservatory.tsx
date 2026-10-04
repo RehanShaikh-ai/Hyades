@@ -2045,22 +2045,26 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         // 1. Dragged node follows cursor smoothly without teleportation
         draggedNodeEl.attr('transform', `translate(${curX}, ${curY})`);
 
-        // 2. Direct connected neighbors react with soft elastic displacement (22%)
-        const elasticFactor = 0.22;
-        const secondHopFactor = 0.05;
+        // 2. Direct connected neighbors react with distance-weighted physical displacement
         const tempPositions = new Map<string, { x: number; y: number }>();
         tempPositions.set(d.id, { x: curX, y: curY });
 
         neighborOrigins.forEach((nOrig, nId) => {
-          const nx = nOrig.x + dx * elasticFactor;
-          const ny = nOrig.y + dy * elasticFactor;
+          const dist = Math.hypot(nOrig.x - origin.x, nOrig.y - origin.y) + 1;
+          const weight = Math.min(1.3, Math.max(0.35, 140 / (dist + 40)));
+          const factor = 0.22 * weight;
+          const nx = nOrig.x + dx * factor;
+          const ny = nOrig.y + dy * factor;
           tempPositions.set(nId, { x: nx, y: ny });
           nodeGroup.select(`.celestial-node[data-id="${nId}"]`).attr('transform', `translate(${nx}, ${ny})`);
         });
 
         secondHopOrigins.forEach((sOrig, sId) => {
-          const sx = sOrig.x + dx * secondHopFactor;
-          const sy = sOrig.y + dy * secondHopFactor;
+          const sDist = Math.hypot(sOrig.x - origin.x, sOrig.y - origin.y) + 1;
+          const sWeight = Math.min(1.1, Math.max(0.2, 160 / (sDist + 60)));
+          const sFactor = 0.05 * sWeight;
+          const sx = sOrig.x + dx * sFactor;
+          const sy = sOrig.y + dy * sFactor;
           tempPositions.set(sId, { x: sx, y: sy });
           nodeGroup.select(`.celestial-node[data-id="${sId}"]`).attr('transform', `translate(${sx}, ${sy})`);
         });
@@ -2203,11 +2207,11 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         if (isJsdom) {
           completeReturn();
         } else {
-          // Smooth 420ms cubic-out return animation: everything settles back to exact cached coordinates
-          const duration = 420;
+          // Smooth 350ms natural deceleration return animation: settles back to exact cached coordinates
+          const duration = 350;
           activeSettleTimer = d3.timer((elapsed) => {
             const t = Math.min(1, elapsed / duration);
-            const easeT = d3.easeCubicOut(t);
+            const easeT = 1 - Math.pow(1 - t, 3.2);
 
             const animX = startCurX + (origin.x - startCurX) * easeT;
             const animY = startCurY + (origin.y - startCurY) * easeT;

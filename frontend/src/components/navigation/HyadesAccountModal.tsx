@@ -51,7 +51,7 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-xs animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-xs dialog-backdrop"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -59,7 +59,7 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
       aria-modal="true"
       aria-labelledby="account-modal-title"
     >
-      <div className="w-full max-w-4xl bg-[#FAF8F2] border border-[#C9C2B0] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
+      <div className="dialog-content w-full max-w-4xl bg-[#FAF8F2] border border-[#C9C2B0] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-[#DCD6C8] flex items-center justify-between bg-[#F7F5EE]">
           <div className="flex items-center gap-3">

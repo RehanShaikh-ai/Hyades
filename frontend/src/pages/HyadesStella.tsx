@@ -513,8 +513,8 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                   key={msg.id}
                   className={
                     isUser
-                      ? 'flex flex-col items-end gap-1.5 self-end max-w-[85%]'
-                      : 'flex flex-col gap-2 self-start w-full'
+                      ? 'message-enter flex flex-col items-end gap-1.5 self-end max-w-[85%]'
+                      : 'message-enter flex flex-col gap-2 self-start w-full'
                   }
                 >
                   {isUser ? (
@@ -574,9 +574,12 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                             dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
                           />
                         ) : (
-                          <div className="text-[var(--ink-tertiary)] italic flex items-center gap-2 py-2">
-                            <i className="ph ph-spinner animate-spin text-sm text-[var(--accent-midnight)]" />
-                            <span>Synthesizing response from knowledge graph...</span>
+                          <div className="text-[var(--ink-secondary)] flex items-center gap-2.5 py-2">
+                            <span className="relative flex h-2 w-2">
+                              <span className="pulse-dot absolute inline-flex h-full w-full rounded-full bg-[var(--accent-terracotta)] opacity-75" />
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--accent-terracotta)]" />
+                            </span>
+                            <span className="serif-italic text-[13.5px] text-[var(--ink-secondary)]">Synthesizing response from knowledge archive...</span>
                           </div>
                         )}
 

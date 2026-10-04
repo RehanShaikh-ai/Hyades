@@ -781,7 +781,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
           
           {/* ================= LEFT FLANK: THE CATALOG SHELVES & TOPICS (COLUMNS 1–3) ================= */}
           {isLeftShelfOpen && (
-            <aside className="lg:col-span-3 flex flex-col h-full min-h-0 overflow-hidden transition-all duration-300">
+            <aside className="shelves-slide lg:col-span-3 flex flex-col h-full min-h-0 overflow-hidden transition-all duration-300">
               <div className="instrument-panel p-4 flex flex-col h-full min-h-0 overflow-hidden">
                 <div className="panel-bracket-tl" />
                 <div className="panel-bracket-br" />
@@ -1377,7 +1377,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
           {/* ================= RIGHT FLANK: ITEM INSPECTOR & READING DOSSIER (COLUMNS 9–12) ================= */}
           {isRightDossierOpen && selectedItem && (
-            <aside className="lg:col-span-4 flex flex-col h-full min-h-0 overflow-y-auto pl-1 transition-all duration-300">
+            <aside className="dossier-slide lg:col-span-4 flex flex-col h-full min-h-0 overflow-y-auto pl-1 transition-all duration-300">
               <div className="instrument-panel p-6 relative min-h-full">
                 <div className="panel-bracket-tl" />
                 <div className="panel-bracket-br" />

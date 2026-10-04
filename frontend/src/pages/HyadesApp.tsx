@@ -197,7 +197,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-h-0 relative overflow-hidden" role="main">
+      <main key={currentDestination} className="page-transition flex-1 flex flex-col min-h-0 relative overflow-hidden" role="main">
         {currentDestination === 'overview' && (
           <HyadesOverview
             workspaceId={effectiveWorkspaceId}

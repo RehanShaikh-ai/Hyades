@@ -41,14 +41,14 @@ export const Modal: React.FC<ModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay bg-black/45 backdrop-blur-xs animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-overlay bg-black/45 backdrop-blur-xs dialog-backdrop"
       onClick={(e) => {
         if (e.target === e.currentTarget && onClose) {
           onClose();
         }
       }}
     >
-      <div className={cn('flex flex-col bg-[#FAF8F2] border border-[#C9C2B0] text-[#1C1917] rounded-2xl shadow-2xl overflow-hidden', widthClasses[width], className)}>
+      <div className={cn('dialog-content flex flex-col bg-[#FAF8F2] border border-[#C9C2B0] text-[#1C1917] rounded-2xl shadow-2xl overflow-hidden', widthClasses[width], className)}>
         {children}
       </div>
     </div>

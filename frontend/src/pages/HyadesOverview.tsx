@@ -259,11 +259,6 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
             {/* Left: Simple greeting & clear totals */}
             <div className="max-w-xl">
-              <div className="flex items-center gap-2 text-[11px] mono uppercase tracking-wider text-[var(--accent-terracotta)] font-semibold mb-1">
-                <span className="w-2 h-2 rounded-full bg-[var(--accent-terracotta)]" />
-                <span>YOUR WORKSPACE</span>
-              </div>
-
               <h1 className="serif text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--ink-primary)] leading-[1.18]">
                 Your Knowledge
               </h1>
@@ -385,13 +380,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                      {/* SECTION 1: CONTINUE WORKING (Current Study Desk) */}
             <section>
               <div className="flex items-center justify-between mb-3.5">
-                <div className="flex items-center gap-2">
-                  <span className="serif-italic text-2xl font-medium text-[var(--ink-primary)]">Continue Working</span>
-                  <span className="text-[10px] mono text-[var(--accent-terracotta)] px-1.5 py-0.5 rounded border border-[var(--border-parchment)] bg-white font-semibold">
-                    ACTIVE DESK
-                  </span>
-                </div>
-                <span className="text-xs text-[var(--ink-secondary)]">LAST ACCESSED</span>
+                <h2 className="serif-italic text-2xl font-medium text-[var(--ink-primary)]">Continue Working</h2>
               </div>
 
               {/* Main Resumption Card */}
@@ -437,11 +426,6 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                               ? activeNote.tags.map((t) => (typeof t === 'string' ? t : t.name)).join(', ')
                               : 'None attached'}
                           </span>
-                        </div>
-                        <div className="w-px h-3 bg-[var(--border-parchment)]" />
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[var(--ink-tertiary)]">Workspace:</span>
-                          <span className="font-medium text-[var(--accent-midnight)]">Active</span>
                         </div>
                       </div>
                     </div>
@@ -534,11 +518,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
             {/* SECTION 2: RECENT KNOWLEDGE ACTIVITY (Spatial Activity Pulse) */}
             <section>
               <div className="flex items-center justify-between mb-3.5">
-                <div className="flex items-center gap-2">
-                  <span className="serif-italic text-2xl font-medium text-[var(--ink-primary)]">Knowledge Activity Pulse</span>
-                  <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
-                </div>
-                <span className="text-xs text-[var(--ink-secondary)]">ACTIVE SYSTEM</span>
+                <h2 className="serif-italic text-2xl font-medium text-[var(--ink-primary)]">Knowledge Activity Pulse</h2>
               </div>
 
               <div className="instrument-panel p-6">
@@ -688,13 +668,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
             {/* SECTION 3: NEW CONNECTIONS (Meaningful Discovered Relationships) */}
             <section>
               <div className="flex items-center justify-between mb-3.5">
-                <div className="flex items-center gap-2">
-                  <span className="serif-italic text-2xl font-medium text-[var(--ink-primary)]">Discovered Connections</span>
-                  <span className="text-[10px] mono text-[var(--accent-brass)] px-1.5 py-0.5 rounded border border-[var(--border-parchment)] bg-white font-semibold">
-                    GRAPH
-                  </span>
-                </div>
-                <span className="text-xs text-[var(--ink-secondary)]">From active workspace</span>
+                <h2 className="serif-italic text-2xl font-medium text-[var(--ink-primary)]">Discovered Connections</h2>
               </div>
 
               <div className="instrument-panel p-5 flex flex-col gap-4">
@@ -794,8 +768,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
             {/* SECTION 4: KNOWLEDGE HEALTH (Helpful System Status) */}
             <section>
               <div className="flex items-center justify-between mb-3.5">
-                <span className="serif-italic text-2xl font-medium text-[var(--ink-primary)]">Knowledge Health</span>
-                <span className="text-[10px] mono text-[var(--ink-tertiary)]">STATUS</span>
+                <h2 className="serif-italic text-2xl font-medium text-[var(--ink-primary)]">Knowledge Health</h2>
               </div>
 
               <div className="instrument-panel p-5">
