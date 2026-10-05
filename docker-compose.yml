@@ -194,11 +194,14 @@ services:
   # Playwright E2E testing service (profile: e2e)
   playwright:
     image: mcr.microsoft.com/playwright:v1.44.0-jammy
+    working_dir: /tests/e2e
     depends_on:
       - frontend
       - backend
     volumes:
       - ./tests/e2e:/tests/e2e
+    environment:
+      - PLAYWRIGHT_BASE_URL=http://frontend:5173
     command: npx playwright test
     profiles:
       - e2e
