@@ -54,7 +54,7 @@ export const SavedSearchesList: React.FC<SavedSearchesListProps> = ({
   if (isLoading) {
     return (
       <div className={`flex justify-center p-4 ${className}`}>
-        <Loader2 size={16} className="animate-spin text-overlay1" />
+        <Loader2 size={16} className="animate-spin text-[var(--accent-midnight)]" />
       </div>
     );
   }
@@ -65,8 +65,8 @@ export const SavedSearchesList: React.FC<SavedSearchesListProps> = ({
 
   return (
     <div className={`flex flex-col gap-2 ${className}`}>
-      <h3 className="text-[10px] font-mono uppercase tracking-wider text-overlay1 font-semibold flex items-center gap-1.5 px-1 mb-1">
-        <Bookmark size={12} />
+      <h3 className="text-[10px] font-mono uppercase tracking-wider text-[var(--ink-secondary)] font-semibold flex items-center gap-1.5 px-1 mb-1">
+        <Bookmark size={12} className="text-[var(--accent-midnight)]" />
         Saved Searches
       </h3>
       
@@ -74,31 +74,32 @@ export const SavedSearchesList: React.FC<SavedSearchesListProps> = ({
         {searches.map(search => (
           <button
             key={search.id}
+            type="button"
             onClick={() => onSelectSearch(search.query, search.search_mode)}
-            className="group flex items-center justify-between w-full text-left p-2 rounded-lg hover:bg-surface1 transition-colors border border-transparent hover:border-surface2"
+            className="group flex items-center justify-between w-full text-left p-2 rounded-lg hover:bg-white transition-colors border border-transparent hover:border-[var(--border-parchment)] cursor-pointer"
           >
             <div className="flex flex-col min-w-0">
-              <span className="text-sm font-medium text-text truncate">
+              <span className="text-xs font-medium text-[var(--ink-primary)] truncate">
                 {search.name}
               </span>
               <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-xs text-overlay1 truncate max-w-[150px]">
+                <span className="text-[11px] text-[var(--ink-secondary)] truncate max-w-[150px]">
                   "{search.query}"
                 </span>
-                <span className="text-[9px] font-mono uppercase tracking-wider bg-surface0 border border-surface1 px-1 rounded text-overlay2">
+                <span className="text-[9px] font-mono uppercase tracking-wider bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] px-1.5 py-0.2 rounded text-[var(--ink-tertiary)]">
                   {search.search_mode}
                 </span>
               </div>
             </div>
             
             <div 
-              className="p-1.5 rounded-md hover:bg-red-500/10 hover:text-red-400 text-transparent group-hover:text-overlay2 transition-colors ml-2"
+              className="p-1.5 rounded-md hover:bg-red-50 hover:text-red-600 text-transparent group-hover:text-[var(--ink-tertiary)] transition-colors ml-2 cursor-pointer"
               onClick={(e) => handleDelete(e, search.id)}
             >
               {isDeletingId === search.id ? (
-                <Loader2 size={14} className="animate-spin text-red-400" />
+                <Loader2 size={13} className="animate-spin text-red-600" />
               ) : (
-                <Trash2 size={14} />
+                <Trash2 size={13} />
               )}
             </div>
           </button>

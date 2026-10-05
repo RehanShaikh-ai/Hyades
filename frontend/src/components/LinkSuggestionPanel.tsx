@@ -55,6 +55,20 @@ export const LinkSuggestionPanel: React.FC<LinkSuggestionPanelProps> = ({
     }
   }, [isOpen, fetchSuggestions]);
 
+  // Handle Escape key to close suggestions panel
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isOpen, onClose]);
+
   const handleAccept = async (suggestionId: string) => {
     if (activeRequestsRef.current.has(suggestionId)) return;
     activeRequestsRef.current.add(suggestionId);
@@ -106,20 +120,20 @@ export const LinkSuggestionPanel: React.FC<LinkSuggestionPanelProps> = ({
     <aside
       data-testid="link-suggestion-panel"
       className={cn(
-        'w-96 bg-slate-950/80 border border-white/[0.08] rounded-2xl p-4 backdrop-blur-2xl shadow-2xl flex flex-col text-slate-200 z-30',
+        'w-96 bg-[#FAF8F2]/95 border border-[var(--border-strong)] rounded-2xl p-4 backdrop-blur-2xl shadow-xl flex flex-col text-[var(--ink-primary)] z-30',
         className
       )}
     >
-      <div className="flex items-center justify-between pb-3 border-b border-white/[0.06]">
+      <div className="flex items-center justify-between pb-3 border-b border-[var(--border-parchment)]">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400">
+          <div className="p-1.5 rounded-lg bg-[var(--accent-terracotta-soft)] text-[var(--accent-terracotta)]">
             <Sparkles size={16} />
           </div>
           <div>
-            <h3 className="font-semibold text-xs tracking-wide uppercase text-slate-200">
+            <h3 className="serif text-xs font-semibold tracking-wide text-[var(--ink-primary)]">
               AI Link Suggestions
             </h3>
-            <span className="text-[10px] text-slate-400">
+            <span className="mono text-[10px] text-[var(--ink-tertiary)]">
               {suggestions.length} pending review
             </span>
           </div>
@@ -128,15 +142,15 @@ export const LinkSuggestionPanel: React.FC<LinkSuggestionPanelProps> = ({
           <button
             onClick={fetchSuggestions}
             disabled={isLoading}
-            className="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-white/[0.06] transition-colors"
+            className="text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] p-1.5 rounded-lg hover:bg-[var(--bg-panel-subtle)] transition-colors cursor-pointer"
             title="Refresh suggestions"
             aria-label="Refresh suggestions"
           >
-            <RefreshCw size={14} className={isLoading ? 'animate-spin text-amber-400' : ''} />
+            <RefreshCw size={14} className={isLoading ? 'animate-spin text-[var(--accent-terracotta)]' : ''} />
           </button>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-white/[0.06] transition-colors"
+            className="text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] p-1.5 rounded-lg hover:bg-[var(--bg-panel-subtle)] transition-colors cursor-pointer"
             aria-label="Close suggestions panel"
           >
             <X size={16} />
@@ -145,23 +159,23 @@ export const LinkSuggestionPanel: React.FC<LinkSuggestionPanelProps> = ({
       </div>
 
       {actionNotice && (
-        <div className="mt-3 p-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 rounded-xl text-xs flex items-center gap-2 animate-fade-in">
-          <CheckCircle2 size={14} className="shrink-0" />
+        <div className="mt-3 p-2 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2 animate-fade-in">
+          <CheckCircle2 size={14} className="shrink-0 text-emerald-600" />
           <span>{actionNotice}</span>
         </div>
       )}
 
       {error && (
-        <div className="mt-3 p-2.5 bg-rose-500/10 border border-rose-500/30 text-rose-300 rounded-xl text-xs flex items-start gap-2">
-          <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+        <div className="mt-3 p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-start gap-2">
+          <AlertTriangle size={15} className="mt-0.5 shrink-0 text-rose-600" />
           <span className="flex-1">{error}</span>
         </div>
       )}
 
       <div className="flex-1 overflow-y-auto py-3 space-y-3 max-h-[460px] pr-1 mt-1">
         {isLoading && suggestions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-            <Loader2 size={24} className="animate-spin text-amber-400 mb-2" />
+          <div className="flex flex-col items-center justify-center py-12 text-[var(--ink-tertiary)]">
+            <Loader2 size={24} className="animate-spin text-[var(--accent-terracotta)] mb-2" />
             <p className="text-xs">Finding shared concepts...</p>
           </div>
         ) : suggestions.length === 0 ? (
@@ -169,11 +183,11 @@ export const LinkSuggestionPanel: React.FC<LinkSuggestionPanelProps> = ({
             data-testid="no-suggestions-state"
             className="flex flex-col items-center justify-center py-10 text-center px-4"
           >
-            <div className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-slate-400 mb-2.5">
+            <div className="w-10 h-10 rounded-xl bg-white border border-[var(--border-parchment)] flex items-center justify-center text-[var(--ink-tertiary)] mb-2.5 shadow-2xs">
               <Sparkles size={20} />
             </div>
-            <h4 className="font-semibold text-xs text-slate-300">No Pending Suggestions</h4>
-            <p className="text-[11px] text-slate-500 mt-1 max-w-[220px] leading-relaxed">
+            <h4 className="serif font-semibold text-xs text-[var(--ink-primary)]">No Pending Suggestions</h4>
+            <p className="text-[11px] text-[var(--ink-secondary)] mt-1 max-w-[220px] leading-relaxed">
               When extraction discovers shared concepts across notes, link recommendations appear here.
             </p>
           </div>

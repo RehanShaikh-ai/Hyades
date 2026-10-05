@@ -15,7 +15,7 @@ from app.schemas.graph import (
     GraphSearchResponse,
     NoteGraphResponse,
 )
-from app.schemas.job import ExtractionJobResponse
+from app.schemas.job import ExtractionJobResponse, IndexJobRequest
 from app.services import graph_service, job_service
 
 router = APIRouter(tags=["graph"])
@@ -85,9 +85,11 @@ def search_graph(
 def trigger_graph_extraction(
     workspace_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
+    payload: IndexJobRequest | None = None,
 ) -> ExtractionJobResponse:
     """Trigger asynchronous entity and relationship extraction per CONTRACT §9.4."""
-    job = job_service.enqueue_extract_job(db, workspace_id)
+    note_ids = payload.note_ids if payload else None
+    job = job_service.enqueue_extract_job(db, workspace_id, note_ids=note_ids)
     return ExtractionJobResponse(job_id=job.id, status=job.status)
 
 

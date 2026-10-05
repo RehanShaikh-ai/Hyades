@@ -56,7 +56,7 @@ def _make_alembic_cfg(db_url: str) -> Config:
     return cfg
 
 
-def _upgrade(db_url: str, target: str = "head") -> None:
+def _upgrade(db_url: str, target: str = "0006") -> None:
     alembic_command.upgrade(_make_alembic_cfg(db_url), target)
 
 
@@ -145,7 +145,7 @@ def db_url(pg_container):
 
 @pytest.fixture(scope="module")
 def migrated_engine(db_url):
-    _upgrade(db_url, "head")
+    _upgrade(db_url, "0006")
     engine = create_engine(db_url)
     yield engine
     engine.dispose()
@@ -586,11 +586,11 @@ def test_downgrade_to_0004_removes_v0_3_2_tables_only(db_url):
         assert v031_table in tables, f"Table '{v031_table}' must remain after downgrade to 0004"
 
     engine.dispose()
-    _upgrade(db_url, "head")
+    _upgrade(db_url, "0006")
 
 
 def test_full_downgrade_and_reupgrade_are_reversible(db_url):
-    """Contract §6.8: Clean downgrade to base and re-upgrade to head must succeed cleanly."""
+    """Contract §6.8: Clean downgrade to base and re-upgrade to 0006 must succeed cleanly."""
     _downgrade(db_url, "base")
     engine = create_engine(db_url)
     inspector = inspect(engine)
@@ -599,7 +599,7 @@ def test_full_downgrade_and_reupgrade_are_reversible(db_url):
     assert "notes" not in tables
     engine.dispose()
 
-    _upgrade(db_url, "head")
+    _upgrade(db_url, "0006")
     engine = create_engine(db_url)
     inspector = inspect(engine)
     tables = inspector.get_table_names()

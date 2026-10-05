@@ -15,15 +15,15 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   className = ''
 }) => {
   return (
-    <div data-testid="empty-state" className={`flex flex-col items-center justify-center p-8 text-center bg-white/[0.02] border border-white/[0.08] backdrop-blur-xl rounded-2xl text-overlay1 ${className}`}>
+    <div data-testid="empty-state" className={`flex flex-col items-center justify-center p-8 text-center bg-[#FAF8F2] border border-[#DCD6C8] rounded-xl text-[#575249] ${className}`}>
       {icon ? (
-        <div className="mb-4 opacity-50">{icon}</div>
+        <div className="mb-3 text-[#878074]">{icon}</div>
       ) : (
-        <Ghost size={32} className="mb-4 opacity-30" />
+        <Ghost size={28} className="mb-3 text-[#A8A29E]" />
       )}
-      <p className="text-sm font-semibold text-text">{message}</p>
+      <p className="text-xs font-semibold text-[#1C1917]">{message}</p>
       {subMessage && (
-        <p className="text-xs mt-1 text-overlay0 max-w-sm mx-auto">{subMessage}</p>
+        <p className="text-[11px] mt-1 text-[#878074] max-w-sm mx-auto">{subMessage}</p>
       )}
     </div>
   );

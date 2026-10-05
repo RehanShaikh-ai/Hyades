@@ -43,7 +43,7 @@ export const SourceList: React.FC<SourceListProps> = ({
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [selectedSource, setSelectedSource] = useState<Source | null>(null);
 
-  const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchSources = useCallback(
     async (isBackgroundPoll = false) => {

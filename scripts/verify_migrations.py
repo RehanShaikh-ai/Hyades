@@ -50,7 +50,10 @@ def verify_alembic_heads() -> None:
         print(f"ERROR: Current head {heads[0]} does not match expected {expected_head}")
         sys.exit(1)
 
-    print(f"SUCCESS: Migration head verified at {expected_head} (v0.4.1 Sources & Persistent Assistant)")
+    print(
+        f"SUCCESS: Migration head verified at {expected_head} "
+        "(v0.4.1 Sources & Persistent Assistant)"
+    )
 
     # Also verify the full chain is intact
     all_revisions = list(scr.walk_revisions())

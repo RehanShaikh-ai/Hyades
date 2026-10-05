@@ -18,6 +18,7 @@ from app.models.graph_entity import GraphEntity
 from app.models.note import Note
 from app.models.note_cluster import NoteCluster
 from app.models.note_cluster_member import NoteClusterMember
+from app.models.note_link import NoteLink
 from app.models.workspace import Workspace
 
 logger = logging.getLogger("app.services.cluster_service")
@@ -27,6 +28,7 @@ def cluster_workspace(db: Session, workspace_id: uuid.UUID) -> list[NoteCluster]
     """Perform automatic clustering of workspace notes and entities per CONTRACT §8.1, §9.6.
 
     Idempotently replaces previous clusters for this workspace.
+    Clusters represent real semantic knowledge topics derived from workspace notes and concepts.
     """
     ws = db.get(Workspace, workspace_id)
     if not ws:
@@ -53,7 +55,9 @@ def cluster_workspace(db: Session, workspace_id: uuid.UUID) -> list[NoteCluster]
         db.expire_all()
 
     notes = db.scalars(
-        select(Note).where(Note.workspace_id == workspace_id, Note.is_archived.is_(False))
+        select(Note)
+        .where(Note.workspace_id == workspace_id, Note.is_archived.is_(False))
+        .order_by(Note.title.asc())
     ).all()
     if not notes:
         db.commit()
@@ -74,93 +78,88 @@ def cluster_workspace(db: Session, workspace_id: uuid.UUID) -> list[NoteCluster]
     ).all()
     entity_map = {e.id: e for e in all_entities}
 
-    # Entity frequency across notes
-    entity_frequency: dict[uuid.UUID, int] = defaultdict(int)
-    for eids in note_entities.values():
-        for eid in eids:
-            entity_frequency[eid] += 1
+    # Fetch explicit note links
+    all_links = db.scalars(
+        select(NoteLink).where(NoteLink.source_note_id.in_([n.id for n in notes]))
+    ).all()
+    linked_pairs: set[tuple[uuid.UUID, uuid.UUID]] = set()
+    for link in all_links:
+        linked_pairs.add((link.source_note_id, link.target_note_id))
+        linked_pairs.add((link.target_note_id, link.source_note_id))
 
-    sorted_top_entities = sorted(entity_frequency.items(), key=lambda x: x[1], reverse=True)
+    # Thematic topic grouping:
+    # Strongly connected notes group together; distinct knowledge domains maintain
+    # their dedicated topic shelf.
+    parent = {n.id: n.id for n in notes}
+
+    def find_root(i: uuid.UUID) -> uuid.UUID:
+        if parent[i] == i:
+            return i
+        parent[i] = find_root(parent[i])
+        return parent[i]
+
+    def union_nodes(i: uuid.UUID, j: uuid.UUID) -> None:
+        ri, rj = find_root(i), find_root(j)
+        if ri != rj:
+            parent[ri] = rj
+
+    for i in range(len(notes)):
+        for j in range(i + 1, len(notes)):
+            n1, n2 = notes[i], notes[j]
+            e1, e2 = note_entities[n1.id], note_entities[n2.id]
+            inter = len(e1 & e2)
+            union_sz = len(e1 | e2)
+            jaccard = inter / union_sz if union_sz > 0 else 0
+            is_linked = (n1.id, n2.id) in linked_pairs
+
+            if (is_linked and inter >= 2) or (inter >= 4 and jaccard >= 0.25):
+                union_nodes(n1.id, n2.id)
+
+    note_groups: dict[uuid.UUID, list[Note]] = defaultdict(list)
+    for n in notes:
+        note_groups[find_root(n.id)].append(n)
 
     created_clusters: list[NoteCluster] = []
-    clustered_note_ids: set[uuid.UUID] = set()
-    used_labels: set[str] = set()
 
-    if sorted_top_entities:
-        for centroid_eid, _freq in sorted_top_entities:
-            if len(created_clusters) >= 6:
-                break
-            centroid_entity = entity_map.get(centroid_eid)
-            if not centroid_entity:
-                continue
-
-            label = centroid_entity.name.strip()
-            if label.lower() in used_labels:
-                continue
-
-            # Find notes containing this entity
-            member_notes = [n for n in notes if centroid_eid in note_entities.get(n.id, set())]
-            if not member_notes:
-                continue
-
-            used_labels.add(label.lower())
-            desc = centroid_entity.description or f"Cluster centered around {label}"
-
-            cluster = NoteCluster(
-                workspace_id=workspace_id,
-                label=label,
-                description=desc,
-                created_at=datetime.now(UTC),
-                updated_at=datetime.now(UTC),
+    for _root_id, member_notes in note_groups.items():
+        if len(member_notes) == 1:
+            label = member_notes[0].title.strip()
+            desc = f"Archival topic shelf for {label}"
+        else:
+            # Multi-note topic: order by entity count
+            sorted_members = sorted(
+                member_notes, key=lambda n: len(note_entities.get(n.id, set())), reverse=True
             )
-            db.add(cluster)
-            db.flush()
+            primary_note = sorted_members[0]
+            label = primary_note.title.strip()
+            other_titles = [m.title.strip() for m in sorted_members[1:]]
+            desc = f"Topic cluster encompassing {primary_note.title} and {', '.join(other_titles)}"
 
-            # Assign member notes
-            for m_note in member_notes:
-                member = NoteClusterMember(
-                    cluster_id=cluster.id,
-                    note_id=m_note.id,
-                    score=1.0,
-                )
-                db.add(member)
-                clustered_note_ids.add(m_note.id)
-
-                # Assign cluster_id to entities in this member note
-                for eid in note_entities.get(m_note.id, set()):
-                    ent = entity_map.get(eid)
-                    if ent and ent.cluster_id is None:
-                        ent.cluster_id = cluster.id
-
-            centroid_entity.cluster_id = cluster.id
-            created_clusters.append(cluster)
-
-    # If there are notes not assigned to any cluster, group into General Notes
-    unclustered_notes = [n for n in notes if n.id not in clustered_note_ids]
-    if unclustered_notes:
-        general_cluster = NoteCluster(
+        cluster = NoteCluster(
             workspace_id=workspace_id,
-            label="General Notes",
-            description="Default cluster for unclassified workspace notes",
+            label=label,
+            description=desc,
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
         )
-        db.add(general_cluster)
+        db.add(cluster)
         db.flush()
 
-        for u_note in unclustered_notes:
+        for m_note in member_notes:
             member = NoteClusterMember(
-                cluster_id=general_cluster.id,
-                note_id=u_note.id,
+                cluster_id=cluster.id,
+                note_id=m_note.id,
                 score=1.0,
             )
             db.add(member)
-            for eid in note_entities.get(u_note.id, set()):
-                ent = entity_map.get(eid)
-                if ent and ent.cluster_id is None:
-                    ent.cluster_id = general_cluster.id
 
-        created_clusters.append(general_cluster)
+            # Assign cluster_id to all entities belonging to this member note
+            for eid in note_entities.get(m_note.id, set()):
+                ent = entity_map.get(eid)
+                if ent and (ent.cluster_id is None or ent.cluster_id != cluster.id):
+                    ent.cluster_id = cluster.id
+
+        created_clusters.append(cluster)
 
     db.commit()
     for c in created_clusters:

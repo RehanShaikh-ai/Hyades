@@ -87,25 +87,30 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} width="sm">
-      <div className="flex items-center justify-between p-4 border-b border-white/[0.08]">
-        <h3 className="font-semibold text-sm text-slate-200">
-          {isEditing ? `Edit Entity: ${entity?.name}` : 'Create Graph Entity'}
-        </h3>
+      <div className="flex items-center justify-between p-4 border-b border-[var(--border-parchment)] bg-white">
+        <div>
+          <span className="mono text-[10px] text-[var(--accent-terracotta)] uppercase tracking-wider font-semibold">
+            Knowledge Scriptorium
+          </span>
+          <h3 className="serif text-base font-semibold text-[var(--ink-primary)]">
+            {isEditing ? `Edit Entity: ${entity?.name}` : 'Create Graph Entity'}
+          </h3>
+        </div>
         <button
           onClick={onClose}
-          className="text-slate-400 hover:text-slate-200 p-1 rounded-lg hover:bg-white/[0.06] transition-colors"
+          className="text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] p-1.5 rounded-lg hover:bg-[var(--bg-panel-subtle)] transition-colors cursor-pointer"
           aria-label="Close"
         >
           <X size={16} />
         </button>
       </div>
-      <form onSubmit={handleSubmit} data-testid="entity-editor-form" className="p-4 space-y-4">
+      <form onSubmit={handleSubmit} data-testid="entity-editor-form" className="p-5 space-y-4 bg-[#FAF8F2]">
         {error && (
           <div
             data-testid="entity-editor-error"
-            className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 text-xs flex items-start gap-2"
+            className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-start gap-2"
           >
-            <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+            <AlertTriangle size={15} className="mt-0.5 shrink-0 text-rose-600" />
             <span>{error}</span>
           </div>
         )}
@@ -114,9 +119,9 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({
         <div className="space-y-1.5">
           <label
             htmlFor="entity-name-input"
-            className="text-xs font-medium text-slate-300 uppercase tracking-wider block"
+            className="text-[11px] font-semibold text-[var(--ink-secondary)] uppercase tracking-wider mono block"
           >
-            Entity Name <span className="text-rose-400">*</span>
+            Entity Name <span className="text-[var(--accent-terracotta)]">*</span>
           </label>
           <input
             id="entity-name-input"
@@ -127,7 +132,7 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Gradient Descent, Transformer"
-            className="w-full bg-white/[0.04] border border-white/[0.1] focus:border-sky-500/60 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none transition-all"
+            className="w-full bg-white border border-[var(--border-strong)] focus:border-[var(--accent-midnight)] focus:ring-1 focus:ring-[var(--accent-midnight)] rounded-xl px-3 py-2 text-sm text-[var(--ink-primary)] placeholder-[var(--ink-tertiary)] focus:outline-none transition-all"
           />
         </div>
 
@@ -135,16 +140,16 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({
         <div className="space-y-1.5">
           <label
             htmlFor="entity-type-select"
-            className="text-xs font-medium text-slate-300 uppercase tracking-wider block"
+            className="text-[11px] font-semibold text-[var(--ink-secondary)] uppercase tracking-wider mono block"
           >
-            Entity Type <span className="text-rose-400">*</span>
+            Entity Type <span className="text-[var(--accent-terracotta)]">*</span>
           </label>
           <select
             id="entity-type-select"
             data-testid="entity-type-select"
             value={entityType}
             onChange={(e) => setEntityType(e.target.value as EntityType)}
-            className="w-full bg-slate-900 border border-white/[0.1] focus:border-sky-500/60 rounded-xl px-3 py-2 text-sm text-slate-100 focus:outline-none transition-all capitalize"
+            className="w-full bg-white border border-[var(--border-strong)] focus:border-[var(--accent-midnight)] focus:ring-1 focus:ring-[var(--accent-midnight)] rounded-xl px-3 py-2 text-sm text-[var(--ink-primary)] focus:outline-none transition-all capitalize cursor-pointer"
           >
             {ENTITY_TYPES.map((type) => (
               <option key={type} value={type}>
@@ -153,12 +158,12 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({
             ))}
           </select>
 
-          <div className="flex items-center gap-2 pt-1 text-xs text-slate-400">
+          <div className="flex items-center gap-2 pt-1 text-xs text-[var(--ink-tertiary)]">
             <span
               className="w-2.5 h-2.5 rounded-full"
               style={{ backgroundColor: getEntityTypeColor(entityType) }}
             />
-            <span>Visualized as {entityType} node</span>
+            <span>Visualized as {entityType} node in Observatory</span>
           </div>
         </div>
 
@@ -166,9 +171,9 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({
         <div className="space-y-1.5">
           <label
             htmlFor="entity-description-input"
-            className="text-xs font-medium text-slate-300 uppercase tracking-wider block"
+            className="text-[11px] font-semibold text-[var(--ink-secondary)] uppercase tracking-wider mono block"
           >
-            Description <span className="text-slate-500 text-[10px] lowercase">(optional)</span>
+            Description <span className="text-[var(--ink-tertiary)] text-[10px] lowercase font-normal">(optional)</span>
           </label>
           <textarea
             id="entity-description-input"
@@ -176,18 +181,18 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({
             rows={3}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Concise summary or definition of this entity in your knowledge atlas..."
-            className="w-full bg-white/[0.04] border border-white/[0.1] focus:border-sky-500/60 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none transition-all resize-none leading-relaxed"
+            placeholder="Concise summary or archival definition of this entity in Hyades..."
+            className="w-full bg-white border border-[var(--border-strong)] focus:border-[var(--accent-midnight)] focus:ring-1 focus:ring-[var(--accent-midnight)] rounded-xl px-3 py-2 text-xs text-[var(--ink-primary)] placeholder-[var(--ink-tertiary)] focus:outline-none transition-all resize-none leading-relaxed"
           />
         </div>
 
         {/* Actions */}
-        <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/[0.08]">
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border-parchment)]">
           <button
             type="button"
             onClick={onClose}
             disabled={isSubmitting}
-            className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-white/[0.06] transition-colors"
+            className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] transition-colors cursor-pointer"
           >
             Cancel
           </button>
@@ -195,7 +200,7 @@ export const EntityEditor: React.FC<EntityEditorProps> = ({
             type="submit"
             data-testid="entity-submit-btn"
             disabled={isSubmitting || !name.trim()}
-            className="px-4 py-1.5 rounded-xl text-xs font-semibold bg-sky-500 hover:bg-sky-400 text-slate-950 transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none shadow-lg shadow-sky-500/20"
+            className="px-4 py-1.5 rounded-xl text-xs font-semibold bg-[var(--accent-midnight)] hover:bg-[var(--accent-midnight-light)] text-[#FAF8F2] transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none shadow-sm cursor-pointer"
           >
             {isSubmitting ? (
               <Loader2 size={14} className="animate-spin" />

@@ -18,6 +18,32 @@ if (typeof window !== 'undefined') {
   if (!window.HTMLElement.prototype.scrollIntoView) {
     window.HTMLElement.prototype.scrollIntoView = vi.fn();
   }
+  if (!window.localStorage) {
+    const store: Record<string, string> = {};
+    const mockStorage = {
+      getItem: (key: string) => store[key] ?? null,
+      setItem: (key: string, value: string) => {
+        store[key] = String(value);
+      },
+      removeItem: (key: string) => {
+        delete store[key];
+      },
+      clear: () => {
+        for (const k of Object.keys(store)) {
+          delete store[k];
+        }
+      },
+      key: (index: number) => Object.keys(store)[index] ?? null,
+      get length() {
+        return Object.keys(store).length;
+      },
+    };
+    Object.defineProperty(window, 'localStorage', {
+      value: mockStorage,
+      writable: true,
+    });
+    (globalThis as unknown as { localStorage: Storage }).localStorage = mockStorage;
+  }
 }
 
 // Global mock for react-force-graph-2d to prevent Canvas rendering crashes in jsdom

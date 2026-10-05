@@ -1,9 +1,11 @@
 import React from 'react';
-import { HomePage } from '@/pages/HomePage';
+import { HyadesApp } from '@/pages/HyadesApp';
 import { useHealth } from '@/hooks/useHealth';
 
 export const App: React.FC = () => {
   const { status, checkHealth } = useHealth(15000);
 
-  return <HomePage healthStatus={status} onRefreshHealth={checkHealth} />;
+  return <HyadesApp healthStatus={status} onRefreshHealth={checkHealth} />;
 };
+
+export default App;

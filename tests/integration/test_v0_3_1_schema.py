@@ -51,7 +51,7 @@ def _make_alembic_cfg(db_url: str) -> Config:
     return cfg
 
 
-def _upgrade(db_url: str, target: str = "head") -> None:
+def _upgrade(db_url: str, target: str = "0004") -> None:
     alembic_command.upgrade(_make_alembic_cfg(db_url), target)
 
 

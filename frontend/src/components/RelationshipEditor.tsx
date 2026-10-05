@@ -121,45 +121,50 @@ export const RelationshipEditor: React.FC<RelationshipEditorProps> = ({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} width="sm">
-      <div className="flex items-center justify-between p-4 border-b border-white/[0.08]">
-        <h3 className="font-semibold text-sm text-slate-200">
-          {isEditing ? 'Edit Relationship' : 'Create Graph Relationship'}
-        </h3>
+      <div className="flex items-center justify-between p-4 border-b border-[var(--border-parchment)] bg-white">
+        <div>
+          <span className="mono text-[10px] text-[var(--accent-terracotta)] uppercase tracking-wider font-semibold">
+            Knowledge Scriptorium
+          </span>
+          <h3 className="serif text-base font-semibold text-[var(--ink-primary)]">
+            {isEditing ? 'Edit Relationship' : 'Create Graph Relationship'}
+          </h3>
+        </div>
         <button
           onClick={onClose}
-          className="text-slate-400 hover:text-slate-200 p-1 rounded-lg hover:bg-white/[0.06] transition-colors"
+          className="text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] p-1.5 rounded-lg hover:bg-[var(--bg-panel-subtle)] transition-colors cursor-pointer"
           aria-label="Close"
         >
           <X size={16} />
         </button>
       </div>
-      <form onSubmit={handleSubmit} data-testid="relationship-editor-form" className="p-4 space-y-4">
+      <form onSubmit={handleSubmit} data-testid="relationship-editor-form" className="p-5 space-y-4 bg-[#FAF8F2]">
         {error && (
           <div
             data-testid="relationship-editor-error"
-            className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 text-xs flex items-start gap-2"
+            className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-start gap-2"
           >
-            <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+            <AlertTriangle size={15} className="mt-0.5 shrink-0 text-rose-600" />
             <span>{error}</span>
           </div>
         )}
 
         {/* Source and Target Entities (Immutable in edit mode) */}
         {!isEditing ? (
-          <div className="space-y-3 p-3 bg-white/[0.02] border border-white/[0.06] rounded-xl">
+          <div className="space-y-3 p-3.5 bg-white border border-[var(--border-parchment)] rounded-xl shadow-2xs">
             <div className="space-y-1">
               <label
                 htmlFor="rel-source-select"
-                className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block"
+                className="text-[10px] font-semibold text-[var(--ink-secondary)] uppercase tracking-wider mono block"
               >
-                Source Entity <span className="text-rose-400">*</span>
+                Source Entity <span className="text-[var(--accent-terracotta)]">*</span>
               </label>
               <select
                 id="rel-source-select"
                 data-testid="rel-source-select"
                 value={sourceId}
                 onChange={(e) => setSourceId(e.target.value)}
-                className="w-full bg-slate-900 border border-white/[0.1] focus:border-sky-500/60 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none"
+                className="w-full bg-[#FAF8F2] border border-[var(--border-strong)] focus:border-[var(--accent-midnight)] focus:ring-1 focus:ring-[var(--accent-midnight)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--ink-primary)] focus:outline-none cursor-pointer"
               >
                 <option value="" disabled>Select source entity</option>
                 {availableEntities.map((e) => (
@@ -170,23 +175,23 @@ export const RelationshipEditor: React.FC<RelationshipEditorProps> = ({
               </select>
             </div>
 
-            <div className="flex items-center justify-center text-slate-500 py-0.5">
-              <ArrowRight size={14} />
+            <div className="flex items-center justify-center text-[var(--ink-tertiary)] py-0.5">
+              <ArrowRight size={14} className="text-[var(--accent-terracotta)]" />
             </div>
 
             <div className="space-y-1">
               <label
                 htmlFor="rel-target-select"
-                className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block"
+                className="text-[10px] font-semibold text-[var(--ink-secondary)] uppercase tracking-wider mono block"
               >
-                Target Entity <span className="text-rose-400">*</span>
+                Target Entity <span className="text-[var(--accent-terracotta)]">*</span>
               </label>
               <select
                 id="rel-target-select"
                 data-testid="rel-target-select"
                 value={targetId}
                 onChange={(e) => setTargetId(e.target.value)}
-                className="w-full bg-slate-900 border border-white/[0.1] focus:border-sky-500/60 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none"
+                className="w-full bg-[#FAF8F2] border border-[var(--border-strong)] focus:border-[var(--accent-midnight)] focus:ring-1 focus:ring-[var(--accent-midnight)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--ink-primary)] focus:outline-none cursor-pointer"
               >
                 <option value="" disabled>Select target entity</option>
                 {availableEntities.map((e) => (
@@ -198,8 +203,8 @@ export const RelationshipEditor: React.FC<RelationshipEditorProps> = ({
             </div>
           </div>
         ) : (
-          <div className="p-3 bg-white/[0.02] border border-white/[0.06] rounded-xl text-xs text-slate-400">
-            <span className="font-semibold text-slate-300">Note:</span> Source and target entities are immutable for an existing relationship.
+          <div className="p-3 bg-white border border-[var(--border-parchment)] rounded-xl text-xs text-[var(--ink-secondary)]">
+            <span className="font-semibold text-[var(--ink-primary)]">Note:</span> Source and target entities are immutable for an existing relationship.
           </div>
         )}
 
@@ -207,9 +212,9 @@ export const RelationshipEditor: React.FC<RelationshipEditorProps> = ({
         <div className="space-y-1.5">
           <label
             htmlFor="rel-type-input"
-            className="text-xs font-medium text-slate-300 uppercase tracking-wider block"
+            className="text-[11px] font-semibold text-[var(--ink-secondary)] uppercase tracking-wider mono block"
           >
-            Relationship Type <span className="text-rose-400">*</span>
+            Relationship Type <span className="text-[var(--accent-terracotta)]">*</span>
           </label>
           <input
             id="rel-type-input"
@@ -220,7 +225,7 @@ export const RelationshipEditor: React.FC<RelationshipEditorProps> = ({
             value={relationshipType}
             onChange={(e) => setRelationshipType(e.target.value)}
             placeholder="e.g. prerequisite_of, part_of, contradicts"
-            className="w-full bg-white/[0.04] border border-white/[0.1] focus:border-sky-500/60 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none font-mono transition-all"
+            className="w-full bg-white border border-[var(--border-strong)] focus:border-[var(--accent-midnight)] focus:ring-1 focus:ring-[var(--accent-midnight)] rounded-xl px-3 py-2 text-xs text-[var(--ink-primary)] placeholder-[var(--ink-tertiary)] focus:outline-none mono transition-all"
           />
 
           {/* Quick presets */}
@@ -230,10 +235,10 @@ export const RelationshipEditor: React.FC<RelationshipEditorProps> = ({
                 key={type}
                 type="button"
                 onClick={() => setRelationshipType(type)}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-mono border transition-colors ${
+                className={`px-2 py-0.5 rounded text-[10px] mono border transition-colors cursor-pointer ${
                   relationshipType === type
-                    ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
-                    : 'bg-white/[0.03] border-white/[0.08] text-slate-400 hover:text-slate-200 hover:bg-white/[0.06]'
+                    ? 'bg-[var(--accent-midnight)] text-[#FAF8F2] border-[var(--accent-midnight)] font-medium shadow-2xs'
+                    : 'bg-white border-[var(--border-strong)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[var(--bg-panel-subtle)]'
                 }`}
               >
                 {type}
@@ -246,9 +251,9 @@ export const RelationshipEditor: React.FC<RelationshipEditorProps> = ({
         <div className="space-y-1.5">
           <label
             htmlFor="rel-description-input"
-            className="text-xs font-medium text-slate-300 uppercase tracking-wider block"
+            className="text-[11px] font-semibold text-[var(--ink-secondary)] uppercase tracking-wider mono block"
           >
-            Description <span className="text-slate-500 text-[10px] lowercase">(optional)</span>
+            Description <span className="text-[var(--ink-tertiary)] text-[10px] lowercase font-normal">(optional)</span>
           </label>
           <textarea
             id="rel-description-input"
@@ -256,18 +261,18 @@ export const RelationshipEditor: React.FC<RelationshipEditorProps> = ({
             rows={2}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Explain the nature of this connection..."
-            className="w-full bg-white/[0.04] border border-white/[0.1] focus:border-sky-500/60 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none transition-all resize-none leading-relaxed"
+            placeholder="Explain the celestial or conceptual nature of this connection..."
+            className="w-full bg-white border border-[var(--border-strong)] focus:border-[var(--accent-midnight)] focus:ring-1 focus:ring-[var(--accent-midnight)] rounded-xl px-3 py-2 text-xs text-[var(--ink-primary)] placeholder-[var(--ink-tertiary)] focus:outline-none transition-all resize-none leading-relaxed"
           />
         </div>
 
         {/* Actions */}
-        <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/[0.08]">
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border-parchment)]">
           <button
             type="button"
             onClick={onClose}
             disabled={isSubmitting}
-            className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-white/[0.06] transition-colors"
+            className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] transition-colors cursor-pointer"
           >
             Cancel
           </button>
@@ -275,7 +280,7 @@ export const RelationshipEditor: React.FC<RelationshipEditorProps> = ({
             type="submit"
             data-testid="relationship-submit-btn"
             disabled={isSubmitting || !relationshipType.trim()}
-            className="px-4 py-1.5 rounded-xl text-xs font-semibold bg-sky-500 hover:bg-sky-400 text-slate-950 transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none shadow-lg shadow-sky-500/20"
+            className="px-4 py-1.5 rounded-xl text-xs font-semibold bg-[var(--accent-midnight)] hover:bg-[var(--accent-midnight-light)] text-[#FAF8F2] transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none shadow-sm cursor-pointer"
           >
             {isSubmitting ? (
               <Loader2 size={14} className="animate-spin" />

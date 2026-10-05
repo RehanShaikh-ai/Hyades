@@ -30,6 +30,7 @@ build/
 .vscode/
 .idea/
 
+
 # OS
 .DS_Store
 Thumbs.db
@@ -40,3 +41,8 @@ Thumbs.db
 # Coverage
 .coverage
 htmlcov/
+.hyades-reference/
+
+# Agents & AI Tooling
+.agents/
+skills-lock.json

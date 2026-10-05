@@ -47,3 +47,12 @@ export interface GraphQueryParams {
   min_confidence?: number;
   limit?: number;
 }
+
+export interface ObservatoryTarget {
+  entityId?: string;
+  sourceId?: string;
+  noteId?: string;
+  relationshipId?: string;
+  entityName?: string;
+}
+
