@@ -298,15 +298,6 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                   <i className="ph ph-trend-up text-emerald-700 font-bold" />
                   <span>{totalConcepts} concepts extracted</span>
                 </div>
-                <div className="w-px h-3 bg-[var(--border-parchment)]" />
-                <button
-                  type="button"
-                  onClick={() => onNavigateToDestination('observatory')}
-                  className="text-[var(--accent-terracotta)] hover:underline font-medium flex items-center gap-1 focus:outline-none cursor-pointer group"
-                >
-                  <span>Explore in Observatory</span>
-                  <span className="nudge-x">↗</span>
-                </button>
               </div>
             </div>
 
@@ -395,13 +386,6 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2.5 mb-2">
-                        <span className="px-2 py-0.5 rounded bg-[var(--accent-terracotta-soft)] text-[var(--accent-terracotta)] text-[11px] font-semibold uppercase tracking-wider">
-                          {activeNote.tags && activeNote.tags.length > 0
-                            ? typeof activeNote.tags[0] === 'string'
-                              ? activeNote.tags[0]
-                              : activeNote.tags[0].name
-                            : 'Workspace Note'}
-                        </span>
                         <span className="text-[11px] text-[var(--ink-tertiary)] mono">
                           Updated {new Date(activeNote.updated_at).toLocaleDateString()}
                         </span>
