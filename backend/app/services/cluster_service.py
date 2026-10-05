@@ -83,12 +83,13 @@ def cluster_workspace(db: Session, workspace_id: uuid.UUID) -> list[NoteCluster]
         select(NoteLink).where(NoteLink.source_note_id.in_([n.id for n in notes]))
     ).all()
     linked_pairs: set[tuple[uuid.UUID, uuid.UUID]] = set()
-    for l in all_links:
-        linked_pairs.add((l.source_note_id, l.target_note_id))
-        linked_pairs.add((l.target_note_id, l.source_note_id))
+    for link in all_links:
+        linked_pairs.add((link.source_note_id, link.target_note_id))
+        linked_pairs.add((link.target_note_id, link.source_note_id))
 
     # Thematic topic grouping:
-    # Strongly connected notes group together; distinct knowledge domains maintain their dedicated topic shelf.
+    # Strongly connected notes group together; distinct knowledge domains maintain
+    # their dedicated topic shelf.
     parent = {n.id: n.id for n in notes}
 
     def find_root(i: uuid.UUID) -> uuid.UUID:
@@ -120,7 +121,7 @@ def cluster_workspace(db: Session, workspace_id: uuid.UUID) -> list[NoteCluster]
 
     created_clusters: list[NoteCluster] = []
 
-    for root_id, member_notes in note_groups.items():
+    for _root_id, member_notes in note_groups.items():
         if len(member_notes) == 1:
             label = member_notes[0].title.strip()
             desc = f"Archival topic shelf for {label}"

@@ -1,4 +1,5 @@
-"""Create v0.4.1 sources extensions, content_chunks, conversations, messages, citations, and source_note_links tables.
+"""Create v0.4.1 sources extensions, content_chunks, conversations, messages,
+citations, and source_note_links tables.
 
 Revision ID: 0007
 Revises: 0006
@@ -8,7 +9,8 @@ Contract references:
     CONTRACT_v0.4.1.md:
     §6.1  — sources extensions: processing_stage, processing_status, file_size_bytes,
             page_count, chunk_count, error_stage, idx_source_extensions
-    §6.2  — content_chunks model: replaces note_chunks, data migration, FK behavior, unique constraints
+    §6.2  — content_chunks model: replaces note_chunks, data migration,
+            FK behavior, unique constraints
     §6.3  — conversations model: fields, FK behavior, idx_conversations_workspace
     §6.4  — messages model: fields, FK behavior, idx_messages_conversation
     §6.5  — message_citations model: fields, FK behavior, idx_message_citations_message
