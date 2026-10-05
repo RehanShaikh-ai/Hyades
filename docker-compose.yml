@@ -202,7 +202,7 @@ services:
       - ./tests/e2e:/tests/e2e
     environment:
       - PLAYWRIGHT_BASE_URL=http://frontend:5173
-    command: sh -c "npm install && npx playwright test"
+    command: sh -c "npm install && ./node_modules/.bin/playwright test"
     profiles:
       - e2e
 
