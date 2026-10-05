@@ -1,9 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { getRAGStatus } from '@/api/rag';
-import { getWorkspaceDashboard } from '@/api/dashboard';
 import { getWorkspaceGraph } from '@/api/graph';
 import { renderMarkdown } from '@/lib/markdown';
-import { DashboardStats } from '@/types/dashboard';
 import { GraphResponse, ObservatoryTarget } from '@/types/graph';
 import { StellaContext } from '@/types/navigation';
 import { RAGStatusResponse } from '@/types/rag';
@@ -56,7 +54,6 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
   // Workspace metadata & Scope
   const [selectedModel, setSelectedModel] = useState('auto');
   const [ragStatus, setRagStatus] = useState<RAGStatusResponse | null>(null);
-  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [graphData, setGraphData] = useState<GraphResponse | null>(null);
 
   const dialogueContainerRef = useRef<HTMLDivElement>(null);
@@ -99,12 +96,10 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
   const fetchWorkspaceContext = useCallback(async () => {
     if (!workspaceId) return;
     try {
-      const [statsData, graphResp, statusData] = await Promise.all([
-        getWorkspaceDashboard(workspaceId).catch(() => null),
+      const [graphResp, statusData] = await Promise.all([
         getWorkspaceGraph(workspaceId).catch(() => null),
         getRAGStatus(workspaceId).catch(() => null),
       ]);
-      if (statsData) setStats(statsData);
       if (graphResp) setGraphData(graphResp);
       if (statusData) {
         setRagStatus(statusData);
@@ -393,49 +388,6 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                 )}
               </div>
             </div>
-
-            {/* Knowledge Context Scope Box */}
-            <div className="instrument-panel p-3.5 flex flex-col gap-2.5">
-              <div className="panel-bracket-tl" />
-              <div className="panel-bracket-br" />
-
-              <div className="flex items-center justify-between border-b border-[var(--border-parchment)] pb-2">
-                <div className="flex items-center gap-1.5">
-                  <i className="ph ph-brain text-xs text-[var(--accent-terracotta)]" />
-                  <span className="text-[10px] uppercase tracking-wider font-semibold text-[var(--ink-primary)]">
-                    Knowledge Context
-                  </span>
-                </div>
-              </div>
-
-              {/* Real Scope metrics */}
-              <div className="grid grid-cols-3 gap-1.5 py-0.5 text-center">
-                <div className="p-1.5 rounded-lg bg-white border border-[var(--border-parchment)]">
-                  <div className="serif text-sm font-semibold text-[var(--ink-primary)]">
-                    {stats?.total_sources ?? 0}
-                  </div>
-                  <div className="text-[9px] text-[var(--ink-tertiary)] uppercase tracking-wider">
-                    Sources
-                  </div>
-                </div>
-                <div className="p-1.5 rounded-lg bg-white border border-[var(--border-parchment)]">
-                  <div className="serif text-sm font-semibold text-[var(--accent-terracotta)]">
-                    {stats?.total_notes ?? 0}
-                  </div>
-                  <div className="text-[9px] text-[var(--ink-tertiary)] uppercase tracking-wider">
-                    Notes
-                  </div>
-                </div>
-                <div className="p-1.5 rounded-lg bg-white border border-[var(--border-parchment)]">
-                  <div className="serif text-sm font-semibold text-[var(--accent-midnight)]">
-                    {graphData?.stats?.node_count ?? 0}
-                  </div>
-                  <div className="text-[9px] text-[var(--ink-tertiary)] uppercase tracking-wider">
-                    Concepts
-                  </div>
-                </div>
-              </div>
-            </div>
           </aside>
         )}
 
@@ -450,38 +402,12 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
             {/* Dialogue Masthead */}
             <div className="flex items-center justify-between border-b border-[var(--border-parchment)] pb-3 px-1">
               <div>
-                <div className="text-[10px] mono uppercase tracking-wider text-[var(--accent-terracotta)] font-medium flex items-center gap-1.5">
-                  <span>Stella Study</span>
-                  <span>·</span>
-                  <span>Scholarly Reasoning</span>
-                  {ragStatus && (
-                    <>
-                      <span>·</span>
-                      <span className="text-[var(--accent-midnight)]">
-                        Provider: {ragStatus.provider}
-                      </span>
-                    </>
-                  )}
-                </div>
-                <h1 className="serif text-xl sm:text-2xl font-semibold text-[var(--ink-primary)] tracking-tight mt-0.5">
+                <h1 className="serif text-xl sm:text-2xl font-semibold text-[var(--ink-primary)] tracking-tight">
                   {activeTitle}{' '}
                   <span className="serif-italic font-normal text-[var(--accent-midnight)] text-lg">
                     · Research Thread
                   </span>
                 </h1>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {onNavigateToObservatory && (
-                  <button
-                    type="button"
-                    onClick={() => onNavigateToObservatory()}
-                    className="px-2.5 py-1 rounded-md bg-[var(--bg-panel)] hover:bg-white border border-[var(--border-strong)] text-xs text-[var(--ink-secondary)] hover:text-[var(--accent-midnight)] transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                  >
-                    <i className="ph ph-compass text-xs text-[var(--accent-terracotta)]" />
-                    <span>View in Observatory ↗</span>
-                  </button>
-                )}
               </div>
             </div>
 
@@ -536,13 +462,6 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                         </div>
                         <span className="serif font-semibold text-[13px] text-[var(--accent-midnight)]">
                           Stella
-                        </span>
-                        <span>·</span>
-                        <span className="text-[11px] text-[var(--ink-tertiary)]">
-                          {msg.citations && msg.citations.length > 0
-                            ? `Grounded in ${msg.citations.length} sources`
-                            : msg.timestamp}
-                          {msg.latencyMs ? ` · ${(msg.latencyMs / 1000).toFixed(1)}s` : ''}
                         </span>
                       </div>
 
@@ -624,17 +543,6 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                                 </button>
                               )}
                             </div>
-
-                            {onNavigateToObservatory && (
-                              <button
-                                type="button"
-                                onClick={() => onNavigateToObservatory()}
-                                className="px-2.5 py-1 rounded-md bg-[var(--accent-midnight)] text-white hover:bg-[var(--accent-midnight-light)] text-[11.5px] font-medium transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
-                              >
-                                <span>Observatory</span>
-                                <span className="text-[var(--accent-brass)]">↗</span>
-                              </button>
-                            )}
                           </div>
                         )}
                       </article>

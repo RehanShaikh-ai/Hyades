@@ -115,7 +115,7 @@ describe('HyadesApp Canonical UI', () => {
 
     // Navigate to Stella
     fireEvent.click(screen.getByRole('button', { name: /^Stella$/i }));
-    expect(await screen.findByText('Stella Study')).toBeInTheDocument();
+    expect(await screen.findByText('Stella Inquiries')).toBeInTheDocument();
   });
 
   it('opens account administration modal via profile button', async () => {
