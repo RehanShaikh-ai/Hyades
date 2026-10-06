@@ -81,6 +81,12 @@ class Note(Base):
         default=False,
         nullable=False,
     )
+    extract_knowledge: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default="true",
+        nullable=False,
+    )
     is_archived: Mapped[bool] = mapped_column(
         Boolean,
         default=False,

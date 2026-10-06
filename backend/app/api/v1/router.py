@@ -10,21 +10,25 @@ from fastapi import APIRouter
 from app.api.v1 import (
     activity,
     clusters,
+    collections,
     conversations,
     dashboard,
     entities,
     graph,
     graph_rag,
     health,
+    inbox,
     jobs,
     notes,
     rag,
     relationships,
     saved_searches,
+    saved_views,
     search,
     sources,
     suggestions,
     tags,
+    threads,
     users,
     versions,
     workspaces,
@@ -32,6 +36,10 @@ from app.api.v1 import (
 
 api_router = APIRouter()
 api_router.include_router(health.router)
+api_router.include_router(collections.router)
+api_router.include_router(threads.router)
+api_router.include_router(saved_views.router)
+api_router.include_router(inbox.router)
 api_router.include_router(users.router)
 api_router.include_router(workspaces.router)
 api_router.include_router(notes.router)
