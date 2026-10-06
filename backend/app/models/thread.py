@@ -106,9 +106,7 @@ class ThreadNote(Base):
     """Thread Note membership."""
 
     __tablename__ = "thread_notes"
-    __table_args__ = (
-        Index("idx_thread_notes_note_id", "note_id"),
-    )
+    __table_args__ = (Index("idx_thread_notes_note_id", "note_id"),)
 
     thread_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -135,9 +133,7 @@ class ThreadSource(Base):
     """Thread Source membership."""
 
     __tablename__ = "thread_sources"
-    __table_args__ = (
-        Index("idx_thread_sources_source_id", "source_id"),
-    )
+    __table_args__ = (Index("idx_thread_sources_source_id", "source_id"),)
 
     thread_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -164,9 +160,7 @@ class ThreadEntity(Base):
     """Thread Entity membership."""
 
     __tablename__ = "thread_entities"
-    __table_args__ = (
-        Index("idx_thread_entities_entity_id", "entity_id"),
-    )
+    __table_args__ = (Index("idx_thread_entities_entity_id", "entity_id"),)
 
     thread_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -193,9 +187,7 @@ class ThreadConversation(Base):
     """Thread Conversation membership."""
 
     __tablename__ = "thread_conversations"
-    __table_args__ = (
-        Index("idx_thread_conversations_conversation_id", "conversation_id"),
-    )
+    __table_args__ = (Index("idx_thread_conversations_conversation_id", "conversation_id"),)
 
     thread_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -222,9 +214,7 @@ class ThreadQuestion(Base):
     """Thread Question per CONTRACT v0.4.2 §7.1."""
 
     __tablename__ = "thread_questions"
-    __table_args__ = (
-        Index("idx_thread_questions_thread_id", "thread_id"),
-    )
+    __table_args__ = (Index("idx_thread_questions_thread_id", "thread_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -266,9 +256,7 @@ class ThreadDiscovery(Base):
     """Thread Discovery per CONTRACT v0.4.2 §7.1."""
 
     __tablename__ = "thread_discoveries"
-    __table_args__ = (
-        Index("idx_thread_discoveries_thread_id", "thread_id"),
-    )
+    __table_args__ = (Index("idx_thread_discoveries_thread_id", "thread_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

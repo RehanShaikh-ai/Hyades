@@ -98,9 +98,7 @@ class CollectionNote(Base):
     """Collection Note membership."""
 
     __tablename__ = "collection_notes"
-    __table_args__ = (
-        Index("idx_collection_notes_note_id", "note_id"),
-    )
+    __table_args__ = (Index("idx_collection_notes_note_id", "note_id"),)
 
     collection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -127,9 +125,7 @@ class CollectionSource(Base):
     """Collection Source membership."""
 
     __tablename__ = "collection_sources"
-    __table_args__ = (
-        Index("idx_collection_sources_source_id", "source_id"),
-    )
+    __table_args__ = (Index("idx_collection_sources_source_id", "source_id"),)
 
     collection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -148,7 +144,9 @@ class CollectionSource(Base):
         nullable=False,
     )
 
-    collection: Mapped["Collection"] = relationship("Collection", back_populates="collection_sources")
+    collection: Mapped["Collection"] = relationship(
+        "Collection", back_populates="collection_sources"
+    )
     source: Mapped["Source"] = relationship("Source")
 
 
@@ -156,9 +154,7 @@ class CollectionEntity(Base):
     """Collection Entity membership."""
 
     __tablename__ = "collection_entities"
-    __table_args__ = (
-        Index("idx_collection_entities_entity_id", "entity_id"),
-    )
+    __table_args__ = (Index("idx_collection_entities_entity_id", "entity_id"),)
 
     collection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -177,7 +173,9 @@ class CollectionEntity(Base):
         nullable=False,
     )
 
-    collection: Mapped["Collection"] = relationship("Collection", back_populates="collection_entities")
+    collection: Mapped["Collection"] = relationship(
+        "Collection", back_populates="collection_entities"
+    )
     entity: Mapped["GraphEntity"] = relationship("GraphEntity")
 
 
@@ -185,9 +183,7 @@ class CollectionConversation(Base):
     """Collection Conversation membership."""
 
     __tablename__ = "collection_conversations"
-    __table_args__ = (
-        Index("idx_collection_conversations_conversation_id", "conversation_id"),
-    )
+    __table_args__ = (Index("idx_collection_conversations_conversation_id", "conversation_id"),)
 
     collection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -206,5 +202,7 @@ class CollectionConversation(Base):
         nullable=False,
     )
 
-    collection: Mapped["Collection"] = relationship("Collection", back_populates="collection_conversations")
+    collection: Mapped["Collection"] = relationship(
+        "Collection", back_populates="collection_conversations"
+    )
     conversation: Mapped["Conversation"] = relationship("Conversation")

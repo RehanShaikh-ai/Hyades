@@ -10,9 +10,10 @@ v0.3.1 models: IndexJob, NoteVersion, SavedSearch
 v0.3.2 models: GraphEntity, GraphRelationship, EntityChunk,
                NoteCluster, NoteClusterMember, LinkSuggestion
 v0.4.1 models: ContentChunk, Conversation, Message, MessageCitation, SourceNoteLink
-v0.4.2 models: Collection, CollectionNote, CollectionSource, CollectionEntity, CollectionConversation,
-               Thread, ThreadNote, ThreadSource, ThreadEntity, ThreadConversation, ThreadQuestion, ThreadDiscovery,
-               SavedView, InboxItem
+v0.4.2 models: Collection, CollectionNote, CollectionSource, CollectionEntity,
+               CollectionConversation, Thread, ThreadNote, ThreadSource,
+               ThreadEntity, ThreadConversation, ThreadQuestion,
+               ThreadDiscovery, SavedView, InboxItem
 """
 
 from app.models.collection import (

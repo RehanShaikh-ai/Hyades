@@ -47,7 +47,11 @@ def list_inbox_items(
     page_size: int = 20,
     status: str | None = None,
 ) -> tuple[list[dict], int]:
-    stmt = select(InboxItem, Source).join(Source, InboxItem.source_id == Source.id).where(InboxItem.workspace_id == workspace_id)
+    stmt = (
+        select(InboxItem, Source)
+        .join(Source, InboxItem.source_id == Source.id)
+        .where(InboxItem.workspace_id == workspace_id)
+    )
     count_stmt = select(func.count(InboxItem.id)).where(InboxItem.workspace_id == workspace_id)
 
     if status:
@@ -61,23 +65,25 @@ def list_inbox_items(
 
     items = []
     for inbox_item, source in results:
-        items.append({
-            "id": inbox_item.id,
-            "workspace_id": inbox_item.workspace_id,
-            "source_id": inbox_item.source_id,
-            "status": inbox_item.status,
-            "detection_status": inbox_item.detection_status,
-            "detected_count": inbox_item.detected_count,
-            "detected_entities": inbox_item.detected_entities,
-            "detection_truncated": inbox_item.detection_truncated,
-            "extraction_job_id": inbox_item.extraction_job_id,
-            "created_at": inbox_item.created_at,
-            "decided_at": inbox_item.decided_at,
-            "source_title": source.original_path.split("/")[-1],
-            "source_type": source.source_type,
-            "file_size_bytes": source.file_size_bytes,
-            "extract_knowledge": source.extract_knowledge,
-        })
+        items.append(
+            {
+                "id": inbox_item.id,
+                "workspace_id": inbox_item.workspace_id,
+                "source_id": inbox_item.source_id,
+                "status": inbox_item.status,
+                "detection_status": inbox_item.detection_status,
+                "detected_count": inbox_item.detected_count,
+                "detected_entities": inbox_item.detected_entities,
+                "detection_truncated": inbox_item.detection_truncated,
+                "extraction_job_id": inbox_item.extraction_job_id,
+                "created_at": inbox_item.created_at,
+                "decided_at": inbox_item.decided_at,
+                "source_title": source.original_path.split("/")[-1],
+                "source_type": source.source_type,
+                "file_size_bytes": source.file_size_bytes,
+                "extract_knowledge": source.extract_knowledge,
+            }
+        )
 
     return items, total
 

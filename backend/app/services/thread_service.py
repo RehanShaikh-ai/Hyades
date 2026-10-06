@@ -110,12 +110,14 @@ def get_thread_items(session: Session, thread_id: UUID) -> list[dict]:
         .where(ThreadNote.thread_id == thread.id)
     )
     for tn, note in notes_res.all():
-        items.append({
-            "item_type": "note",
-            "item_id": note.id,
-            "title": note.title,
-            "added_at": tn.added_at,
-        })
+        items.append(
+            {
+                "item_type": "note",
+                "item_id": note.id,
+                "title": note.title,
+                "added_at": tn.added_at,
+            }
+        )
 
     sources_res = session.execute(
         select(ThreadSource, Source)
@@ -123,12 +125,14 @@ def get_thread_items(session: Session, thread_id: UUID) -> list[dict]:
         .where(ThreadSource.thread_id == thread.id)
     )
     for ts, src in sources_res.all():
-        items.append({
-            "item_type": "source",
-            "item_id": src.id,
-            "title": src.original_path.split("/")[-1],
-            "added_at": ts.added_at,
-        })
+        items.append(
+            {
+                "item_type": "source",
+                "item_id": src.id,
+                "title": src.original_path.split("/")[-1],
+                "added_at": ts.added_at,
+            }
+        )
 
     entities_res = session.execute(
         select(ThreadEntity, GraphEntity)
@@ -136,12 +140,14 @@ def get_thread_items(session: Session, thread_id: UUID) -> list[dict]:
         .where(ThreadEntity.thread_id == thread.id)
     )
     for te, ent in entities_res.all():
-        items.append({
-            "item_type": "entity",
-            "item_id": ent.id,
-            "title": ent.name,
-            "added_at": te.added_at,
-        })
+        items.append(
+            {
+                "item_type": "entity",
+                "item_id": ent.id,
+                "title": ent.name,
+                "added_at": te.added_at,
+            }
+        )
 
     convs_res = session.execute(
         select(ThreadConversation, Conversation)
@@ -149,12 +155,14 @@ def get_thread_items(session: Session, thread_id: UUID) -> list[dict]:
         .where(ThreadConversation.thread_id == thread.id)
     )
     for tc, conv in convs_res.all():
-        items.append({
-            "item_type": "conversation",
-            "item_id": conv.id,
-            "title": conv.title,
-            "added_at": tc.added_at,
-        })
+        items.append(
+            {
+                "item_type": "conversation",
+                "item_id": conv.id,
+                "title": conv.title,
+                "added_at": tc.added_at,
+            }
+        )
 
     return items
 
@@ -175,7 +183,11 @@ def create_thread_question(
 
 def list_thread_questions(session: Session, thread_id: UUID) -> list[ThreadQuestion]:
     get_thread(session, thread_id)
-    stmt = select(ThreadQuestion).where(ThreadQuestion.thread_id == thread_id).order_by(ThreadQuestion.created_at.asc())
+    stmt = (
+        select(ThreadQuestion)
+        .where(ThreadQuestion.thread_id == thread_id)
+        .order_by(ThreadQuestion.created_at.asc())
+    )
     return list(session.scalars(stmt).all())
 
 
@@ -225,7 +237,11 @@ def create_thread_discovery(
 
 def list_thread_discoveries(session: Session, thread_id: UUID) -> list[ThreadDiscovery]:
     get_thread(session, thread_id)
-    stmt = select(ThreadDiscovery).where(ThreadDiscovery.thread_id == thread_id).order_by(ThreadDiscovery.created_at.desc())
+    stmt = (
+        select(ThreadDiscovery)
+        .where(ThreadDiscovery.thread_id == thread_id)
+        .order_by(ThreadDiscovery.created_at.desc())
+    )
     return list(session.scalars(stmt).all())
 
 
@@ -244,21 +260,25 @@ def get_thread_activity(session: Session, thread_id: UUID) -> list[dict]:
 
     questions = list_thread_questions(session, thread_id)
     for q in questions:
-        activities.append({
-            "id": q.id,
-            "activity_type": "question_created",
-            "description": f"Added question: {q.text[:50]}...",
-            "timestamp": q.created_at,
-        })
+        activities.append(
+            {
+                "id": q.id,
+                "activity_type": "question_created",
+                "description": f"Added question: {q.text[:50]}...",
+                "timestamp": q.created_at,
+            }
+        )
 
     discoveries = list_thread_discoveries(session, thread_id)
     for d in discoveries:
-        activities.append({
-            "id": d.id,
-            "activity_type": "discovery_logged",
-            "description": f"Logged discovery: {d.content[:50]}...",
-            "timestamp": d.created_at,
-        })
+        activities.append(
+            {
+                "id": d.id,
+                "activity_type": "discovery_logged",
+                "description": f"Logged discovery: {d.content[:50]}...",
+                "timestamp": d.created_at,
+            }
+        )
 
     activities.sort(key=lambda x: x["timestamp"], reverse=True)
     return activities

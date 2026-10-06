@@ -8,8 +8,10 @@ CONTRACT_v0.4.2.md §7:
 - Add `extract_knowledge` to notes
 - Add `extract_knowledge` and `mime_type` to sources
 - Make `entity_chunks.note_id` nullable and add `entity_chunks.source_id` FK
-- Create `collections` table and membership tables (`collection_notes`, `collection_sources`, `collection_entities`, `collection_conversations`)
-- Create `threads` table and membership tables (`thread_notes`, `thread_sources`, `thread_entities`, `thread_conversations`)
+- Create `collections` table and membership tables (`collection_notes`,
+  `collection_sources`, `collection_entities`, `collection_conversations`)
+- Create `threads` table and membership tables (`thread_notes`,
+  `thread_sources`, `thread_entities`, `thread_conversations`)
 - Create `thread_questions` and `thread_discoveries`
 - Create `saved_views` table
 - Create `inbox_items` table
@@ -91,8 +93,18 @@ def upgrade() -> None:
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("icon", sa.String(length=32), nullable=True),
         sa.Column("created_by", sa.UUID(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["workspace_id"], ["workspaces.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
@@ -110,7 +122,9 @@ def upgrade() -> None:
         "collection_notes",
         sa.Column("collection_id", sa.UUID(), nullable=False),
         sa.Column("note_id", sa.UUID(), nullable=False),
-        sa.Column("added_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "added_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["collection_id"], ["collections.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["note_id"], ["notes.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("collection_id", "note_id"),
@@ -121,7 +135,9 @@ def upgrade() -> None:
         "collection_sources",
         sa.Column("collection_id", sa.UUID(), nullable=False),
         sa.Column("source_id", sa.UUID(), nullable=False),
-        sa.Column("added_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "added_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["collection_id"], ["collections.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["source_id"], ["sources.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("collection_id", "source_id"),
@@ -132,7 +148,9 @@ def upgrade() -> None:
         "collection_entities",
         sa.Column("collection_id", sa.UUID(), nullable=False),
         sa.Column("entity_id", sa.UUID(), nullable=False),
-        sa.Column("added_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "added_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["collection_id"], ["collections.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["entity_id"], ["graph_entities.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("collection_id", "entity_id"),
@@ -143,12 +161,18 @@ def upgrade() -> None:
         "collection_conversations",
         sa.Column("collection_id", sa.UUID(), nullable=False),
         sa.Column("conversation_id", sa.UUID(), nullable=False),
-        sa.Column("added_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "added_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["collection_id"], ["collections.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["conversation_id"], ["conversations.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("collection_id", "conversation_id"),
     )
-    op.create_index("idx_collection_conversations_conversation_id", "collection_conversations", ["conversation_id"])
+    op.create_index(
+        "idx_collection_conversations_conversation_id",
+        "collection_conversations",
+        ["conversation_id"],
+    )
 
     # 5. Create threads table
     op.create_table(
@@ -159,8 +183,18 @@ def upgrade() -> None:
         sa.Column("question", sa.Text(), nullable=True),
         sa.Column("status", sa.String(length=20), server_default="active", nullable=False),
         sa.Column("created_by", sa.UUID(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["workspace_id"], ["workspaces.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
@@ -177,7 +211,9 @@ def upgrade() -> None:
         "thread_notes",
         sa.Column("thread_id", sa.UUID(), nullable=False),
         sa.Column("note_id", sa.UUID(), nullable=False),
-        sa.Column("added_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "added_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["thread_id"], ["threads.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["note_id"], ["notes.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("thread_id", "note_id"),
@@ -188,7 +224,9 @@ def upgrade() -> None:
         "thread_sources",
         sa.Column("thread_id", sa.UUID(), nullable=False),
         sa.Column("source_id", sa.UUID(), nullable=False),
-        sa.Column("added_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "added_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["thread_id"], ["threads.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["source_id"], ["sources.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("thread_id", "source_id"),
@@ -199,7 +237,9 @@ def upgrade() -> None:
         "thread_entities",
         sa.Column("thread_id", sa.UUID(), nullable=False),
         sa.Column("entity_id", sa.UUID(), nullable=False),
-        sa.Column("added_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "added_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["thread_id"], ["threads.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["entity_id"], ["graph_entities.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("thread_id", "entity_id"),
@@ -210,12 +250,16 @@ def upgrade() -> None:
         "thread_conversations",
         sa.Column("thread_id", sa.UUID(), nullable=False),
         sa.Column("conversation_id", sa.UUID(), nullable=False),
-        sa.Column("added_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "added_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["thread_id"], ["threads.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["conversation_id"], ["conversations.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("thread_id", "conversation_id"),
     )
-    op.create_index("idx_thread_conversations_conversation_id", "thread_conversations", ["conversation_id"])
+    op.create_index(
+        "idx_thread_conversations_conversation_id", "thread_conversations", ["conversation_id"]
+    )
 
     # 6. Thread questions and discoveries
     op.create_table(
@@ -224,8 +268,18 @@ def upgrade() -> None:
         sa.Column("thread_id", sa.UUID(), nullable=False),
         sa.Column("text", sa.Text(), nullable=False),
         sa.Column("is_resolved", sa.Boolean(), server_default=sa.text("false"), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["thread_id"], ["threads.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -236,7 +290,12 @@ def upgrade() -> None:
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("thread_id", sa.UUID(), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["thread_id"], ["threads.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -251,8 +310,18 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=150), nullable=False),
         sa.Column("state", json_type, nullable=False),
         sa.Column("created_by", sa.UUID(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["workspace_id"], ["workspaces.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
@@ -267,12 +336,21 @@ def upgrade() -> None:
         sa.Column("workspace_id", sa.UUID(), nullable=False),
         sa.Column("source_id", sa.UUID(), nullable=False),
         sa.Column("status", sa.String(length=20), server_default="pending", nullable=False),
-        sa.Column("detection_status", sa.String(length=20), server_default="queued", nullable=False),
+        sa.Column(
+            "detection_status", sa.String(length=20), server_default="queued", nullable=False
+        ),
         sa.Column("detected_count", sa.Integer(), server_default="0", nullable=False),
         sa.Column("detected_entities", json_type, nullable=True),
-        sa.Column("detection_truncated", sa.Boolean(), server_default=sa.text("false"), nullable=False),
+        sa.Column(
+            "detection_truncated", sa.Boolean(), server_default=sa.text("false"), nullable=False
+        ),
         sa.Column("extraction_job_id", sa.UUID(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.Column("decided_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(["workspace_id"], ["workspaces.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["source_id"], ["sources.id"], ondelete="CASCADE"),
@@ -314,7 +392,9 @@ def downgrade() -> None:
     op.drop_index("idx_threads_workspace_status_updated", table_name="threads")
     op.drop_table("threads")
 
-    op.drop_index("idx_collection_conversations_conversation_id", table_name="collection_conversations")
+    op.drop_index(
+        "idx_collection_conversations_conversation_id", table_name="collection_conversations"
+    )
     op.drop_table("collection_conversations")
 
     op.drop_index("idx_collection_entities_entity_id", table_name="collection_entities")

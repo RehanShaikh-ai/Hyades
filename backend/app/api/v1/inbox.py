@@ -1,5 +1,6 @@
 """Knowledge Inbox API endpoints per CONTRACT v0.4.2 §8.4."""
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -22,10 +23,10 @@ router = APIRouter(tags=["inbox"])
 )
 def list_inbox_items(
     workspace_id: UUID,
+    session: Annotated[Session, Depends(get_db)],
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     status: str | None = Query(default=None),
-    session: Session = Depends(get_db),
 ):
     items, total = inbox_service.list_inbox_items(
         session=session,
@@ -49,7 +50,7 @@ def list_inbox_items(
 def get_inbox_item(
     workspace_id: UUID,
     inbox_item_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     return inbox_service.get_inbox_item(session, inbox_item_id)
 
@@ -62,7 +63,7 @@ def update_inbox_item(
     workspace_id: UUID,
     inbox_item_id: UUID,
     data: InboxItemUpdate,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     return inbox_service.update_inbox_item(session, inbox_item_id, data)
 
@@ -74,7 +75,7 @@ def update_inbox_item(
 def accept_inbox_item(
     workspace_id: UUID,
     inbox_item_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     return inbox_service.accept_inbox_item(session, inbox_item_id)
 
@@ -86,7 +87,7 @@ def accept_inbox_item(
 def reject_inbox_item(
     workspace_id: UUID,
     inbox_item_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     inbox_service.reject_inbox_item(session, inbox_item_id)
 
@@ -98,6 +99,6 @@ def reject_inbox_item(
 def redetect_inbox_item(
     workspace_id: UUID,
     inbox_item_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     return inbox_service.get_inbox_item(session, inbox_item_id)

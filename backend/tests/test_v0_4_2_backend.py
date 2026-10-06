@@ -111,14 +111,14 @@ def test_saved_views_flow(client, workspace_fixture):
     res = client.post(
         f"/api/v1/workspaces/{ws_id}/saved-views",
         json={
-          "name": "Main Cluster View",
-          "state": {
-            "version": 1,
-            "zoom": 1.5,
-            "center": {"x": 100.0, "y": 200.0},
-            "filters": {},
-            "focus_entity_ids": []
-          }
+            "name": "Main Cluster View",
+            "state": {
+                "version": 1,
+                "zoom": 1.5,
+                "center": {"x": 100.0, "y": 200.0},
+                "filters": {},
+                "focus_entity_ids": [],
+            },
         },
     )
     assert res.status_code == 201

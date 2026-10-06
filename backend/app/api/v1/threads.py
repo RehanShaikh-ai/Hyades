@@ -1,5 +1,6 @@
 """Threads API endpoints per CONTRACT v0.4.2 §8.2."""
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -42,11 +43,12 @@ router = APIRouter(tags=["threads"])
 def create_thread(
     workspace_id: UUID,
     data: ThreadCreate,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     ws = session.get(Workspace, workspace_id)
     if not ws:
         from app.core.exceptions import NotFoundError
+
         raise NotFoundError(f"Workspace '{workspace_id}' not found")
 
     return thread_service.create_thread(
@@ -63,10 +65,10 @@ def create_thread(
 )
 def list_threads(
     workspace_id: UUID,
+    session: Annotated[Session, Depends(get_db)],
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     status: str | None = Query(default=None),
-    session: Session = Depends(get_db),
 ):
     items, total = thread_service.list_threads(
         session=session,
@@ -90,7 +92,7 @@ def list_threads(
 def get_thread(
     workspace_id: UUID,
     thread_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     return thread_service.get_thread(session, thread_id)
 
@@ -103,7 +105,7 @@ def update_thread(
     workspace_id: UUID,
     thread_id: UUID,
     data: ThreadUpdate,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     return thread_service.update_thread(session, thread_id, data)
 
@@ -115,7 +117,7 @@ def update_thread(
 def delete_thread(
     workspace_id: UUID,
     thread_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     thread_service.delete_thread(session, thread_id)
 
@@ -127,7 +129,7 @@ def delete_thread(
 def get_thread_items(
     workspace_id: UUID,
     thread_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     items = thread_service.get_thread_items(session, thread_id)
     return KnowledgeItemListResponse(
@@ -146,7 +148,7 @@ def add_thread_item(
     workspace_id: UUID,
     thread_id: UUID,
     data: KnowledgeItemAddRequest,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     thread = thread_service.get_thread(session, thread_id)
     membership_service.add_thread_item(
@@ -167,7 +169,7 @@ def remove_thread_item(
     thread_id: UUID,
     item_type: str,
     item_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     if item_type == "note":
         session.query(ThreadNote).filter(
@@ -196,7 +198,7 @@ def remove_thread_item(
 def list_thread_questions(
     workspace_id: UUID,
     thread_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     return thread_service.list_thread_questions(session, thread_id)
 
@@ -210,7 +212,7 @@ def create_thread_question(
     workspace_id: UUID,
     thread_id: UUID,
     data: ThreadQuestionCreate,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     return thread_service.create_thread_question(session, thread_id, data)
 
@@ -224,7 +226,7 @@ def update_thread_question(
     thread_id: UUID,
     question_id: UUID,
     data: ThreadQuestionUpdate,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     return thread_service.update_thread_question(session, thread_id, question_id, data)
 
@@ -237,7 +239,7 @@ def delete_thread_question(
     workspace_id: UUID,
     thread_id: UUID,
     question_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     thread_service.delete_thread_question(session, thread_id, question_id)
 
@@ -250,7 +252,7 @@ def delete_thread_question(
 def list_thread_discoveries(
     workspace_id: UUID,
     thread_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     return thread_service.list_thread_discoveries(session, thread_id)
 
@@ -264,7 +266,7 @@ def create_thread_discovery(
     workspace_id: UUID,
     thread_id: UUID,
     data: ThreadDiscoveryCreate,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     return thread_service.create_thread_discovery(session, thread_id, data)
 
@@ -277,7 +279,7 @@ def delete_thread_discovery(
     workspace_id: UUID,
     thread_id: UUID,
     discovery_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     thread_service.delete_thread_discovery(session, thread_id, discovery_id)
 
@@ -289,7 +291,7 @@ def delete_thread_discovery(
 def get_thread_activity(
     workspace_id: UUID,
     thread_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     items = thread_service.get_thread_activity(session, thread_id)
     return ThreadActivityResponse(items=items, total=len(items))

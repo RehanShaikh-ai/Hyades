@@ -1,6 +1,7 @@
 """Membership service per CONTRACT v0.4.2 §6.1, §6.2.
 
-Provides reusable methods for Collection and Thread memberships across notes, sources, entities, and conversations.
+Provides reusable methods for Collection and Thread memberships across notes,
+sources, entities, and conversations.
 """
 
 from typing import Literal

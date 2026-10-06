@@ -118,12 +118,14 @@ def get_collection_items(session: Session, collection_id: UUID) -> list[dict]:
         .where(CollectionNote.collection_id == collection.id)
     )
     for cn, note in notes_res.all():
-        items.append({
-            "item_type": "note",
-            "item_id": note.id,
-            "title": note.title,
-            "added_at": cn.added_at,
-        })
+        items.append(
+            {
+                "item_type": "note",
+                "item_id": note.id,
+                "title": note.title,
+                "added_at": cn.added_at,
+            }
+        )
 
     sources_res = session.execute(
         select(CollectionSource, Source)
@@ -131,12 +133,14 @@ def get_collection_items(session: Session, collection_id: UUID) -> list[dict]:
         .where(CollectionSource.collection_id == collection.id)
     )
     for cs, src in sources_res.all():
-        items.append({
-            "item_type": "source",
-            "item_id": src.id,
-            "title": src.original_path.split("/")[-1],
-            "added_at": cs.added_at,
-        })
+        items.append(
+            {
+                "item_type": "source",
+                "item_id": src.id,
+                "title": src.original_path.split("/")[-1],
+                "added_at": cs.added_at,
+            }
+        )
 
     entities_res = session.execute(
         select(CollectionEntity, GraphEntity)
@@ -144,12 +148,14 @@ def get_collection_items(session: Session, collection_id: UUID) -> list[dict]:
         .where(CollectionEntity.collection_id == collection.id)
     )
     for ce, ent in entities_res.all():
-        items.append({
-            "item_type": "entity",
-            "item_id": ent.id,
-            "title": ent.name,
-            "added_at": ce.added_at,
-        })
+        items.append(
+            {
+                "item_type": "entity",
+                "item_id": ent.id,
+                "title": ent.name,
+                "added_at": ce.added_at,
+            }
+        )
 
     convs_res = session.execute(
         select(CollectionConversation, Conversation)
@@ -157,12 +163,14 @@ def get_collection_items(session: Session, collection_id: UUID) -> list[dict]:
         .where(CollectionConversation.collection_id == collection.id)
     )
     for cc, conv in convs_res.all():
-        items.append({
-            "item_type": "conversation",
-            "item_id": conv.id,
-            "title": conv.title,
-            "added_at": cc.added_at,
-        })
+        items.append(
+            {
+                "item_type": "conversation",
+                "item_id": conv.id,
+                "title": conv.title,
+                "added_at": cc.added_at,
+            }
+        )
 
     return items
 
@@ -170,21 +178,41 @@ def get_collection_items(session: Session, collection_id: UUID) -> list[dict]:
 def get_collection_stats(session: Session, collection_id: UUID) -> dict:
     collection = get_collection(session, collection_id)
 
-    note_count = session.scalar(
-        select(func.count(CollectionNote.note_id)).where(CollectionNote.collection_id == collection.id)
-    ) or 0
+    note_count = (
+        session.scalar(
+            select(func.count(CollectionNote.note_id)).where(
+                CollectionNote.collection_id == collection.id
+            )
+        )
+        or 0
+    )
 
-    source_count = session.scalar(
-        select(func.count(CollectionSource.source_id)).where(CollectionSource.collection_id == collection.id)
-    ) or 0
+    source_count = (
+        session.scalar(
+            select(func.count(CollectionSource.source_id)).where(
+                CollectionSource.collection_id == collection.id
+            )
+        )
+        or 0
+    )
 
-    entity_count = session.scalar(
-        select(func.count(CollectionEntity.entity_id)).where(CollectionEntity.collection_id == collection.id)
-    ) or 0
+    entity_count = (
+        session.scalar(
+            select(func.count(CollectionEntity.entity_id)).where(
+                CollectionEntity.collection_id == collection.id
+            )
+        )
+        or 0
+    )
 
-    conversation_count = session.scalar(
-        select(func.count(CollectionConversation.conversation_id)).where(CollectionConversation.collection_id == collection.id)
-    ) or 0
+    conversation_count = (
+        session.scalar(
+            select(func.count(CollectionConversation.conversation_id)).where(
+                CollectionConversation.collection_id == collection.id
+            )
+        )
+        or 0
+    )
 
     return {
         "collection_id": collection.id,
@@ -215,10 +243,12 @@ def get_collection_related(session: Session, collection_id: UUID) -> list[Relate
     for r in rels:
         ent = session.get(GraphEntity, r.target_entity_id)
         if ent:
-            related.append(RelatedEntity(
-                id=ent.id,
-                name=ent.name,
-                entity_type=ent.entity_type,
-                connection_count=1,
-            ))
+            related.append(
+                RelatedEntity(
+                    id=ent.id,
+                    name=ent.name,
+                    entity_type=ent.entity_type,
+                    connection_count=1,
+                )
+            )
     return related

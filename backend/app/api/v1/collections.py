@@ -1,5 +1,6 @@
 """Collections API endpoints per CONTRACT v0.4.2 §8.1."""
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -38,11 +39,12 @@ router = APIRouter(tags=["collections"])
 def create_collection(
     workspace_id: UUID,
     data: CollectionCreate,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     ws = session.get(Workspace, workspace_id)
     if not ws:
         from app.core.exceptions import NotFoundError
+
         raise NotFoundError(f"Workspace '{workspace_id}' not found")
 
     return collection_service.create_collection(
@@ -59,9 +61,9 @@ def create_collection(
 )
 def list_collections(
     workspace_id: UUID,
+    session: Annotated[Session, Depends(get_db)],
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
-    session: Session = Depends(get_db),
 ):
     items, total = collection_service.list_collections(
         session=session,
@@ -84,7 +86,7 @@ def list_collections(
 def get_collection(
     workspace_id: UUID,
     collection_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     return collection_service.get_collection(session, collection_id)
 
@@ -97,7 +99,7 @@ def update_collection(
     workspace_id: UUID,
     collection_id: UUID,
     data: CollectionUpdate,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     return collection_service.update_collection(session, collection_id, data)
 
@@ -109,7 +111,7 @@ def update_collection(
 def delete_collection(
     workspace_id: UUID,
     collection_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     collection_service.delete_collection(session, collection_id)
 
@@ -121,7 +123,7 @@ def delete_collection(
 def get_collection_items(
     workspace_id: UUID,
     collection_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     items = collection_service.get_collection_items(session, collection_id)
     return KnowledgeItemListResponse(
@@ -140,7 +142,7 @@ def add_collection_item(
     workspace_id: UUID,
     collection_id: UUID,
     data: KnowledgeItemAddRequest,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     collection = collection_service.get_collection(session, collection_id)
     membership_service.add_collection_item(
@@ -161,7 +163,7 @@ def remove_collection_item(
     collection_id: UUID,
     item_type: str,
     item_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     if item_type == "note":
         session.query(CollectionNote).filter(
@@ -177,7 +179,8 @@ def remove_collection_item(
         ).delete()
     elif item_type == "conversation":
         session.query(CollectionConversation).filter(
-            CollectionConversation.collection_id == collection_id, CollectionConversation.conversation_id == item_id
+            CollectionConversation.collection_id == collection_id,
+            CollectionConversation.conversation_id == item_id,
         ).delete()
     session.commit()
 
@@ -189,7 +192,7 @@ def remove_collection_item(
 def get_collection_stats(
     workspace_id: UUID,
     collection_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     return collection_service.get_collection_stats(session, collection_id)
 
@@ -201,7 +204,7 @@ def get_collection_stats(
 def get_collection_related(
     workspace_id: UUID,
     collection_id: UUID,
-    session: Session = Depends(get_db),
+    session: Annotated[Session, Depends(get_db)],
 ):
     related = collection_service.get_collection_related(session, collection_id)
     return CollectionRelatedResponse(
