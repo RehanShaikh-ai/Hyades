@@ -2,7 +2,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Workspace } from '@/types/workspaces';
 import { HealthStatus } from '@/hooks/useHealth';
 
-export type HyadesDestination = 'overview' | 'library' | 'observatory' | 'stella';
+export type HyadesDestination =
+  | 'overview'
+  | 'library'
+  | 'observatory'
+  | 'stella'
+  | 'collections'
+  | 'threads'
+  | 'inbox';
 
 interface HyadesHeaderProps {
   currentDestination: HyadesDestination;
@@ -36,6 +43,9 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
   const navRailRef = useRef<HTMLElement>(null);
   const tabRefs = useRef<Record<HyadesDestination, HTMLButtonElement | null>>({
     overview: null,
+    collections: null,
+    threads: null,
+    inbox: null,
     library: null,
     observatory: null,
     stella: null,
@@ -78,6 +88,9 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
 
   const destinationTitle = {
     overview: 'Overview',
+    collections: 'Collections',
+    threads: 'Threads',
+    inbox: 'Inbox',
     library: 'Library',
     observatory: 'Observatory',
     stella: 'Stella',
@@ -128,6 +141,36 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             aria-current={currentDestination === 'overview' ? 'page' : undefined}
           >
             <span>Overview</span>
+          </button>
+          <button
+            ref={(el) => { tabRefs.current.collections = el; }}
+            type="button"
+            aria-label="Collections"
+            onClick={() => onNavigate('collections')}
+            className={`nav-item flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] focus-visible:rounded-md ${currentDestination === 'collections' ? 'active' : ''}`}
+            aria-current={currentDestination === 'collections' ? 'page' : undefined}
+          >
+            <span>Collections</span>
+          </button>
+          <button
+            ref={(el) => { tabRefs.current.threads = el; }}
+            type="button"
+            aria-label="Threads"
+            onClick={() => onNavigate('threads')}
+            className={`nav-item flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] focus-visible:rounded-md ${currentDestination === 'threads' ? 'active' : ''}`}
+            aria-current={currentDestination === 'threads' ? 'page' : undefined}
+          >
+            <span>Threads</span>
+          </button>
+          <button
+            ref={(el) => { tabRefs.current.inbox = el; }}
+            type="button"
+            aria-label="Inbox"
+            onClick={() => onNavigate('inbox')}
+            className={`nav-item flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] focus-visible:rounded-md ${currentDestination === 'inbox' ? 'active' : ''}`}
+            aria-current={currentDestination === 'inbox' ? 'page' : undefined}
+          >
+            <span>Inbox</span>
           </button>
           <button
             ref={(el) => { tabRefs.current.library = el; }}
