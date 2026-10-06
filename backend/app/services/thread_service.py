@@ -239,7 +239,7 @@ def delete_thread_discovery(session: Session, thread_id: UUID, discovery_id: UUI
 
 
 def get_thread_activity(session: Session, thread_id: UUID) -> list[dict]:
-    thread = get_thread(session, thread_id)
+    get_thread(session, thread_id)
     activities = []
 
     questions = list_thread_questions(session, thread_id)

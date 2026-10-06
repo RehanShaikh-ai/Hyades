@@ -85,7 +85,6 @@ def test_threads_crud_flow(client, workspace_fixture):
         json={"text": "What is the token limit?"},
     )
     assert res.status_code == 201
-    q_id = res.json()["id"]
 
     # 3. List questions
     res = client.get(f"/api/v1/workspaces/{ws_id}/threads/{th_id}/questions")
