@@ -10,9 +10,6 @@ import { HyadesOverview } from './HyadesOverview';
 import { HyadesLibrary } from './HyadesLibrary';
 import { HyadesObservatory } from './HyadesObservatory';
 import { HyadesStella } from './HyadesStella';
-import { HyadesCollections } from './HyadesCollections';
-import { HyadesThreads } from './HyadesThreads';
-import { HyadesInbox } from './HyadesInbox';
 import { HyadesGlobalSearchModal } from '@/components/search/HyadesGlobalSearchModal';
 import { HyadesAccountModal } from '@/components/navigation/HyadesAccountModal';
 import { ObservatoryTarget, StellaContext } from '@/types/navigation';
@@ -28,7 +25,7 @@ export interface HyadesAppProps {
   onRefreshHealth?: () => void;
 }
 
-export type TabType = 'overview' | 'library' | 'observatory' | 'stella' | 'collections' | 'threads' | 'inbox';
+export type TabType = 'overview' | 'library' | 'observatory' | 'stella';
 
 export const HyadesApp: React.FC<HyadesAppProps> = ({
   workspaceId: initialWorkspaceId,
@@ -217,18 +214,6 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
             onNewNote={handleNewNote}
             environmentIndex={environmentIndex}
           />
-        )}
-
-        {(currentDestination as string) === 'collections' && (
-          <HyadesCollections workspaceId={effectiveWorkspaceId} />
-        )}
-
-        {(currentDestination as string) === 'threads' && (
-          <HyadesThreads workspaceId={effectiveWorkspaceId} />
-        )}
-
-        {(currentDestination as string) === 'inbox' && (
-          <HyadesInbox workspaceId={effectiveWorkspaceId} />
         )}
 
         {currentDestination === 'library' && (
