@@ -12,6 +12,7 @@ from app.models.thread import (
     ThreadNote,
     ThreadSource,
 )
+from app.models.workspace import Workspace
 from app.schemas.knowledge_item import (
     KnowledgeItemAddRequest,
     KnowledgeItemListResponse,
@@ -28,7 +29,6 @@ from app.schemas.thread import (
     ThreadResponse,
     ThreadUpdate,
 )
-from app.models.workspace import Workspace
 from app.services import membership_service, thread_service
 
 router = APIRouter(tags=["threads"])

@@ -6,13 +6,13 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.workspace import Workspace
 from app.schemas.saved_view import (
     SavedViewCreate,
     SavedViewListResponse,
     SavedViewResponse,
     SavedViewUpdate,
 )
-from app.models.workspace import Workspace
 from app.services import saved_view_service
 
 router = APIRouter(tags=["saved-views"])

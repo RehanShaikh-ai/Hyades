@@ -5,7 +5,7 @@ export interface KnowledgeItem {
   item_id: string;
   title: string;
   added_at: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface KnowledgeItemAddRequest {
@@ -82,14 +82,14 @@ export interface ThreadActivityItem {
   activity_type: string;
   description: string;
   timestamp: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface SavedViewState {
   version: number;
   zoom: number;
   center: { x: number; y: number };
-  filters: Record<string, any>;
+  filters: Record<string, unknown>;
   focus_entity_ids: string[];
 }
 

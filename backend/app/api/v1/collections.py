@@ -6,6 +6,13 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.collection import (
+    CollectionConversation,
+    CollectionEntity,
+    CollectionNote,
+    CollectionSource,
+)
+from app.models.workspace import Workspace
 from app.schemas.collection import (
     CollectionCreate,
     CollectionListResponse,
@@ -14,17 +21,10 @@ from app.schemas.collection import (
     CollectionStatsResponse,
     CollectionUpdate,
 )
-from app.models.collection import (
-    CollectionConversation,
-    CollectionEntity,
-    CollectionNote,
-    CollectionSource,
-)
 from app.schemas.knowledge_item import (
     KnowledgeItemAddRequest,
     KnowledgeItemListResponse,
 )
-from app.models.workspace import Workspace
 from app.services import collection_service, membership_service
 
 router = APIRouter(tags=["collections"])

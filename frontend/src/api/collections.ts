@@ -1,4 +1,4 @@
-import { Collection, CollectionCreate, CollectionStats, CollectionRelatedEntity, KnowledgeItem } from '../types/v0_4_2';
+import { Collection, CollectionCreate, CollectionStats, KnowledgeItem } from '../types/v0_4_2';
 
 const API_BASE = '/api/v1';
 

@@ -9,7 +9,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import ConflictError, NotFoundError, ValidationError
+from app.core.exceptions import ConflictError, ValidationError
 from app.models.collection import (
     Collection,
     CollectionConversation,

@@ -1,8 +1,8 @@
 """Tests for Collections, Threads, Saved Views, Knowledge Inbox, and Extractors (v0.4.2)."""
 
 import uuid
+
 import pytest
-from fastapi.testclient import TestClient
 
 from app.models.user import User
 from app.models.workspace import Workspace

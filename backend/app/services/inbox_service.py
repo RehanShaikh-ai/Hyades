@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import NotFoundError, ValidationError
 from app.models.inbox_item import InboxItem
 from app.models.source import Source
-from app.schemas.inbox import InboxItemResponse, InboxItemUpdate
+from app.schemas.inbox import InboxItemUpdate
 
 
 def create_inbox_item_for_source(
