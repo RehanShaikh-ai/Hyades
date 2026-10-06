@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     from app.models.graph_entity import GraphEntity
     from app.models.graph_relationship import GraphRelationship
     from app.models.note import Note
-    from app.models.source import Source
     from app.models.workspace import Workspace
 
 
@@ -33,7 +32,6 @@ class EntityChunk(Base):
         Index("idx_entity_chunks_entity", "entity_id"),
         Index("idx_entity_chunks_chunk", "chunk_id"),
         Index("idx_entity_chunks_note", "note_id"),
-        Index("idx_entity_chunks_source", "source_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -56,15 +54,10 @@ class EntityChunk(Base):
         ForeignKey("graph_relationships.id", ondelete="CASCADE"),
         nullable=True,
     )
-    note_id: Mapped[uuid.UUID | None] = mapped_column(
+    note_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("notes.id", ondelete="CASCADE"),
-        nullable=True,
-    )
-    source_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("sources.id", ondelete="CASCADE"),
-        nullable=True,
+        nullable=False,
     )
     workspace_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -93,6 +86,5 @@ class EntityChunk(Base):
     relationship: Mapped["GraphRelationship | None"] = sa_relationship(
         "GraphRelationship", back_populates="provenance_chunks"
     )
-    note: Mapped["Note | None"] = sa_relationship("Note")
-    source: Mapped["Source | None"] = sa_relationship("Source")
+    note: Mapped["Note"] = sa_relationship("Note")
     workspace: Mapped["Workspace"] = sa_relationship("Workspace")
