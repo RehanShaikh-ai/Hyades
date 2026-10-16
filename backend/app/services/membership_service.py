@@ -210,3 +210,132 @@ def get_collection_stats(db: Session, collection: Collection) -> CollectionStats
         conversation_count=conversations,
         total_items=notes + sources + entities + conversations,
     )
+
+
+# -- Thread Membership Functions (§8.2) --
+
+from app.models.thread import (
+    Thread,
+    ThreadConversation,
+    ThreadEntity,
+    ThreadNote,
+    ThreadSource,
+)
+
+
+def add_thread_item(
+    db: Session, thread: Thread, item_type: KnowledgeItemType, item_id: uuid.UUID
+) -> KnowledgeItemResponse:
+    """Add a member to a thread. Enforces 409 on duplicate, 422 on cross-workspace."""
+    obj, title, meta = _get_target_object_and_validate(db, thread.workspace_id, item_type, item_id)
+    now = datetime.now(UTC)
+
+    if item_type == "note":
+        existing = db.query(ThreadNote).filter_by(thread_id=thread.id, note_id=item_id).first()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Note already exists in thread")
+        db.add(ThreadNote(thread_id=thread.id, note_id=item_id, added_at=now))
+
+    elif item_type == "source":
+        existing = db.query(ThreadSource).filter_by(thread_id=thread.id, source_id=item_id).first()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Source already exists in thread")
+        db.add(ThreadSource(thread_id=thread.id, source_id=item_id, added_at=now))
+
+    elif item_type == "entity":
+        existing = db.query(ThreadEntity).filter_by(thread_id=thread.id, entity_id=item_id).first()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Entity already exists in thread")
+        db.add(ThreadEntity(thread_id=thread.id, entity_id=item_id, added_at=now))
+
+    elif item_type == "conversation":
+        existing = db.query(ThreadConversation).filter_by(thread_id=thread.id, conversation_id=item_id).first()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conversation already exists in thread")
+        db.add(ThreadConversation(thread_id=thread.id, conversation_id=item_id, added_at=now))
+
+    thread.updated_at = now
+    db.commit()
+
+    return KnowledgeItemResponse(
+        item_type=item_type,
+        item_id=item_id,
+        title=title,
+        added_at=now,
+        metadata=meta,
+    )
+
+
+def remove_thread_item(
+    db: Session, thread: Thread, item_type: KnowledgeItemType, item_id: uuid.UUID
+) -> None:
+    """Remove a member from a thread without deleting target object."""
+    deleted = 0
+    if item_type == "note":
+        deleted = db.query(ThreadNote).filter_by(thread_id=thread.id, note_id=item_id).delete()
+    elif item_type == "source":
+        deleted = db.query(ThreadSource).filter_by(thread_id=thread.id, source_id=item_id).delete()
+    elif item_type == "entity":
+        deleted = db.query(ThreadEntity).filter_by(thread_id=thread.id, entity_id=item_id).delete()
+    elif item_type == "conversation":
+        deleted = db.query(ThreadConversation).filter_by(thread_id=thread.id, conversation_id=item_id).delete()
+
+    if deleted == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{item_type.capitalize()} not in thread")
+
+    thread.updated_at = datetime.now(UTC)
+    db.commit()
+
+
+def list_thread_items(
+    db: Session, thread: Thread, page: int = 1, page_size: int = 20
+) -> KnowledgeItemListResponse:
+    """List thread members across all 4 types sorted by added_at descending."""
+    items: list[KnowledgeItemResponse] = []
+
+    for tn in db.query(ThreadNote).filter_by(thread_id=thread.id).all():
+        n = db.query(Note).filter(Note.id == tn.note_id).first()
+        if n:
+            items.append(KnowledgeItemResponse(
+                item_type="note", item_id=n.id, title=n.title, added_at=tn.added_at,
+                metadata={"is_pinned": n.is_pinned, "is_archived": n.is_archived}
+            ))
+
+    for ts in db.query(ThreadSource).filter_by(thread_id=thread.id).all():
+        s = db.query(Source).filter(Source.id == ts.source_id).first()
+        if s:
+            title = s.original_path.split("/")[-1].split("\\")[-1] or s.source_identifier
+            items.append(KnowledgeItemResponse(
+                item_type="source", item_id=s.id, title=title, added_at=ts.added_at,
+                metadata={"source_type": s.source_type, "mime_type": s.mime_type}
+            ))
+
+    for te in db.query(ThreadEntity).filter_by(thread_id=thread.id).all():
+        e = db.query(GraphEntity).filter(GraphEntity.id == te.entity_id).first()
+        if e:
+            items.append(KnowledgeItemResponse(
+                item_type="entity", item_id=e.id, title=e.name, added_at=te.added_at,
+                metadata={"entity_type": e.entity_type, "is_manual": e.is_manual}
+            ))
+
+    for tc in db.query(ThreadConversation).filter_by(thread_id=thread.id).all():
+        c = db.query(Conversation).filter(Conversation.id == tc.conversation_id).first()
+        if c:
+            items.append(KnowledgeItemResponse(
+                item_type="conversation", item_id=c.id, title=c.title or "Untitled Conversation", added_at=tc.added_at,
+                metadata={}
+            ))
+
+    items.sort(key=lambda x: x.added_at, reverse=True)
+    total = len(items)
+
+    start = (page - 1) * page_size
+    end = start + page_size
+    paginated = items[start:end]
+
+    return KnowledgeItemListResponse(
+        items=paginated,
+        total=total,
+        page=page,
+        page_size=page_size,
+    )

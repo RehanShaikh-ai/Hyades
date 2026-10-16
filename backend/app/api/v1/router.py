@@ -26,6 +26,7 @@ from app.api.v1 import (
     sources,
     suggestions,
     tags,
+    threads,
     users,
     versions,
     workspaces,
@@ -53,3 +54,4 @@ api_router.include_router(versions.router)
 api_router.include_router(activity.router)
 api_router.include_router(saved_searches.router)
 api_router.include_router(collections.router)
+api_router.include_router(threads.router)
