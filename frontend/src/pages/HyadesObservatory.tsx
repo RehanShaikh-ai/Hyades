@@ -2690,159 +2690,91 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         </div>
       )}
 
-      {/* ================= FLOATING MINIMAL SEGMENTED TOP NAVIGATION (APPROVED DESIGN) ================= */}
-      <header className="absolute top-4 left-6 right-6 z-30 flex items-center justify-between pointer-events-none select-none transition-all">
-        {/* SEGMENT 1 (LEFT): Brand + Nav Links + Real Graph Actions */}
-        <div className="flex items-center gap-2.5 bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-3.5 py-1.5 pointer-events-auto">
-          {/* Logo & Identity */}
+      {/* ================= OBSERVATORY CONTEXTUAL ACTION TOOLBAR ================= */}
+      <div className={`absolute ${isFullscreen ? "top-4" : "top-14 sm:top-16"} left-4 sm:left-6 right-4 sm:right-6 z-30 flex items-center justify-between pointer-events-none select-none transition-all`}>
+        {/* SEGMENT 1 (LEFT): Real Graph Actions */}
+        <div className="flex items-center gap-2 bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-3 py-1.5 pointer-events-auto">
+          {/* Action: + Entity */}
           <button
             type="button"
-            onClick={() => onNavigateToDestination?.('overview')}
-            className="flex items-center gap-2 group text-left focus:outline-none cursor-pointer"
-            title="Hyades Overview"
+            onClick={() => setIsEntityEditorOpen(true)}
+            className="px-2.5 py-1 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer"
+            title="Add Entity to Knowledge Sky (A)"
           >
-            <div className="w-6 h-6 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] flex items-center justify-center shadow-xs border border-[#2D3F5E] group-hover:bg-[var(--accent-midnight-light)] transition-colors">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                className="transition-transform duration-700 group-hover:rotate-90"
-              >
-                <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="1.2" strokeDasharray="2,2" strokeOpacity="0.4" />
-                <circle cx="12" cy="12" r="5.5" stroke="currentColor" strokeWidth="1.2" strokeOpacity="0.7" />
-                <path d="M 12 3.5 L 13.5 10.5 L 20.5 12 L 13.5 13.5 L 12 20.5 L 10.5 13.5 L 3.5 12 L 10.5 10.5 Z" fill="currentColor" />
-                <circle cx="12" cy="12" r="1.5" fill="#FAF8F2" />
-              </svg>
-            </div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="serif text-base font-semibold tracking-tight text-[var(--ink-primary)] leading-none">
-                Hyades
-              </span>
-              <span className="text-[9px] tracking-[0.2em] font-medium text-[var(--ink-secondary)] uppercase">
-                Observatory
-              </span>
-            </div>
+            <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
+            <span>+ Entity</span>
           </button>
 
-          <div className="w-px h-3.5 bg-[var(--border-parchment)] mx-1" />
+          {/* Action: Connect */}
+          <button
+            type="button"
+            onClick={() => setIsRelationshipEditorOpen(true)}
+            className="px-2.5 py-1 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer"
+            title="Connect Two Entities (C)"
+          >
+            <i className="ph ph-arrows-split text-xs text-[var(--accent-terracotta)]" />
+            <span>Connect</span>
+          </button>
 
-          {/* Navigation Links */}
-          <nav aria-label="Main navigation" className="hidden md:flex items-center gap-3">
+          {/* Compact More Menu */}
+          <div className="relative">
             <button
               type="button"
-              onClick={() => onNavigateToDestination?.('overview')}
-              className="text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
+              onClick={() => setIsMoreMenuOpen((prev) => !prev)}
+              className="w-6 h-6 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+              title="More Graph Actions"
             >
-              Overview
-            </button>
-            <button
-              type="button"
-              onClick={() => onNavigateToDestination?.('library')}
-              className="text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
-            >
-              Library
-            </button>
-            <button
-              type="button"
-              className="text-xs font-semibold text-[var(--accent-midnight)] flex items-center gap-1 cursor-pointer"
-            >
-              <span>Observatory</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)]" />
-            </button>
-            <button
-              type="button"
-              onClick={() => onNavigateToDestination?.('stella')}
-              className="text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
-            >
-              Stella
-            </button>
-          </nav>
-
-          <div className="w-px h-3.5 bg-[var(--border-parchment)] mx-1" />
-
-          {/* Real Actions: + Entity & Connect & More */}
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setIsEntityEditorOpen(true)}
-              className="px-2.5 py-1 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer"
-              title="Add Entity to Knowledge Sky (A)"
-            >
-              <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
-              <span>+ Entity</span>
+              <i className="ph-bold ph-dots-three-vertical text-xs" />
             </button>
 
-            <button
-              type="button"
-              onClick={() => setIsRelationshipEditorOpen(true)}
-              className="px-2.5 py-1 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer"
-              title="Connect Two Entities (C)"
-            >
-              <i className="ph ph-arrows-split text-xs text-[var(--accent-terracotta)]" />
-              <span>Connect</span>
-            </button>
-
-            {/* Compact More Menu */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsMoreMenuOpen((prev) => !prev)}
-                className="w-6 h-6 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
-                title="More Graph Actions"
-              >
-                <i className="ph-bold ph-dots-three-vertical text-xs" />
-              </button>
-
-              {isMoreMenuOpen && (
-                <div className="absolute left-0 mt-2 w-48 bg-white border border-[var(--border-strong)] rounded-xl shadow-lg py-1.5 z-50 text-xs animate-fade-in">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleUntangle();
-                      setIsMoreMenuOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-                  >
-                    <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
-                    <span>Untangle / Organize (U)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsSuggestionsOpen(true);
-                      setIsMoreMenuOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-                  >
-                    <i className="ph ph-sparkle text-xs text-[var(--accent-terracotta)]" />
-                    <span>Link Suggestions</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAtlasPlate((p) => !p);
-                      setIsMoreMenuOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-                  >
-                    <i className="ph ph-newspaper text-xs text-[var(--accent-midnight)]" />
-                    <span>{showAtlasPlate ? 'Hide Atlas Plate' : 'Show Atlas Plate'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowGraticule((p) => !p);
-                      setIsMoreMenuOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-                  >
-                    <i className="ph ph-grid-four text-xs text-[var(--accent-brass)]" />
-                    <span>{showGraticule ? 'Hide Coordinates' : 'Show Coordinates'}</span>
-                  </button>
-                </div>
-              )}
-            </div>
+            {isMoreMenuOpen && (
+              <div className="absolute left-0 mt-2 w-48 bg-white border border-[var(--border-strong)] rounded-xl shadow-lg py-1.5 z-50 text-xs animate-fade-in select-none">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleUntangle();
+                    setIsMoreMenuOpen(false);
+                  }}
+                  className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
+                >
+                  <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
+                  <span>Untangle / Organize (U)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSuggestionsOpen(true);
+                    setIsMoreMenuOpen(false);
+                  }}
+                  className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
+                >
+                  <i className="ph ph-sparkle text-xs text-[var(--accent-terracotta)]" />
+                  <span>Link Suggestions</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAtlasPlate((p) => !p);
+                    setIsMoreMenuOpen(false);
+                  }}
+                  className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
+                >
+                  <i className="ph ph-newspaper text-xs text-[var(--accent-midnight)]" />
+                  <span>{showAtlasPlate ? "Hide Atlas Plate" : "Show Atlas Plate"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGraticule((p) => !p);
+                    setIsMoreMenuOpen(false);
+                  }}
+                  className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
+                >
+                  <i className="ph ph-grid-four text-xs text-[var(--accent-brass)]" />
+                  <span>{showGraticule ? "Hide Coordinates" : "Show Coordinates"}</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -2852,11 +2784,11 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             <div className="bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-3.5 py-1.5 flex items-center gap-2.5">
               <div
                 className={`w-2 h-2 rounded-full ${
-                  selectedNode.hierarchy === 'core'
-                    ? 'bg-[var(--accent-terracotta)] animate-pulse'
-                    : selectedNode.hierarchy === 'subtopic'
-                    ? 'bg-[var(--accent-brass)]'
-                    : 'bg-[var(--accent-midnight)]'
+                  selectedNode.hierarchy === "core"
+                    ? "bg-[var(--accent-terracotta)] animate-pulse"
+                    : selectedNode.hierarchy === "subtopic"
+                    ? "bg-[var(--accent-brass)]"
+                    : "bg-[var(--accent-midnight)]"
                 }`}
               />
               <span className="serif text-xs font-semibold text-[var(--ink-primary)] leading-none max-w-[170px] truncate">
@@ -2877,38 +2809,34 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           )}
         </div>
 
-        {/* SEGMENT 3 (RIGHT): Search Trigger & Fullscreen Controls */}
+        {/* SEGMENT 3 (RIGHT): Saved Views & Fullscreen Controls */}
         <div className="flex items-center gap-2 bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-2.5 py-1.5 pointer-events-auto">
-          <button onClick={() => setIsSavedViewsModalOpen(true)} className="px-2.5 py-1 text-xs font-semibold bg-slate-900/80 border border-slate-700/80 hover:bg-slate-800 rounded text-amber-200 transition-colors mr-2">Saved Views</button>
-          {onOpenSearch && (
-            <button
-              type="button"
-              onClick={onOpenSearch}
-              className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full hover:bg-white text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
-              title="Global Search (⌘K)"
-            >
-              <i className="ph ph-magnifying-glass text-xs" />
-              <span className="hidden sm:inline">Search</span>
-              <kbd className="mono text-[9.5px] text-[var(--ink-tertiary)] ml-0.5">⌘K</kbd>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setIsSavedViewsModalOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full hover:bg-white text-xs font-medium text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer mr-1"
+            title="Saved Observatory Views"
+          >
+            <i className="ph ph-bookmarks text-xs text-[var(--accent-terracotta)]" />
+            <span>Saved Views</span>
+          </button>
 
           {onToggleFullscreen && (
             <button
               type="button"
               onClick={onToggleFullscreen}
               className="w-6 h-6 rounded-full hover:bg-white text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors cursor-pointer"
-              title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen / Focused View'}
+              title={isFullscreen ? "Exit Fullscreen" : "Fullscreen / Focused View"}
             >
               <i
                 className={`ph-bold ${
-                  isFullscreen ? 'ph-corners-in' : 'ph-corners-out'
+                  isFullscreen ? "ph-corners-in" : "ph-corners-out"
                 } text-xs text-[var(--accent-terracotta)]`}
               />
             </button>
           )}
         </div>
-      </header>
+      </div>
 
       {/* Honest Empty State when Workspace Graph is Empty */}
       {!isLoading && celestialNodes.length === 0 && (

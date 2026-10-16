@@ -79,6 +79,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
   const activePlate = PLATES[environmentIndex % PLATES.length];
 
   useEffect(() => {
+    if (!workspaceId) return;
     let mounted = true;
     setIsLoading(true);
 

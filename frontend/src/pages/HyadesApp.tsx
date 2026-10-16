@@ -222,7 +222,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
       )}
 
       {/* Top Application Shell Header (Hidden during Observatory or focused fullscreen graph mode) */}
-      {!isFullscreenObservatory && currentDestination !== 'observatory' && (
+      {!isFullscreenObservatory && (
         <HyadesHeader
           currentDestination={currentDestination}
           onNavigate={navigateTo}
