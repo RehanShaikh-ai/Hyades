@@ -336,6 +336,7 @@ RECOMMENDED_MODELS: list[dict[str, Any]] = [
 
 
 class FreeLLMAPILMProvider(BaseLLMProvider):
+    supports_json_object: bool = False
     """FreeLLMAPI provider with real token streaming and health checking."""
 
     def __init__(
