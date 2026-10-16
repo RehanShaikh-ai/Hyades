@@ -8,6 +8,7 @@ Aggregates all v1 sub-routers. main.py mounts only api_router under /api/v1.
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    saved_views,
     activity,
     clusters,
     collections,
@@ -55,3 +56,4 @@ api_router.include_router(activity.router)
 api_router.include_router(saved_searches.router)
 api_router.include_router(collections.router)
 api_router.include_router(threads.router)
+api_router.include_router(saved_views.router)

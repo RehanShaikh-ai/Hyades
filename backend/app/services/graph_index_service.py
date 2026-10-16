@@ -362,3 +362,23 @@ def delete_note_graph(db: Session, note_id: uuid.UUID) -> None:
     # Delete entity_chunk provenance rows
     db.execute(delete(EntityChunk).where(EntityChunk.note_id == note_id))
     db.commit()
+
+
+def is_entity_referenced_in_memberships(db: Session, entity_id: uuid.UUID) -> bool:
+    """Determine whether an entity is referenced by collection_entities or thread_entities per CONTRACT §7.5.
+
+    Referenced entities must be retained during reindex and must never be deleted.
+    """
+    from app.models.collection import CollectionEntity
+    from app.models.thread import ThreadEntity
+
+    in_coll = db.scalar(
+        select(func.count()).select_from(CollectionEntity).where(CollectionEntity.entity_id == entity_id)
+    ) or 0
+    if in_coll > 0:
+        return True
+
+    in_thread = db.scalar(
+        select(func.count()).select_from(ThreadEntity).where(ThreadEntity.entity_id == entity_id)
+    ) or 0
+    return in_thread > 0
