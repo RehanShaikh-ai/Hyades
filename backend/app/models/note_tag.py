@@ -5,7 +5,7 @@ Canonical model per contract §6.2.
 
 import uuid
 
-from sqlalchemy import ForeignKey
+from sqlalchemy import ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,6 +22,9 @@ class NoteTag(Base):
     """
 
     __tablename__ = "note_tags"
+    __table_args__ = (
+        Index("idx_note_tags_tag_id", "tag_id"),
+    )
 
     note_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

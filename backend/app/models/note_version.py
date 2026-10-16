@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,6 +42,7 @@ class NoteVersion(Base):
     __tablename__ = "note_versions"
     __table_args__ = (
         UniqueConstraint("note_id", "commit_hash", name="uq_note_versions_note_commit"),
+        Index("idx_note_versions_note_id", "note_id", text("created_at DESC")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
