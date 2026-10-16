@@ -477,7 +477,7 @@ export const HyadesInbox: React.FC<HyadesInboxProps> = ({ workspaceId }) => {
             </div>
 
             {/* Extracted Excerpt & Preview (§8.4, §12.3) */}
-            {selectedItem.raw_metadata && (selectedItem.raw_metadata.excerpt || selectedItem.raw_metadata.extracted_text) && (
+            {selectedItem.raw_metadata && Boolean(selectedItem.raw_metadata.excerpt || selectedItem.raw_metadata.extracted_text) && (
               <div className="instrument-panel p-5 space-y-3">
                 <div className="flex items-center justify-between border-b border-[var(--border-parchment)] pb-2">
                   <div className="flex items-center gap-2">
@@ -485,7 +485,7 @@ export const HyadesInbox: React.FC<HyadesInboxProps> = ({ workspaceId }) => {
                       Extracted Document Excerpt
                     </span>
                   </div>
-                  {selectedItem.raw_metadata.stage_timings && (
+                  {Boolean(selectedItem.raw_metadata.stage_timings) && (
                     <span className="mono text-[10px] text-[var(--ink-secondary)] font-medium">
                       Total: {(selectedItem.raw_metadata.stage_timings as any).total_processing_ms}ms (Extract: {(selectedItem.raw_metadata.stage_timings as any).extract_ms}ms, Embed: {(selectedItem.raw_metadata.stage_timings as any).embed_and_index_ms}ms)
                     </span>

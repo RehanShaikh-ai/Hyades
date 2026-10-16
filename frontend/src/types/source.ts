@@ -22,6 +22,8 @@ export interface Source {
   workspace_id: string;
   title?: string;
   file_name?: string;
+  excerpt?: string | null;
+  stage_timings?: Record<string, number> | null;
   note_id?: string | null;
   source_type?: SourceType;
   original_path?: string;
