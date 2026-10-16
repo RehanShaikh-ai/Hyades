@@ -136,7 +136,8 @@ test.describe('v0.4.2 Collections, Threads, Saved Views and Knowledge Inbox Flow
   test('user can navigate to Collections and see empty state or create collection', async ({ page }) => {
     await setupMockApis(page);
 
-    const collBtn = page.getByRole('button', { name: /^Collections$/i });
+    await page.getByTestId('nav-workspace-trigger').click();
+    const collBtn = page.getByTestId('header-workspace-collections');
     await expect(collBtn).toBeVisible({ timeout: 5000 });
     await collBtn.click();
 
@@ -147,7 +148,8 @@ test.describe('v0.4.2 Collections, Threads, Saved Views and Knowledge Inbox Flow
   test('user can navigate to Threads and see thread workspace', async ({ page }) => {
     await setupMockApis(page);
 
-    const threadsBtn = page.getByRole('button', { name: /^Threads$/i });
+    await page.getByTestId('nav-workspace-trigger').click();
+    const threadsBtn = page.getByTestId('header-workspace-threads');
     await expect(threadsBtn).toBeVisible({ timeout: 5000 });
     await threadsBtn.click();
 
@@ -158,7 +160,8 @@ test.describe('v0.4.2 Collections, Threads, Saved Views and Knowledge Inbox Flow
   test('user can navigate to Inbox and view review panel', async ({ page }) => {
     await setupMockApis(page);
 
-    const inboxBtn = page.getByRole('button', { name: /^Inbox$/i });
+    await page.getByTestId('nav-workspace-trigger').click();
+    const inboxBtn = page.getByTestId('header-workspace-inbox');
     await expect(inboxBtn).toBeVisible({ timeout: 5000 });
     await inboxBtn.click();
 
@@ -215,7 +218,8 @@ test.describe('v0.4.2 Collections, Threads, Saved Views and Knowledge Inbox Flow
       }
     });
 
-    const collBtn = page.getByRole('button', { name: /^Collections$/i });
+    await page.getByTestId('nav-workspace-trigger').click();
+    const collBtn = page.getByTestId('header-workspace-collections');
     await expect(collBtn).toBeVisible({ timeout: 5000 });
     await collBtn.click();
 
@@ -223,7 +227,7 @@ test.describe('v0.4.2 Collections, Threads, Saved Views and Knowledge Inbox Flow
     await page.getByPlaceholder('Description (optional)...').fill('Curated papers on stellar evolution');
     await page.getByRole('button', { name: 'Create Collection' }).click();
 
-    await expect(page.getByRole('heading', { name: 'Astrophysics Literature' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: 'Astrophysics Literature' }).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('user can create a thread with guiding question', async ({ page }) => {
@@ -260,7 +264,8 @@ test.describe('v0.4.2 Collections, Threads, Saved Views and Knowledge Inbox Flow
       }
     });
 
-    const threadsBtn = page.getByRole('button', { name: /^Threads$/i });
+    await page.getByTestId('nav-workspace-trigger').click();
+    const threadsBtn = page.getByTestId('header-workspace-threads');
     await expect(threadsBtn).toBeVisible({ timeout: 5000 });
     await threadsBtn.click();
 
@@ -268,7 +273,7 @@ test.describe('v0.4.2 Collections, Threads, Saved Views and Knowledge Inbox Flow
     await page.getByPlaceholder('Guiding question (optional)...').fill('How do carbon-oxygen cores ignite?');
     await page.getByRole('button', { name: 'Create Thread' }).click();
 
-    await expect(page.getByRole('heading', { name: 'Stellar Nucleosynthesis' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: 'Stellar Nucleosynthesis' }).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('user can reject an inbox item and trigger permanent safe cleanup', async ({ page }) => {
@@ -318,12 +323,13 @@ test.describe('v0.4.2 Collections, Threads, Saved Views and Knowledge Inbox Flow
       }
     });
 
-    const inboxBtn = page.getByRole('button', { name: /^Inbox$/i });
+    await page.getByTestId('nav-workspace-trigger').click();
+    const inboxBtn = page.getByTestId('header-workspace-inbox');
     await expect(inboxBtn).toBeVisible({ timeout: 5000 });
     await inboxBtn.click();
 
 
-    await expect(page.getByRole('heading', { name: 'Unwanted Document.docx' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: 'Unwanted Document.docx' }).first()).toBeVisible({ timeout: 5000 });
 
     const rejectBtn = page.getByRole('button', { name: /^Reject$/i });
     await expect(rejectBtn).toBeVisible({ timeout: 5000 });
