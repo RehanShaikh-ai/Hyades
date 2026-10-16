@@ -76,10 +76,12 @@ services:
       JOB_MAX_RETRIES: ${JOB_MAX_RETRIES:-3}
       PROVIDER_TIMEOUT_SECONDS: ${PROVIDER_TIMEOUT_SECONDS:-30}
       CONTEXT_TOKEN_LIMIT: ${CONTEXT_TOKEN_LIMIT:-4096}
+      SOURCE_STORAGE_ROOT: ${SOURCE_STORAGE_ROOT:-/app/data/sources}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - git_repositories:/data/workspaces
+      - source_storage:/app/data/sources
     develop:
       watch:
         - action: sync+restart
@@ -135,8 +137,10 @@ services:
       FREELLMAPI_API_KEY: ${FREELLMAPI_API_KEY:-}
       JOB_MAX_RETRIES: ${JOB_MAX_RETRIES:-3}
       PROVIDER_TIMEOUT_SECONDS: ${PROVIDER_TIMEOUT_SECONDS:-30}
+      SOURCE_STORAGE_ROOT: ${SOURCE_STORAGE_ROOT:-/app/data/sources}
     volumes:
       - git_repositories:/data/workspaces
+      - source_storage:/app/data/sources
     depends_on:
       - redis
       - postgres
@@ -217,3 +221,6 @@ volumes:
   # GIT_REPOSITORY_ROOT must equal /data/workspaces in .env.
   git_repositories:
     name: knowledge_atlas_git_repositories
+  # Persistent storage for uploaded source files — Contract v0.4.2 §1.1, §17
+  source_storage:
+    name: knowledge_atlas_source_storage
