@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     SOURCE_MAX_FILE_SIZE_MB: int = 25
     SOURCE_PROCESSING_TIMEOUT_SECONDS: int = 120
 
+    # v0.4.2 — Collections, Threads, Views & Knowledge Inbox (Contract v0.4.2 §1.1, §17)
+    SOURCE_STORAGE_ROOT: str = "./data/sources"
+
     @property
     def database_url(self) -> str:
         """Construct the canonical PostgreSQL URL (contract §18).
