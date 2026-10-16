@@ -82,6 +82,7 @@ services:
     volumes:
       - git_repositories:/data/workspaces
       - source_storage:/app/data/sources
+      - ../freellmapi/server/data:/app/freellmapi/server/data:ro
     develop:
       watch:
         - action: sync+restart
@@ -141,6 +142,7 @@ services:
     volumes:
       - git_repositories:/data/workspaces
       - source_storage:/app/data/sources
+      - ../freellmapi/server/data:/app/freellmapi/server/data:ro
     depends_on:
       - redis
       - postgres
