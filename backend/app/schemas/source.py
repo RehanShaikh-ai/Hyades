@@ -73,6 +73,7 @@ class SourceResponse(BaseModel):
     page_count: int | None = None
     chunk_count: int | None = None
     error_stage: str | None = None
+    extract_knowledge: bool = True
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -95,6 +96,7 @@ class SourceProcessingStatusResponse(BaseModel):
     chunk_count: int | None = None
     page_count: int | None = None
     error_stage: str | None = None
+    extract_knowledge: bool = True
     error_message: str | None = None
 
     model_config = ConfigDict(from_attributes=True)

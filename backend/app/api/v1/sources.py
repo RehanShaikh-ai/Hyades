@@ -32,6 +32,7 @@ async def upload_source(
     workspace_id: uuid.UUID,
     file: Annotated[UploadFile, File(...)],
     db: Annotated[Session, Depends(get_db)],
+    review_mode: Annotated[str | None, Query()] = None,
 ) -> SourceResponse:
     """Upload single file and trigger background processing pipeline per CONTRACT v0.4.1 §10.1."""
     content = await file.read()
@@ -41,6 +42,7 @@ async def upload_source(
         file_content=content,
         filename=file.filename or "uploaded_source",
         content_type=file.content_type,
+        review_mode=review_mode,
     )
     return SourceResponse.model_validate(source)
 
@@ -167,3 +169,27 @@ def unlink_source_from_note(
 ) -> None:
     """Remove an association between a source and a note per CONTRACT v0.4.1 §6.6, §10.1."""
     source_service.unlink_source_from_note(db, source_id, note_id)
+
+
+@router.post(
+    "/sources/upload",
+    response_model=SourceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_source_root(
+    file: Annotated[UploadFile, File(...)],
+    db: Annotated[Session, Depends(get_db)],
+    workspace_id: Annotated[uuid.UUID, Query(..., description="Workspace ID")],
+    review_mode: Annotated[str | None, Query()] = None,
+) -> SourceResponse:
+    """Upload single source file with review_mode support per CONTRACT v0.4.2 §8.4."""
+    content = await file.read()
+    source = source_service.upload_source(
+        db=db,
+        workspace_id=workspace_id,
+        file_content=content,
+        filename=file.filename or "uploaded_source",
+        content_type=file.content_type,
+        review_mode=review_mode,
+    )
+    return SourceResponse.model_validate(source)

@@ -180,6 +180,7 @@ def upload_source(
     file_content: bytes,
     filename: str,
     content_type: str | None = None,
+    review_mode: str | None = None,
 ) -> Source:
     """Upload single source file and enqueue processing pipeline per CONTRACT v0.4.1 §7, §10.1."""
     ws = db.get(Workspace, workspace_id)
@@ -203,11 +204,11 @@ def upload_source(
     if not clean_filename:
         clean_filename = "uploaded_source"
 
-    source_type = detect_file_type_and_validate(clean_filename, file_content)
-    if source_type not in ("pdf", "markdown", "text"):
-        raise UnsupportedSourceTypeError(
-            f"Unsupported file type '{source_type}'. Supported types: PDF, Markdown, Plain text."
-        )
+    from app.services.file_validation_service import detect_and_validate_format, resolve_and_verify_storage_path
+    try:
+        source_type, _ = detect_and_validate_format(file_content, clean_filename)
+    except ValueError as e:
+        raise ValidationError(str(e)) from e
 
     content_hash = hashlib.sha256(file_content).hexdigest()
     source_id = uuid.uuid4()
@@ -258,11 +259,19 @@ def upload_source(
     db.commit()
     db.refresh(source)
 
-    # Process immediately in testing or development mode (or via worker in production)
+    # If review_mode is inbox, create InboxItem and do NOT extract into graph
+    if review_mode == "inbox":
+        from app.services import inbox_service
+        inbox_service.create_inbox_item_for_source(db, source)
+        db.refresh(source)
+        return source
+
+    # Normal mode: process immediately in testing or development mode (or via worker in production)
     if settings.APP_ENV in ("testing", "development"):
         try:
-            source_processing_service.process_source(db, source.id)
-            db.refresh(source)
+            if source.source_type != "image":
+                source_processing_service.process_source(db, source.id)
+                db.refresh(source)
         except Exception as e:
             logger.warning("Synchronous source processing failed for %s: %s", source.id, e)
 
