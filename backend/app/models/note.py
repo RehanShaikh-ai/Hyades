@@ -86,6 +86,12 @@ class Note(Base):
         default=False,
         nullable=False,
     )
+    extract_knowledge: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default="true",
+        nullable=False,
+    )
     search_vector: Mapped[str | None] = mapped_column(
         TSVECTOR().with_variant(Text(), "sqlite"),
         server_default=FetchedValue(),

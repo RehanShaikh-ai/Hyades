@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
+    Boolean,
     BigInteger,
     DateTime,
     ForeignKey,
@@ -153,6 +154,18 @@ class Source(Base):
     )
     error_stage: Mapped[str | None] = mapped_column(
         String(50),
+        nullable=True,
+    )
+
+    # v0.4.2 extensions (Contract v0.4.2 §7.2)
+    extract_knowledge: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default="true",
+        nullable=False,
+    )
+    mime_type: Mapped[str | None] = mapped_column(
+        String(100),
         nullable=True,
     )
 
