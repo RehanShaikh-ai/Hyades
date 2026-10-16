@@ -7,6 +7,7 @@ import { UserCreateForm } from '@/components/UserCreateForm';
 import { UserList } from '@/components/UserList';
 import { WorkspaceCreateForm } from '@/components/WorkspaceCreateForm';
 import { WorkspaceList } from '@/components/WorkspaceList';
+import { FreeLLMAPIRuntimePanel } from '@/components/runtime/FreeLLMAPIRuntimePanel';
 
 interface HyadesAccountModalProps {
   isOpen: boolean;
@@ -45,7 +46,7 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
   onRefreshUsers,
   onRefreshWorkspaces,
 }) => {
-  const [activeTab, setActiveTab] = useState<'workspaces' | 'users'>('workspaces');
+  const [activeTab, setActiveTab] = useState<'workspaces' | 'users' | 'local_ai'>('workspaces');
 
   if (!isOpen) return null;
 
@@ -100,6 +101,17 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
               >
                 Identities ({users.length})
               </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('local_ai')}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                  activeTab === 'local_ai'
+                    ? 'bg-[#FAF8F2] text-[#1C1917] shadow-xs'
+                    : 'text-[#878074] hover:text-[#1C1917]'
+                }`}
+              >
+                Local AI & FreeLLMAPI
+              </button>
             </div>
 
             <button
@@ -115,7 +127,9 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
 
         {/* Modal Content */}
         <div className="flex-1 overflow-y-auto hyades-scroll p-6">
-          {activeTab === 'workspaces' ? (
+          {activeTab === 'local_ai' ? (
+            <FreeLLMAPIRuntimePanel />
+          ) : activeTab === 'workspaces' ? (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
