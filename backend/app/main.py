@@ -22,9 +22,9 @@ logging.basicConfig(
 logger = logging.getLogger("app")
 
 app = FastAPI(
-    title="Collaborative Second Brain",
+    title="Hyades API",
     version="0.1.1",
-    description="Backend API for Collaborative Second Brain",
+    description="Backend API for Hyades Celestial Knowledge System",
 )
 
 # Register global exception handlers (contract §4.4, §12)
@@ -56,4 +56,4 @@ app.add_middleware(
 # main.py must not mount individual sub-routers directly.
 app.include_router(api_router, prefix="/api/v1")
 
-logger.info("Collaborative Second Brain backend initialized (APP_ENV=%s)", settings.APP_ENV)
+logger.info("Hyades backend initialized (APP_ENV=%s)", settings.APP_ENV)

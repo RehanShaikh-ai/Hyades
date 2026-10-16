@@ -2852,7 +2852,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             </h3>
             <p className="text-xs text-[var(--ink-secondary)] leading-relaxed">
               No concepts or relationships have been extracted yet in this workspace. Ingest notes or
-              trigger extraction in the Library to illuminate the celestial atlas.
+              trigger extraction in the Library to illuminate the celestial observatory.
             </p>
             <div className="flex items-center gap-3 mt-2">
               <button

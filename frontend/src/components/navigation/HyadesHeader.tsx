@@ -149,7 +149,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             type="button"
             onClick={() => onNavigate('overview')}
             className="flex items-center gap-2 group text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] focus-visible:rounded-full p-0.5"
-            title="Hyades Knowledge Atlas"
+            title="Hyades"
           >
             <div className="w-7 h-7 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] flex items-center justify-center shadow-xs border border-[#2D3F5E] group-hover:bg-[var(--accent-midnight-light)] transition-colors shrink-0">
               <svg

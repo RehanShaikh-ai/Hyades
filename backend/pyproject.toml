@@ -1,12 +1,12 @@
 [project]
 name = "collaborative-second-brain-backend"
 version = "0.3.1"
-description = "Backend for Collaborative Second Brain - Knowledge Expansion"
+description = "Hyades - Celestial Knowledge Observatory & Archival Research Platform"
 
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [
-    { name = "Collaborative Second Brain Contributors" }
+    { name = "Hyades Contributors" }
 ]
 dependencies = [
     "fastapi>=0.115,<1.0",

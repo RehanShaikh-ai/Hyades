@@ -136,7 +136,7 @@ def build_prompt(
 ) -> list[dict[str, str]]:
     """Construct prompt messages instructing model to ground answers in provided context."""
     system_prompt = (
-        "You are an AI assistant for Knowledge Atlas, a collaborative second brain app.\n"
+        "You are Stella, the AI research assistant for Hyades, an archival knowledge observatory.\n"
         "Your task is to answer user queries using ONLY the retrieved notes provided below.\n\n"
         "CRITICAL GROUNDING & CITATION RULES:\n"
         "1. STRICT GROUNDING: Ground your answer primarily in the provided note excerpts. "

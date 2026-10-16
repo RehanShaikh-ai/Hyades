@@ -98,11 +98,11 @@ def init_repo(workspace_id: uuid.UUID) -> Path:
         git_dir = repo_dir / ".git"
         if not git_dir.exists():
             _run_git(["init"], cwd=repo_dir)
-            _run_git(["config", "user.name", "Knowledge Atlas"], cwd=repo_dir)
+            _run_git(["config", "user.name", "Hyades"], cwd=repo_dir)
             _run_git(["config", "user.email", "atlas@knowledge.local"], cwd=repo_dir)
             # Create an initial commit with a placeholder to establish HEAD
             init_file = repo_dir / ".ka-init"
-            init_file.write_text("Knowledge Atlas Workspace Git Repository\n")
+            init_file.write_text("Hyades Workspace Git Repository\n")
             _run_git(["add", ".ka-init"], cwd=repo_dir)
             _run_git(["commit", "-m", "Initialize workspace repository"], cwd=repo_dir)
     return repo_dir

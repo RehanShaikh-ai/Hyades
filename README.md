@@ -1,12 +1,12 @@
-# Knowledge Atlas 🗺️
+# Hyades 🌌
 
 > *Build knowledge, not just notes.*
 
 ---
 
-## What is Knowledge Atlas?
+## What is Hyades?
 
-Most tools help you **store** information. Knowledge Atlas helps you **understand** it.
+Most tools help you **store** information. Hyades helps you **understand** it.
 
 It's a personal knowledge platform that connects what you know, surfaces what you're missing, and helps you build understanding that actually holds up — not just a pile of notes you'll never read again.
 
@@ -26,7 +26,7 @@ None of them help you **build and verify** understanding over time.
 
 ## What We're Building
 
-Knowledge Atlas is a system that actively helps you capture, connect, and improve your knowledge — not just retrieve it.
+Hyades is a system that actively helps you capture, connect, and improve your knowledge — not just retrieve it.
 
 ```
 Capture
@@ -56,7 +56,7 @@ The goal isn't to replace thinking. It's to make thinking more reliable.
 
 ## Current State
 
-Knowledge Atlas is in active development under strict engineering contracts.
+Hyades is in active development under strict engineering contracts.
 
 **What exists now (v0.4.1 Usability, Sources & Persistent Assistant):**
 
@@ -283,7 +283,7 @@ knowledge-atlas/
 
 ## Engineering Approach
 
-Knowledge Atlas uses a **contract-driven development** process.
+Hyades uses a **contract-driven development** process.
 
 Before any feature is built, a formal engineering contract defines:
 - Exact API interfaces
@@ -337,4 +337,4 @@ If the vision sounds interesting and you want to follow along, watch the repo.
 
 ---
 
-*Knowledge Atlas — because understanding is more than storage.*
+*Hyades — Celestial Knowledge Observatory & Archival Research Platform.*
