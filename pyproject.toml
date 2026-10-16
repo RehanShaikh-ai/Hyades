@@ -1,6 +1,6 @@
 [project]
 name = "collaborative-second-brain-backend"
-version = "0.4.1"
+version = "0.4.2"
 description = "Backend for Collaborative Second Brain - Knowledge Expansion"
 readme = "README.md"
 requires-python = ">=3.12"

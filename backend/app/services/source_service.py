@@ -208,7 +208,7 @@ def upload_source(
     try:
         source_type, _ = detect_and_validate_format(file_content, clean_filename)
     except ValueError as e:
-        raise ValidationError(str(e)) from e
+        raise UnsupportedSourceTypeError(str(e)) from e
 
     content_hash = hashlib.sha256(file_content).hexdigest()
     source_id = uuid.uuid4()
@@ -234,28 +234,46 @@ def upload_source(
     }
 
     # Dedup or create Source row
-    source = Source(
-        id=source_id,
-        workspace_id=workspace_id,
-        note_id=None,
-        source_type=source_type,
-        original_path=clean_filename,
-        source_identifier=normalize_source_identifier(clean_filename),
-        content_hash=content_hash,
-        import_batch_id=uuid.uuid4(),
-        import_status="completed",
-        raw_metadata=raw_metadata,
-        error_message=None,
-        imported_at=datetime.now(UTC),
-        last_synced_at=None,
-        processing_stage="upload",
-        processing_status="PENDING",
-        file_size_bytes=len(file_content),
-        page_count=None,
-        chunk_count=None,
-        error_stage=None,
+    identifier = normalize_source_identifier(clean_filename)
+    existing_source = db.scalar(
+        select(Source).where(
+            Source.workspace_id == workspace_id,
+            Source.source_identifier == identifier,
+        )
     )
-    db.add(source)
+
+    if existing_source:
+        existing_source.content_hash = content_hash
+        existing_source.file_size_bytes = len(file_content)
+        existing_source.raw_metadata = raw_metadata
+        existing_source.source_type = source_type
+        existing_source.processing_status = "PENDING"
+        existing_source.error_message = None
+        existing_source.last_synced_at = datetime.now(UTC)
+        source = existing_source
+    else:
+        source = Source(
+            id=source_id,
+            workspace_id=workspace_id,
+            note_id=None,
+            source_type=source_type,
+            original_path=clean_filename,
+            source_identifier=identifier,
+            content_hash=content_hash,
+            import_batch_id=uuid.uuid4(),
+            import_status="completed",
+            raw_metadata=raw_metadata,
+            error_message=None,
+            imported_at=datetime.now(UTC),
+            last_synced_at=None,
+            processing_stage="upload",
+            processing_status="PENDING",
+            file_size_bytes=len(file_content),
+            page_count=None,
+            chunk_count=None,
+            error_stage=None,
+        )
+        db.add(source)
     db.commit()
     db.refresh(source)
 
