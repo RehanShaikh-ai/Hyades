@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { InboxItem } from '@/types/inbox';
 import {
   listInbox,
@@ -20,7 +20,13 @@ export const HyadesInbox: React.FC<HyadesInboxProps> = ({ workspaceId }) => {
   const [statusFilter, setStatusFilter] = useState<string>('pending');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isActionPending, setIsActionPending] = useState(false);
+
+  // Title editing state
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editedTitle, setEditedTitle] = useState('');
 
   // Rejection confirmation modal state
   const [rejectingItem, setRejectingItem] = useState<InboxItem | null>(null);
@@ -31,13 +37,25 @@ export const HyadesInbox: React.FC<HyadesInboxProps> = ({ workspaceId }) => {
     try {
       const res = await listInbox(workspaceId, statusFilter === 'all' ? undefined : statusFilter);
       setItems(res.items);
-      if (res.items.length > 0 && (!selectedItem || !res.items.find((i) => i.id === selectedItem.id))) {
-        await loadItemDetail(res.items[0].id);
-      } else if (res.items.length === 0) {
+      if (res.items.length > 0) {
+        setSelectedItem((prev) => {
+          if (!prev) {
+            loadItemDetail(res.items[0].id);
+            return res.items[0];
+          }
+          const matched = res.items.find((i) => i.id === prev.id);
+          if (matched) {
+            loadItemDetail(matched.id);
+            return matched;
+          }
+          loadItemDetail(res.items[0].id);
+          return res.items[0];
+        });
+      } else {
         setSelectedItem(null);
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed loading inbox');
+      setError(e instanceof Error ? e.message : 'Failed loading inbox review items');
     } finally {
       setIsLoading(false);
     }
@@ -47,8 +65,9 @@ export const HyadesInbox: React.FC<HyadesInboxProps> = ({ workspaceId }) => {
     try {
       const detail = await getInboxItem(id);
       setSelectedItem(detail);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed loading item detail');
+      setEditedTitle(detail.source_title || '');
+    } catch (e: any) {
+      setError(e?.error?.message || (e instanceof Error ? e.message : 'Failed loading item detail'));
     }
   };
 
@@ -63,11 +82,17 @@ export const HyadesInbox: React.FC<HyadesInboxProps> = ({ workspaceId }) => {
     if (!file) return;
     setIsUploading(true);
     setError(null);
+    setSuccessMessage(null);
     try {
       await uploadToInbox(workspaceId, file);
+      setSuccessMessage(`File "${file.name}" placed in Knowledge Inbox for review.`);
       await loadInbox();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Upload to Inbox failed');
+      const apiErr = e as { error?: { message?: string } } | Error;
+      const msg =
+        (apiErr as { error?: { message?: string } })?.error?.message ||
+        (e instanceof Error ? e.message : 'Upload to Inbox failed');
+      setError(msg);
     } finally {
       setIsUploading(false);
       e.target.value = '';
@@ -86,57 +111,122 @@ export const HyadesInbox: React.FC<HyadesInboxProps> = ({ workspaceId }) => {
     }
   };
 
+  const handleSaveTitle = async () => {
+    if (!selectedItem || !editedTitle.trim()) return;
+    try {
+      const updated = await updateInboxItem(selectedItem.id, {
+        source_title: editedTitle.trim(),
+      });
+      setSelectedItem(updated);
+      setIsEditingTitle(false);
+      setSuccessMessage('Source title updated.');
+      await loadInbox();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed updating source title');
+    }
+  };
+
   const handleAccept = async (item: InboxItem) => {
+    if (isActionPending || item.status !== 'pending') return;
+    setIsActionPending(true);
+    setError(null);
+    setSuccessMessage(null);
     try {
       await acceptInboxItem(item.id);
+      setSuccessMessage(`Item "${item.source_title}" accepted into Library catalog.`);
       await loadInbox();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed accepting item');
+    } finally {
+      setIsActionPending(false);
     }
   };
 
   const confirmReject = async () => {
-    if (!rejectingItem) return;
+    if (!rejectingItem || isActionPending || rejectingItem.status !== 'pending') return;
+    setIsActionPending(true);
+    setError(null);
+    setSuccessMessage(null);
     try {
       await rejectInboxItem(rejectingItem.id);
+      setSuccessMessage(`Item "${rejectingItem.source_title}" permanently rejected and purged.`);
       setRejectingItem(null);
       await loadInbox();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed rejecting item');
+    } finally {
+      setIsActionPending(false);
     }
   };
 
   const handleRedetect = async (item: InboxItem) => {
+    if (isActionPending || item.status !== 'pending') return;
+    setIsActionPending(true);
+    setError(null);
+    setSuccessMessage(null);
     try {
       const updated = await redetectInboxItem(item.id);
       setSelectedItem(updated);
+      setSuccessMessage('Concept re-detection completed.');
       await loadInbox();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed re-running concept detection');
+    } finally {
+      setIsActionPending(false);
     }
   };
-
   return (
-    <div className="flex h-full w-full bg-slate-950 text-slate-100 overflow-hidden" data-testid="hyades-inbox">
-      {/* Sidebar: Inbox List */}
-      <div className="w-80 border-r border-slate-800 flex flex-col bg-slate-900/60 p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold tracking-tight text-amber-200">Knowledge Inbox</h2>
-          {/* Upload Button */}
-          <label className="cursor-pointer px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold rounded transition-colors">
-            {isUploading ? 'Uploading...' : 'Import File'}
-            <input type="file" onChange={handleFileUpload} className="hidden" disabled={isUploading} />
+    <div
+      className="relative flex-1 h-[calc(100vh-57px)] flex flex-col md:flex-row overflow-x-hidden overflow-y-auto w-full select-none text-[13px] leading-relaxed bg-[var(--bg-base)] text-[var(--ink-primary)]"
+      data-testid="hyades-inbox"
+    >
+      <div className="paper-grain" />
+      <div className="classical-environment">
+        <div className="ambient-sunlight" />
+      </div>
+
+      {/* Left Sidebar: Inbox List */}
+      <aside className="w-full md:w-80 lg:w-88 flex-shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-[var(--border-parchment)] bg-[var(--bg-panel)]/95 backdrop-blur-sm z-10">
+        {/* Header */}
+        <div className="p-4 border-b border-[var(--border-parchment)] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <svg
+              className="w-4 h-4 text-[var(--accent-terracotta)]"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+              <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+            </svg>
+            <h2 className="serif text-lg font-medium text-[var(--ink-primary)] tracking-wide">
+              Knowledge Inbox
+            </h2>
+          </div>
+          <label className="cursor-pointer px-2.5 py-1 bg-[var(--accent-midnight)] hover:bg-[var(--accent-midnight)]/90 text-[#FAF8F2] text-xs font-medium rounded-lg shadow-sm transition-all flex items-center gap-1">
+            <span>{isUploading ? 'Importing...' : '+ Import File'}</span>
+            <input
+              type="file"
+              onChange={handleFileUpload}
+              className="hidden"
+              disabled={isUploading}
+            />
           </label>
         </div>
 
-        {/* Filter buttons */}
-        <div className="flex gap-1 border-b border-slate-800 pb-2 text-xs">
+        {/* Filter Bar */}
+        <div className="px-3 py-2 border-b border-[var(--border-parchment)] flex items-center gap-1 text-[11px] font-mono">
           {(['pending', 'accepted', 'rejected', 'all'] as const).map((st) => (
             <button
               key={st}
               onClick={() => setStatusFilter(st)}
-              className={`px-2.5 py-1 rounded capitalize ${
-                statusFilter === st ? 'bg-amber-500/20 text-amber-300 font-bold' : 'text-slate-400 hover:text-slate-200'
+              className={`px-2 py-0.5 rounded capitalize transition-all cursor-pointer ${
+                statusFilter === st
+                  ? 'bg-[var(--accent-midnight)] text-[#FAF8F2] font-medium'
+                  : 'text-[var(--ink-secondary)] hover:bg-white/60'
               }`}
             >
               {st}
@@ -145,171 +235,376 @@ export const HyadesInbox: React.FC<HyadesInboxProps> = ({ workspaceId }) => {
         </div>
 
         {/* Items List */}
-        <div className="flex-1 overflow-y-auto space-y-1">
-          {items.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => loadItemDetail(item.id)}
-              className={`p-2.5 rounded cursor-pointer transition-colors ${
-                selectedItem?.id === item.id
-                  ? 'bg-amber-500/20 text-amber-200 border border-amber-500/30'
-                  : 'hover:bg-slate-800/60 text-slate-300'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-sm truncate">{item.source_title}</span>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  {item.source_type}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
-                <span>Detection: {item.detection_status}</span>
-                <span>{item.detected_count} concepts</span>
-              </div>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1.5 divide-y divide-transparent">
+          {isLoading && items.length === 0 ? (
+            <div className="p-6 text-center text-xs text-[var(--ink-tertiary)] flex flex-col items-center gap-2">
+              <div className="w-4 h-4 rounded-full border-2 border-[var(--accent-midnight)] border-t-transparent animate-spin" />
+              <span className="serif-italic">Opening inbox queue...</span>
             </div>
-          ))}
-          {items.length === 0 && !isLoading && (
-            <div className="text-xs text-slate-500 italic p-2">No inbox items in this view.</div>
+          ) : items.length === 0 ? (
+            <div className="p-6 text-center text-xs text-[var(--ink-tertiary)] serif-italic">
+              No items in this inbox state. Upload a document to review prior to catalog ingestion.
+            </div>
+          ) : (
+            items.map((item) => {
+              const isSelected = selectedItem?.id === item.id;
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => loadItemDetail(item.id)}
+                  className={`group relative p-3 rounded-xl border transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-white shadow-sm border-[var(--border-strong)] ring-1 ring-[var(--accent-midnight)]/10'
+                      : 'bg-transparent border-transparent hover:bg-white/60 hover:border-[var(--border-parchment)]'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h3
+                        className={`text-sm font-medium truncate ${
+                          isSelected
+                            ? 'text-[var(--accent-midnight)] font-semibold'
+                            : 'text-[var(--ink-primary)]'
+                        }`}
+                      >
+                        {item.source_title}
+                      </h3>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span
+                          className={`mono text-[10px] uppercase font-semibold px-1.5 py-0.2 rounded border ${
+                            item.status === 'accepted'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : item.status === 'rejected'
+                              ? 'bg-red-50 text-red-800 border-red-200'
+                              : 'bg-amber-50 text-amber-800 border-amber-200'
+                          }`}
+                        >
+                          {item.status}
+                        </span>
+                        <span className="mono text-[10px] uppercase font-semibold px-1.5 py-0.2 rounded border bg-[var(--bg-panel)] text-[var(--ink-secondary)] border-[var(--border-parchment)]">
+                          {item.detection_status}
+                        </span>
+                        {item.file_size_bytes && (
+                          <span className="mono text-[10px] text-[var(--ink-tertiary)]">
+                            {(item.file_size_bytes / 1024).toFixed(0)} KB
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  {isSelected && (
+                    <div className="absolute left-0 top-2 bottom-2 w-1 bg-[var(--accent-terracotta)] rounded-r" />
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
-      </div>
-
-      {/* Main Panel: Item Review */}
-      <div className="flex-1 flex flex-col overflow-y-auto p-6 space-y-6">
+      </aside>
+      {/* Main Review Dossier */}
+      <main className="flex-1 flex flex-col overflow-y-auto p-4 md:p-6 z-10 space-y-5">
         {error && (
-          <div className="p-3 bg-red-950/60 border border-red-500/50 text-red-200 text-sm rounded">
-            {error}
+          <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-xs flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-red-700">Notice:</span>
+              <span>{error}</span>
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="text-red-600 hover:text-red-900 font-bold px-1.5 cursor-pointer"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-emerald-700">Recorded:</span>
+              <span>{successMessage}</span>
+            </div>
+            <button
+              onClick={() => setSuccessMessage(null)}
+              className="text-emerald-600 hover:text-emerald-900 font-bold px-1.5 cursor-pointer"
+            >
+              ×
+            </button>
           </div>
         )}
 
         {selectedItem ? (
-          <>
-            {/* Header & Status */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-              <div>
-                <h1 className="text-2xl font-bold text-amber-100">{selectedItem.source_title}</h1>
-                <div className="flex gap-4 text-xs text-slate-400 mt-1">
-                  <span>Type: <strong className="text-slate-200 uppercase">{selectedItem.source_type}</strong></span>
-                  <span>Status: <strong className="text-amber-400 uppercase">{selectedItem.status}</strong></span>
-                  <span>Detection: <strong className="text-slate-200">{selectedItem.detection_status}</strong></span>
-                  {selectedItem.file_size_bytes && (
-                    <span>Size: {Math.round(selectedItem.file_size_bytes / 1024)} KB</span>
+          <div className="space-y-6 max-w-5xl w-full mx-auto">
+            {/* Header Instrument Panel */}
+            <div className="instrument-panel p-5 space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="space-y-1.5 flex-1 min-w-[260px]">
+                  <div className="flex items-center gap-2">
+                    <span className="mono text-[10px] tracking-wider uppercase text-[var(--accent-terracotta)] font-semibold">
+                      Inbox Document Review
+                    </span>
+                    <span className="text-[var(--border-strong)]">/</span>
+                    <span
+                      className={`mono text-[10px] uppercase font-semibold px-2 py-0.5 rounded border ${
+                        selectedItem.status === 'accepted'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : selectedItem.status === 'rejected'
+                          ? 'bg-red-50 text-red-800 border-red-200'
+                          : 'bg-amber-50 text-amber-800 border-amber-200'
+                      }`}
+                    >
+                      {selectedItem.status}
+                    </span>
+                  </div>
+
+                  {/* Title editor */}
+                  {isEditingTitle ? (
+                    <div className="flex items-center gap-2 mt-1">
+                      <input
+                        type="text"
+                        value={editedTitle}
+                        onChange={(e) => setEditedTitle(e.target.value)}
+                        className="px-3 py-1.5 text-base serif font-medium bg-white border border-[var(--border-parchment)] rounded-lg text-[var(--ink-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-midnight)]"
+                      />
+                      <button
+                        onClick={handleSaveTitle}
+                        className="px-3 py-1.5 text-xs font-medium bg-[var(--accent-midnight)] text-[#FAF8F2] rounded-lg cursor-pointer"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setIsEditingTitle(false)}
+                        className="px-2.5 py-1.5 text-xs text-[var(--ink-secondary)] hover:bg-white/60 rounded-lg cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 mt-1 group">
+                      <h1 className="serif text-2xl md:text-3xl font-medium text-[var(--ink-primary)]">
+                        {selectedItem.source_title}
+                      </h1>
+                      <button
+                        onClick={() => setIsEditingTitle(true)}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-[var(--ink-tertiary)] hover:text-[var(--accent-midnight)] rounded transition-all cursor-pointer"
+                        title="Edit title"
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                        </svg>
+                      </button>
+                    </div>
                   )}
+
+                  <div className="flex items-center gap-4 text-xs text-[var(--ink-secondary)] pt-1">
+                    <span>Format: <strong className="font-mono uppercase">{selectedItem.source_type || 'File'}</strong></span>
+                    {selectedItem.file_size_bytes && (
+                      <span>Size: <strong className="font-mono">{(selectedItem.file_size_bytes / 1024).toFixed(1)} KB</strong></span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Primary Actions (Gated by status per CONTRACT & UI specifications) */}
+                <div className="flex items-center gap-2.5">
+                  {selectedItem.status === 'pending' ? (
+                    <>
+                      <button
+                        type="button"
+                        disabled={isActionPending}
+                        onClick={() => handleAccept(selectedItem)}
+                        className="px-4 py-2 text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                        data-testid="inbox-accept-btn"
+                      >
+                        {isActionPending ? 'Accepting...' : 'Accept'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isActionPending}
+                        onClick={() => setRejectingItem(selectedItem)}
+                        className="px-3.5 py-2 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 border border-red-200 rounded-lg transition-all cursor-pointer"
+                        data-testid="inbox-reject-btn"
+                      >
+                        Reject
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isActionPending}
+                        onClick={() => handleRedetect(selectedItem)}
+                        className="px-3 py-2 text-xs text-[var(--ink-secondary)] hover:bg-white/80 border border-[var(--border-parchment)] rounded-lg transition-all cursor-pointer"
+                        title="Re-run concept detection"
+                        data-testid="inbox-redetect-btn"
+                      >
+                        Re-detect
+                      </button>
+                    </>
+                  ) : selectedItem.status === 'accepted' ? (
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-medium" data-testid="inbox-status-accepted-banner">
+                      <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                      <span>Accepted into Library catalog</span>
+                    </div>
+                  ) : selectedItem.status === 'rejected' ? (
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-50 text-red-800 border border-red-200 text-xs font-medium" data-testid="inbox-status-rejected-banner">
+                      <span className="w-2 h-2 rounded-full bg-red-600" />
+                      <span>Rejected and purged from catalog</span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
-              {/* Actions */}
-              {selectedItem.status === 'pending' && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleRedetect(selectedItem)}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded text-slate-200"
-                  >
-                    Re-detect
-                  </button>
-                  <button
-                    onClick={() => setRejectingItem(selectedItem)}
-                    className="px-3 py-1.5 bg-red-900/40 hover:bg-red-800 text-red-200 text-xs font-semibold rounded border border-red-700/50"
-                  >
-                    Reject
-                  </button>
-                  <button
-                    onClick={() => handleAccept(selectedItem)}
-                    className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded"
-                  >
-                    Accept
-                  </button>
+              {/* Setting Toggle: Knowledge Extraction */}
+              <div className="p-3 bg-[var(--bg-panel)] rounded-xl border border-[var(--border-parchment)] flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-medium text-[var(--ink-primary)]">
+                    Knowledge Graph Extraction
+                  </div>
+                  <div className="text-[11px] text-[var(--ink-tertiary)]">
+                    When accepted, extract semantic concepts and link into Observatory graph.
+                  </div>
                 </div>
-              )}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(selectedItem.extract_knowledge)}
+                    onChange={() => handleToggleExtractKnowledge(selectedItem)}
+                    className="rounded text-[var(--accent-midnight)] focus:ring-[var(--accent-midnight)] cursor-pointer"
+                  />
+                  <span className="text-xs font-medium text-[var(--ink-secondary)]">
+                    {selectedItem.extract_knowledge ? 'Enabled' : 'Disabled'}
+                  </span>
+                </label>
+              </div>
             </div>
 
-            {/* Extraction Policy Setting */}
-            <div className="p-4 bg-slate-900/60 border border-slate-800 rounded space-y-1">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-sm font-semibold text-slate-200">Extract Knowledge into Graph</span>
-                  <p className="text-xs text-slate-400">
-                    Controls whether this source automatically extracts concepts and relationships into the knowledge graph upon acceptance.
+            {/* Extracted Excerpt & Preview (§8.4, §12.3) */}
+            {selectedItem.raw_metadata && (selectedItem.raw_metadata.excerpt || selectedItem.raw_metadata.extracted_text) && (
+              <div className="instrument-panel p-5 space-y-3">
+                <div className="flex items-center justify-between border-b border-[var(--border-parchment)] pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="mono text-[10px] uppercase font-semibold text-[var(--accent-midnight)]">
+                      Extracted Document Excerpt
+                    </span>
+                  </div>
+                  {selectedItem.raw_metadata.stage_timings && (
+                    <span className="mono text-[10px] text-[var(--ink-secondary)] font-medium">
+                      Total: {(selectedItem.raw_metadata.stage_timings as any).total_processing_ms}ms (Extract: {(selectedItem.raw_metadata.stage_timings as any).extract_ms}ms, Embed: {(selectedItem.raw_metadata.stage_timings as any).embed_and_index_ms}ms)
+                    </span>
+                  )}
+                </div>
+                <div className="p-3.5 bg-[var(--bg-base)] rounded-lg border border-[var(--border-parchment)]">
+                  <p className="serif text-sm leading-relaxed text-[var(--ink-primary)] italic">
+                    &ldquo;{(selectedItem.raw_metadata.excerpt as string) || (selectedItem.raw_metadata.extracted_text as string)?.slice(0, 300)}&rdquo;
                   </p>
                 </div>
+              </div>
+            )}
+
+            {/* Dry-Run Detected Concepts Preview (§8.4, §12.3) */}
+            <div className="instrument-panel p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-[var(--border-parchment)] pb-3">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-[var(--accent-midnight)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="2" y1="12" x2="22" y2="12" />
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                  </svg>
+                  <h3 className="serif text-base font-medium text-[var(--ink-primary)]">
+                    Preview of Detected Concepts ({selectedItem.detected_entities?.length || 0})
+                  </h3>
+                </div>
+                <span className="mono text-[10px] text-[var(--ink-tertiary)] uppercase font-semibold">
+                  Read-Only Preview
+                </span>
+              </div>
+
+              <p className="text-[11px] text-[var(--ink-tertiary)] leading-relaxed">
+                Concepts surfaced by dry-run entity analysis. No graph records or vectors are committed until accepted.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {(!selectedItem.detected_entities || selectedItem.detected_entities.length === 0) ? (
+                  <div className="col-span-full p-8 text-center text-xs text-[var(--ink-tertiary)] serif-italic border border-dashed border-[var(--border-parchment)] rounded-xl bg-white/40">
+                    No concepts detected or detection pending. Click &quot;Re-detect&quot; above to re-run detection.
+                  </div>
+                ) : (
+                  selectedItem.detected_entities.map((ent, idx) => (
+                    <div
+                      key={ent.name || idx}
+                      className="p-3 bg-white rounded-xl border border-[var(--border-parchment)] shadow-2xs space-y-1"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-[var(--ink-primary)] truncate">
+                          {ent.name}
+                        </span>
+                        <span className="mono text-[9px] uppercase px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                          {ent.type || 'concept'}
+                        </span>
+                      </div>
+                      {ent.description && (
+                        <p className="text-[11px] text-[var(--ink-secondary)] line-clamp-2">
+                          {ent.description}
+                        </p>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center p-12 text-center">
+            <div className="instrument-panel p-8 max-w-md space-y-3">
+              <div className="w-10 h-10 rounded-full bg-[var(--accent-terracotta)]/10 text-[var(--accent-terracotta)] mx-auto flex items-center justify-center">
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+                  <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+                </svg>
+              </div>
+              <h3 className="serif text-lg font-medium text-[var(--ink-primary)]">
+                Select an Inbox Document
+              </h3>
+              <p className="text-xs text-[var(--ink-secondary)] leading-relaxed">
+                Review pending material from the left queue before admitting it into the permanent repository.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Rejection Confirmation Modal (§12.5) */}
+        {rejectingItem && (
+          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="instrument-panel p-6 max-w-md w-full bg-white shadow-xl space-y-4">
+              <div className="flex items-center gap-2 text-red-700">
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                <h3 className="serif text-lg font-medium">Confirm Rejection</h3>
+              </div>
+              <p className="text-xs text-[var(--ink-secondary)] leading-relaxed">
+                Are you sure you want to reject <strong className="text-[var(--ink-primary)]">&quot;{rejectingItem.source_title}&quot;</strong>? This will permanently delete the source record, extracted preview chunks, vectors, and stored original file.
+              </p>
+              <div className="flex items-center justify-end gap-2 pt-2">
                 <button
-                  onClick={() => handleToggleExtractKnowledge(selectedItem)}
-                  className={`px-3 py-1 text-xs font-bold rounded ${
-                    selectedItem.extract_knowledge
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-slate-700 text-slate-300'
-                  }`}
+                  type="button"
+                  onClick={() => setRejectingItem(null)}
+                  className="px-3 py-1.5 text-xs text-[var(--ink-secondary)] hover:bg-stone-100 rounded-lg cursor-pointer"
                 >
-                  {selectedItem.extract_knowledge ? 'Enabled' : 'Disabled'}
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmReject}
+                  className="px-3.5 py-1.5 text-xs font-semibold bg-red-700 hover:bg-red-800 text-white rounded-lg shadow-sm cursor-pointer"
+                >
+                  Permanently Reject
                 </button>
               </div>
             </div>
-
-            {/* Dry-run Concept Preview */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-300">
-                  Detected Concepts Preview (Dry-Run: Up to 100 concepts)
-                </h3>
-                {selectedItem.detection_truncated && (
-                  <span className="text-xs text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">
-                    Truncated at 100 concepts
-                  </span>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {(selectedItem.detected_entities || []).map((c, idx) => (
-                  <div key={idx} className="p-2.5 bg-slate-900/40 border border-slate-800/80 rounded">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-xs text-amber-200">{c.name}</span>
-                      <span className="text-[10px] text-slate-400 uppercase">{c.type}</span>
-                    </div>
-                    {c.description && <p className="text-xs text-slate-400 mt-1">{c.description}</p>}
-                  </div>
-                ))}
-                {(!selectedItem.detected_entities || selectedItem.detected_entities.length === 0) && (
-                  <div className="col-span-2 text-xs text-slate-500 italic py-4">
-                    {selectedItem.detection_status === 'not_applicable'
-                      ? 'Concept extraction is not applicable for this file format.'
-                      : 'No concepts detected.'}
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">
-            Select an inbox item to review.
           </div>
         )}
-      </div>
-
-      {/* Confirmation Modal for Rejection */}
-      {rejectingItem && (
-        <div className="fixed inset-0 bg-slate-950/80 flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-lg max-w-md w-full space-y-4">
-            <h3 className="text-lg font-bold text-red-200">Confirm Rejection</h3>
-            <p className="text-sm text-slate-300">
-              Rejecting &quot;{rejectingItem.source_title}&quot; is permanent. The source file, chunk embeddings, and inbox item will be completely removed from storage.
-            </p>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setRejectingItem(null)}
-                className="px-3 py-1.5 bg-slate-800 text-xs font-semibold text-slate-300 rounded"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmReject}
-                className="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-xs font-bold text-white rounded"
-              >
-                Permanently Reject
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      </main>
     </div>
   );
 };
