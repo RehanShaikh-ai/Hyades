@@ -5,9 +5,7 @@ import {
   InboxAcceptResponse,
   InboxRejectResponse,
 } from '@/types/inbox';
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
+import { Source } from '@/types/source';
 
 export async function listInbox(
   workspaceId: string,
@@ -59,22 +57,12 @@ export async function redetectInboxItem(id: string): Promise<InboxItem> {
 export async function uploadToInbox(
   workspaceId: string,
   file: File
-): Promise<unknown> {
+): Promise<Source> {
   const formData = new FormData();
   formData.append('file', file);
 
-  const res = await fetch(
-    `${API_BASE_URL.replace(/\/+$/, '')}/sources/upload?workspace_id=${workspaceId}&review_mode=inbox`,
-    {
-      method: 'POST',
-      body: formData,
-    }
+  return apiClient.upload<Source>(
+    `/sources/upload?workspace_id=${encodeURIComponent(workspaceId)}&review_mode=inbox`,
+    formData
   );
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.detail || 'Failed to upload source to Inbox');
-  }
-
-  return res.json();
 }

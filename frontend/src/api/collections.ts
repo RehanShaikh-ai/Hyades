@@ -22,16 +22,30 @@ export async function getCollection(id: string): Promise<Collection> {
   return apiClient.request<Collection>(`/collections/${id}`);
 }
 
-export async function createCollection(data: {
-  workspace_id: string;
-  name: string;
-  description?: string | null;
-  icon?: string | null;
-  created_by?: string | null;
-}): Promise<Collection> {
+export async function createCollection(
+  workspaceIdOrData:
+    | string
+    | {
+        workspace_id: string;
+        name: string;
+        description?: string | null;
+        icon?: string | null;
+        created_by?: string | null;
+      },
+  maybeData?: {
+    name: string;
+    description?: string | null;
+    icon?: string | null;
+    created_by?: string | null;
+  }
+): Promise<Collection> {
+  const payload =
+    typeof workspaceIdOrData === 'string'
+      ? { workspace_id: workspaceIdOrData, ...maybeData }
+      : workspaceIdOrData;
   return apiClient.request<Collection>('/collections', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
 }
 

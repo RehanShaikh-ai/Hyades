@@ -6,9 +6,6 @@ import {
   SourceImportResult,
 } from '@/types/source';
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
-
 export interface ListSourcesParams {
   page?: number;
   page_size?: number;
@@ -17,33 +14,17 @@ export interface ListSourcesParams {
 
 export async function uploadSource(
   workspaceId: string,
-  file: File
+  file: File,
+  reviewMode?: string
 ): Promise<Source> {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(
-    `${API_BASE_URL.replace(/\/+$/, '')}/workspaces/${workspaceId}/sources/upload`,
-    {
-      method: 'POST',
-      body: formData,
-    }
+  const query = reviewMode ? `?review_mode=${encodeURIComponent(reviewMode)}` : '';
+  return apiClient.upload<Source>(
+    `/workspaces/${workspaceId}/sources/upload${query}`,
+    formData
   );
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    const message =
-      errorData?.error?.message ||
-      (typeof errorData?.detail === 'string'
-        ? errorData.detail
-        : Array.isArray(errorData?.detail)
-        ? errorData.detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join(', ')
-        : `Failed to upload source (HTTP ${response.status})`);
-    const code = errorData?.error?.code || 'SOURCE_UPLOAD_FAILED';
-    throw { error: { code, message } };
-  }
-
-  return response.json();
 }
 
 export async function listSources(
@@ -98,49 +79,22 @@ export async function unlinkSourceFromNote(
   return apiClient.delete(`/sources/${sourceId}/link-note/${noteId}`);
 }
 
-// Backward compatibility with v0.2.2 vault import
 export async function previewImport(
   workspaceId: string,
   formData: FormData
 ): Promise<SourcePreviewResult> {
-  const response = await fetch(
-    `${API_BASE_URL.replace(/\/+$/, '')}/workspaces/${workspaceId}/sources/preview`,
-    {
-      method: 'POST',
-      body: formData,
-    }
+  return apiClient.upload<SourcePreviewResult>(
+    `/workspaces/${workspaceId}/sources/preview`,
+    formData
   );
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(
-      errorData?.error?.message ||
-        `Failed to preview import (status: ${response.status})`
-    );
-  }
-
-  return response.json();
 }
 
 export async function commitImport(
   workspaceId: string,
   formData: FormData
 ): Promise<SourceImportResult> {
-  const response = await fetch(
-    `${API_BASE_URL.replace(/\/+$/, '')}/workspaces/${workspaceId}/sources/import`,
-    {
-      method: 'POST',
-      body: formData,
-    }
+  return apiClient.upload<SourceImportResult>(
+    `/workspaces/${workspaceId}/sources/import`,
+    formData
   );
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(
-      errorData?.error?.message ||
-        `Failed to commit import (status: ${response.status})`
-    );
-  }
-
-  return response.json();
 }

@@ -33,8 +33,16 @@ register_exception_handlers(app)
 # CORS middleware (contract §23)
 # Uses FRONTEND_URL from settings; wildcard origins must not be used as default.
 cors_origins = [settings.FRONTEND_URL]
-if "http://localhost:3000" not in cors_origins:
-    cors_origins.append("http://localhost:3000")
+for extra in [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+]:
+    if extra not in cors_origins:
+        cors_origins.append(extra)
 
 app.add_middleware(
     CORSMiddleware,
