@@ -6,7 +6,6 @@ Imported HTML is never rendered directly in the application.
 """
 
 from typing import Any
-from bs4 import BeautifulSoup
 
 from app.services.extractors.base import BaseExtractor, ExtractedContent
 
@@ -15,6 +14,11 @@ class HtmlExtractor(BaseExtractor):
     """Extractor for HTML documents."""
 
     def extract(self, file_bytes: bytes, filename: str = "", **kwargs: Any) -> ExtractedContent:
+        try:
+            from bs4 import BeautifulSoup
+        except ImportError:
+            raise ValueError("beautifulsoup4 is not installed in the runtime environment.")
+
         try:
             # Try utf-8 first, with fallback
             text_input = file_bytes.decode("utf-8", errors="replace")

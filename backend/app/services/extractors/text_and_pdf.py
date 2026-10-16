@@ -22,8 +22,12 @@ class PdfExtractor(BaseExtractor):
                 if t:
                     pages_text.append(t)
             full_text = "\n\n".join(pages_text)
+            doc_title = None
+            if reader.metadata and reader.metadata.title:
+                doc_title = str(reader.metadata.title).strip()
             metadata = {
                 "format": "pdf",
+                "title": doc_title,
                 "page_count": len(reader.pages),
                 "word_count": len(full_text.split()) if full_text else 0,
             }

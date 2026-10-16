@@ -6,7 +6,6 @@ Extracts readable text from paragraphs and tables while enforcing archive limits
 
 import io
 from typing import Any
-import docx
 
 from app.services.extractors.base import BaseExtractor, ExtractedContent, safe_open_zip
 
@@ -17,6 +16,11 @@ class DocxExtractor(BaseExtractor):
     def extract(self, file_bytes: bytes, filename: str = "", **kwargs: Any) -> ExtractedContent:
         # Enforce zip-bomb archive limits before parsing with docx
         safe_open_zip(file_bytes)
+
+        try:
+            import docx
+        except ImportError:
+            raise ValueError("python-docx is not installed in the runtime environment.")
 
         try:
             doc = docx.Document(io.BytesIO(file_bytes))

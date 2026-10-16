@@ -9,7 +9,6 @@ Exposes MIME type plus width/height/format.
 
 import io
 from typing import Any
-from PIL import Image
 
 from app.services.extractors.base import BaseExtractor, ExtractedContent
 
@@ -24,6 +23,11 @@ class ImageExtractor(BaseExtractor):
         sample = file_bytes[:1024].lower()
         if b"<svg" in sample or b"<?xml" in sample and b"svg" in sample:
             raise ValueError("SVG images are not supported per Contract §11.7. Raster formats only.")
+
+        try:
+            from PIL import Image
+        except ImportError:
+            raise ValueError("Pillow is not installed in the runtime environment.")
 
         try:
             img = Image.open(io.BytesIO(file_bytes))

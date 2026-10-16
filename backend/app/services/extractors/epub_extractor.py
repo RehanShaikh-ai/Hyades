@@ -7,7 +7,6 @@ Extracts book/chapter text from ZIP-based EPUB archives with strict safety limit
 import os
 from typing import Any
 import xml.etree.ElementTree as ET
-from bs4 import BeautifulSoup
 
 from app.services.extractors.base import BaseExtractor, ExtractedContent, safe_open_zip
 
