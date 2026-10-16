@@ -10,6 +10,10 @@ import { HyadesOverview } from './HyadesOverview';
 import { HyadesLibrary } from './HyadesLibrary';
 import { HyadesObservatory } from './HyadesObservatory';
 import { HyadesStella } from './HyadesStella';
+import { HyadesCollections } from './HyadesCollections';
+import { HyadesThreads } from './HyadesThreads';
+import { HyadesInbox } from './HyadesInbox';
+
 import { HyadesGlobalSearchModal } from '@/components/search/HyadesGlobalSearchModal';
 import { HyadesAccountModal } from '@/components/navigation/HyadesAccountModal';
 import { ObservatoryTarget, StellaContext } from '@/types/navigation';
@@ -249,6 +253,28 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
             onNavigateToObservatory={handleNavigateToObservatory}
             onNavigateToLibrary={() => setCurrentDestination('library')}
             environmentIndex={environmentIndex}
+          />
+        )}
+
+        {currentDestination === 'collections' && (
+          <HyadesCollections
+            workspaceId={effectiveWorkspaceId}
+            onNavigateToObservatory={handleNavigateToObservatory}
+            onNavigateToStella={handleNavigateToStella}
+          />
+        )}
+
+        {currentDestination === 'threads' && (
+          <HyadesThreads
+            workspaceId={effectiveWorkspaceId}
+            onNavigateToObservatory={handleNavigateToObservatory}
+            onNavigateToStella={handleNavigateToStella}
+          />
+        )}
+
+        {currentDestination === 'inbox' && (
+          <HyadesInbox
+            workspaceId={effectiveWorkspaceId}
           />
         )}
       </main>
