@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { listNotes, createNote, updateNote } from '@/api/notes';
-import { listSources, uploadSource } from '@/api/sources';
+import { listSources, uploadSource, getSourcePreview, SourceDocumentPreview } from '@/api/sources';
+import { DocumentPreviewModal } from '@/components/library/DocumentPreviewModal';
 import { listClusters } from '@/api/clusters';
 import { getWorkspaceGraph } from '@/api/graph';
 import { triggerExtraction, triggerReindex } from '@/api/graph_index';
@@ -78,6 +79,39 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
   // Sidebars
   const [isLeftShelfOpen, setIsLeftShelfOpen] = useState(true);
+  const [isTopicsExpanded, setIsTopicsExpanded] = useState(false);
+  const [isTagsExpanded, setIsTagsExpanded] = useState(false);
+
+  // Document preview state
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewTarget, setPreviewTarget] = useState<{ id: string; title: string; type: 'note' | 'source'; format?: string } | null>(null);
+  const [previewData, setPreviewData] = useState<SourceDocumentPreview | null>(null);
+  const [rawMarkdownPreview, setRawMarkdownPreview] = useState<string | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const handleOpenPreview = async (item: UnifiedItem) => {
+    setPreviewTarget({ id: item.id, title: item.title, type: item.type, format: item.format });
+    setIsPreviewOpen(true);
+    setPreviewError(null);
+    setPreviewData(null);
+    setRawMarkdownPreview(null);
+
+    if (item.type === 'note') {
+      const note = notes.find((n) => n.id === item.id);
+      setRawMarkdownPreview(note?.content || item.excerpt || ('# ' + item.title));
+    } else {
+      setIsPreviewLoading(true);
+      try {
+        const data = await getSourcePreview(item.id);
+        setPreviewData(data);
+      } catch (err: any) {
+        setPreviewError(err?.message || 'Document preview conversion failed for this format.');
+      } finally {
+        setIsPreviewLoading(false);
+      }
+    }
+  };
   const [isRightDossierOpen, setIsRightDossierOpen] = useState(true);
 
   // Selection & Actions
@@ -92,6 +126,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingItemType, setEditingItemType] = useState<'note' | 'source'>('note');
+  const [importReviewMode, setImportReviewMode] = useState<'direct' | 'inbox'>('direct');
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [saveNoteError, setSaveNoteError] = useState<string | null>(null);
 
@@ -126,6 +162,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
   // Fetch real data
   const fetchData = useCallback(async () => {
+    if (!workspaceId) return;
     setIsLoading(true);
     try {
       const [notesRes, sourcesRes, clustersRes] = await Promise.allSettled([
@@ -136,7 +173,9 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
       setNotes(notesRes.status === 'fulfilled' ? notesRes.value.items || [] : []);
       setSources(sourcesRes.status === 'fulfilled' ? sourcesRes.value.items || [] : []);
-      setClusters(clustersRes.status === 'fulfilled' ? clustersRes.value || [] : []);
+      const rawClusters = clustersRes.status === 'fulfilled' ? clustersRes.value : [];
+      const clusterList = Array.isArray(rawClusters) ? rawClusters : ((rawClusters as any)?.items || []);
+      setClusters(clusterList);
     } catch {
       // Fallback gracefully
     } finally {
@@ -230,15 +269,16 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
     // Sources mapping
     sources.forEach((s, idx) => {
       const sWithExtras = s as Source & { name?: string; type?: string };
-      const sourceTitle = s.title || sWithExtras.name || s.file_name || `Archival Source ${idx + 1}`;
+      const sourceTitle = s.title || s.file_name || sWithExtras.name || `Archival Source ${idx + 1}`;
       const isPdf = sourceTitle.toLowerCase().endsWith('.pdf') || s.source_type === 'pdf' || sWithExtras.type === 'pdf';
+      const genuineExcerpt = s.excerpt || s.extracted_text?.slice(0, 240) || (s.file_name ? `Document: ${s.file_name}` : 'Knowledge document indexed in your Hyades repository.');
       list.push({
         id: s.id,
         type: 'source',
         format: isPdf ? 'PDF' : 'Book',
         title: sourceTitle,
-        authorOrMeta: s.source_type || sWithExtras.type ? `${((s.source_type || sWithExtras.type) as string).toUpperCase()} · Ingested Source` : 'Ingested Source',
-        excerpt: s.extracted_text?.slice(0, 240) || sourceTitle || 'Knowledge document indexed in your Hyades repository.',
+        authorOrMeta: s.source_type || sWithExtras.type ? `${((s.source_type || sWithExtras.type) as string).toUpperCase()} • Ingested Source` : 'Ingested Source',
+        excerpt: genuineExcerpt,
         topic: 'Sources',
         topicColor: 'var(--accent-terracotta)',
         status: 'Indexed Source',
@@ -529,9 +569,14 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   }, [initialAction, handleCreateNewNote, onClearInitialAction]);
 
   const handleOpenEditNote = (item: UnifiedItem) => {
+    setEditingItemType(item.type);
     setEditingNoteId(item.type === 'note' && item.id && !item.id.startsWith('canon-') ? item.id : null);
     setEditTitle(item.title || '');
-    setEditContent(item.rawNote?.content || item.excerpt || '');
+    setEditContent(
+      item.type === 'note'
+        ? (item.rawNote?.content || item.excerpt || '')
+        : (item.rawSource?.extracted_text || item.excerpt || 'No extracted text content available.')
+    );
     setSaveNoteError(null);
     setIsSavingNote(false);
     setIsEditingNote(true);
@@ -625,9 +670,15 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
     setImportError(null);
 
     try {
-      const uploaded = await uploadSource(workspaceId, importFile);
-      const uploadedName = uploaded.file_name || (uploaded as { filename?: string }).filename || importFile.name;
-      setActionFeedback(`Source "${uploadedName}" imported and queued for indexing.`);
+      const uploaded = importReviewMode === 'inbox'
+        ? await uploadSource(workspaceId, importFile, 'inbox')
+        : await uploadSource(workspaceId, importFile);
+      const uploadedName = uploaded.title || uploaded.file_name || (uploaded as { filename?: string }).filename || importFile.name;
+      if (importReviewMode === 'inbox') {
+        setActionFeedback(`Source "${uploadedName}" queued for review in Knowledge Inbox.`);
+      } else {
+        setActionFeedback(`Source "${uploadedName}" imported and queued for indexing.`);
+      }
       setImportFile(null);
       setIsImportModalOpen(false);
       setActiveCategory('sources');
@@ -660,7 +711,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   }
 
   return (
-    <div className="relative flex-1 h-[calc(100vh-57px)] flex flex-col overflow-hidden w-full select-none text-[13px] leading-relaxed">
+    <div data-testid="hyades-library" className="relative flex-1 h-[calc(100vh-57px)] flex flex-col overflow-hidden w-full select-none text-[13px] leading-relaxed">
       {/* Archival paper grain texture */}
       <div className="paper-grain" />
 
@@ -782,7 +833,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
           {/* ================= LEFT FLANK: THE CATALOG SHELVES & TOPICS (COLUMNS 1–3) ================= */}
           {isLeftShelfOpen && (
             <aside className="shelves-slide lg:col-span-3 flex flex-col h-full min-h-0 overflow-hidden transition-all duration-300">
-              <div className="instrument-panel p-4 flex flex-col h-full min-h-0 overflow-hidden">
+              <div className="instrument-panel p-4 flex flex-col h-full min-h-0 overflow-y-auto space-y-3">
                 <div className="panel-bracket-tl" />
                 <div className="panel-bracket-br" />
 
@@ -899,7 +950,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                 <div className="w-full h-px bg-[var(--border-parchment)] mb-3 shrink-0" />
 
                 {/* Section: Topic Shelves */}
-                <div className="flex-1 min-h-0 flex flex-col mb-3">
+                <div className="shrink-0 flex flex-col">
                   <div className="flex items-center justify-between mb-1.5 shrink-0">
                     <div className="flex items-center gap-2">
                       <span className="serif-italic text-sm text-[var(--ink-secondary)]">Topic Shelves</span>
@@ -920,10 +971,10 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
                   <div
                     data-testid="library-topic-shelves-container"
-                    className="flex flex-col gap-1 overflow-y-auto pr-1 flex-1 min-h-[60px]"
+                    className="flex flex-col gap-1 pr-1"
                   >
                     {topicShelves.length > 0 ? (
-                      topicShelves.map((topic) => (
+                      (isTopicsExpanded ? topicShelves : topicShelves.slice(0, 5)).map((topic) => (
                         <div
                           key={topic.key}
                           role="button"
@@ -958,6 +1009,16 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                         No topic clusters yet. Add notes to generate clusters.
                       </div>
                     )}
+                    {topicShelves.length > 5 && (
+                      <button
+                        type="button"
+                        data-testid="library-expand-topics-btn"
+                        onClick={() => setIsTopicsExpanded((prev) => !prev)}
+                        className="text-[11px] text-[var(--accent-terracotta)] hover:underline pt-1.5 self-start font-medium cursor-pointer flex items-center gap-1"
+                      >
+                        <span>{isTopicsExpanded ? '− Show fewer topics' : `+${topicShelves.length - 5} more topics`}</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -981,8 +1042,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                           </button>
                         )}
                       </div>
-                      <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
-                        {tagShelves.map((tag) => (
+                      <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                        {(isTagsExpanded ? tagShelves : tagShelves.slice(0, 5)).map((tag) => (
                           <button
                             key={tag.key}
                             type="button"
@@ -1001,6 +1062,16 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                           </button>
                         ))}
                       </div>
+                      {tagShelves.length > 5 && (
+                        <button
+                          type="button"
+                          data-testid="library-expand-tags-btn"
+                          onClick={() => setIsTagsExpanded((prev) => !prev)}
+                          className="text-[11px] text-[var(--accent-terracotta)] hover:underline pt-1.5 self-start font-medium cursor-pointer flex items-center gap-1"
+                        >
+                          <span>{isTagsExpanded ? '− Show fewer tags' : `+${tagShelves.length - 5} more tags`}</span>
+                        </button>
+                      )}
                     </div>
                   </>
                 )}
@@ -1374,7 +1445,18 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                 </div>
               </div>
             </div>
-          </section>
+                {/* Document Preview Modal */}
+      <DocumentPreviewModal
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        title={previewTarget?.title || 'Document Preview'}
+        format={previewTarget?.format}
+        previewData={previewData}
+        rawMarkdownContent={rawMarkdownPreview}
+        isLoading={isPreviewLoading}
+        error={previewError}
+      />
+    </section>
 
           {/* ================= RIGHT FLANK: ITEM INSPECTOR & READING DOSSIER (COLUMNS 9–12) ================= */}
           {isRightDossierOpen && selectedItem && (
@@ -1492,6 +1574,16 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                 <div className="flex flex-col gap-2 pt-2 border-t border-[var(--border-parchment)]">
                   <button
                     type="button"
+                    data-testid="preview-document-btn"
+                    onClick={() => handleOpenPreview(selectedItem)}
+                    className="w-full py-2 px-3 rounded-lg bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-xs font-semibold text-[var(--ink-primary)] flex items-center justify-center gap-2 shadow-2xs transition-colors cursor-pointer"
+                    title="Preview rendered document with readable editorial formatting"
+                  >
+                    <i className="ph-bold ph-book-open text-xs text-[var(--accent-terracotta)]" />
+                    <span>Preview Document</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleOpenEditNote(selectedItem)}
                     className="w-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-colors py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
                   >
@@ -1558,24 +1650,22 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
         </div>
       </main>
 
-      {/* Note Editor Modal */}
+      {/* Note & Document Reader Modal */}
       {isEditingNote && (
         <div className="dialog-backdrop fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="dialog-content instrument-panel w-full max-w-2xl bg-white shadow-2xl p-6 rounded-2xl flex flex-col gap-4 border border-[var(--border-strong)]">
+          <div className="dialog-content instrument-panel w-full max-w-2xl bg-white shadow-2xl p-6 rounded-2xl flex flex-col gap-4 border border-[var(--border-strong)] max-h-[90vh] overflow-y-auto">
             <div className="panel-bracket-tl" />
             <div className="panel-bracket-br" />
 
             <div className="flex items-center justify-between border-b border-[var(--border-parchment)] pb-3">
               <div className="flex items-center gap-2">
-                <i className="ph ph-note-pencil text-lg text-[var(--accent-midnight)]" />
+                <i className={`ph ${editingItemType === 'note' ? 'ph-note-pencil' : 'ph-book-open'} text-lg text-[var(--accent-midnight)]`} />
                 <span className="serif text-xl font-semibold text-[var(--ink-primary)]">
-                  Scriptorium Note Editor
+                  {editingItemType === 'note' ? 'Scriptorium Note Editor' : 'Document Reader'}
                 </span>
-                {editingNoteId && (
-                  <span className="text-[10px] mono uppercase tracking-wider text-[var(--ink-tertiary)] bg-[var(--bg-panel-subtle)] px-2 py-0.5 rounded border border-[var(--border-parchment)]">
-                    Edit
-                  </span>
-                )}
+                <span className="text-[10px] mono uppercase tracking-wider text-[var(--ink-tertiary)] bg-[var(--bg-panel-subtle)] px-2 py-0.5 rounded border border-[var(--border-parchment)]">
+                  {editingItemType === 'note' ? (editingNoteId ? 'Edit' : 'New') : 'Archival Source'}
+                </span>
               </div>
               <button
                 type="button"
@@ -1607,55 +1697,68 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                     setEditTitle(e.target.value);
                     if (saveNoteError) setSaveNoteError(null);
                   }}
-                  disabled={isSavingNote}
-                  className="w-full px-3 py-2 bg-[var(--bg-panel)] border border-[var(--border-strong)] rounded-lg text-sm font-medium text-[var(--ink-primary)] outline-none focus:border-[var(--accent-midnight)] disabled:opacity-60"
+                  disabled={isSavingNote || editingItemType === 'source'}
+                  className="w-full px-3 py-2 bg-[var(--bg-panel)] border border-[var(--border-strong)] rounded-lg text-sm font-medium text-[var(--ink-primary)] outline-none focus:border-[var(--accent-midnight)] disabled:opacity-80"
                   placeholder="Note Title..."
-                  autoFocus
+                  autoFocus={editingItemType === 'note'}
                 />
               </div>
 
               <div>
                 <label className="block text-[11px] mono uppercase tracking-wider text-[var(--ink-tertiary)] mb-1">
-                  Content (Markdown)
+                  {editingItemType === 'note' ? 'Content (Markdown)' : 'Extracted Text & Document Content'}
                 </label>
                 <textarea
-                  rows={8}
+                  rows={editingItemType === 'note' ? 8 : 12}
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
                   disabled={isSavingNote}
-                  className="w-full px-3 py-2 bg-[var(--bg-panel)] border border-[var(--border-strong)] rounded-lg text-sm text-[var(--ink-primary)] leading-relaxed outline-none focus:border-[var(--accent-midnight)] resize-none disabled:opacity-60 font-mono text-[13px]"
+                  readOnly={editingItemType === 'source'}
+                  className="w-full px-3 py-2 bg-[var(--bg-panel)] border border-[var(--border-strong)] rounded-lg text-sm text-[var(--ink-primary)] leading-relaxed outline-none focus:border-[var(--accent-midnight)] resize-y disabled:opacity-80 font-mono text-[13px]"
                   placeholder="Record your research insights and connections..."
                 />
               </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-parchment)]">
-              <button
-                type="button"
-                onClick={() => setIsEditingNote(false)}
-                disabled={isSavingNote}
-                className="px-3 py-1.5 rounded-lg border border-[var(--border-strong)] bg-white text-xs font-medium text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] cursor-pointer disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveNote}
-                disabled={isSavingNote || !editTitle.trim()}
-                className="px-4 py-1.5 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium shadow-2xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
-              >
-                {isSavingNote ? (
-                  <>
-                    <i className="ph ph-spinner animate-spin text-sm" />
-                    <span>Saving...</span>
-                  </>
-                ) : (
-                  <>
-                    <i className="ph ph-floppy-disk text-sm" />
-                    <span>Save to Archive</span>
-                  </>
-                )}
-              </button>
+              {editingItemType === 'source' ? (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingNote(false)}
+                  className="px-4 py-1.5 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium shadow-2xs cursor-pointer"
+                >
+                  Close Reader
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingNote(false)}
+                    disabled={isSavingNote}
+                    className="px-3 py-1.5 rounded-lg border border-[var(--border-strong)] bg-white text-xs font-medium text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] cursor-pointer disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveNote}
+                    disabled={isSavingNote || !editTitle.trim()}
+                    className="px-4 py-1.5 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium shadow-2xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    {isSavingNote ? (
+                      <>
+                        <i className="ph ph-spinner animate-spin text-sm" />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <i className="ph ph-floppy-disk text-sm" />
+                        <span>Save to Archive</span>
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1779,6 +1882,60 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                 )}
               </div>
             )}
+
+            {/* Mode Selection */}
+            <div className="space-y-1.5 pt-1">
+              <label className="text-[11px] mono uppercase tracking-wider text-[var(--ink-secondary)] font-medium block">
+                Ingestion Workflow
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label
+                  className={`p-2.5 rounded-lg border text-left cursor-pointer transition-all flex flex-col gap-1 ${
+                    importReviewMode === 'direct'
+                      ? 'bg-white border-[var(--accent-midnight)] ring-1 ring-[var(--accent-midnight)] shadow-xs'
+                      : 'bg-[var(--bg-panel-subtle)] border-[var(--border-parchment)] hover:border-[var(--border-strong)]'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="importReviewMode"
+                      value="direct"
+                      checked={importReviewMode === 'direct'}
+                      onChange={() => setImportReviewMode('direct')}
+                      className="text-[var(--accent-midnight)]"
+                    />
+                    <span className="text-xs font-semibold text-[var(--ink-primary)]">Direct Ingestion</span>
+                  </div>
+                  <p className="text-[10px] text-[var(--ink-tertiary)] leading-tight pl-5">
+                    Index directly into the research catalog.
+                  </p>
+                </label>
+
+                <label
+                  className={`p-2.5 rounded-lg border text-left cursor-pointer transition-all flex flex-col gap-1 ${
+                    importReviewMode === 'inbox'
+                      ? 'bg-white border-[var(--accent-midnight)] ring-1 ring-[var(--accent-midnight)] shadow-xs'
+                      : 'bg-[var(--bg-panel-subtle)] border-[var(--border-parchment)] hover:border-[var(--border-strong)]'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="importReviewMode"
+                      value="inbox"
+                      checked={importReviewMode === 'inbox'}
+                      onChange={() => setImportReviewMode('inbox')}
+                      className="text-[var(--accent-midnight)]"
+                    />
+                    <span className="text-xs font-semibold text-[var(--ink-primary)]">Knowledge Inbox</span>
+                  </div>
+                  <p className="text-[10px] text-[var(--ink-tertiary)] leading-tight pl-5">
+                    Queue for review, dry-run concept detection, & triage.
+                  </p>
+                </label>
+              </div>
+            </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-parchment)]">
               <button

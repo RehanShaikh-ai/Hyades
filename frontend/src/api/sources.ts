@@ -98,3 +98,18 @@ export async function commitImport(
     formData
   );
 }
+
+export interface SourceDocumentPreview {
+  source_id: string;
+  title: string;
+  file_name: string;
+  format: string;
+  markdown_content: string;
+  is_converted: boolean;
+  converter: string;
+  file_size_bytes?: number;
+}
+
+export async function getSourcePreview(sourceId: string): Promise<SourceDocumentPreview> {
+  return apiClient.get<SourceDocumentPreview>(`/sources/${sourceId}/preview`);
+}

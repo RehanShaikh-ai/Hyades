@@ -17,6 +17,7 @@ from app.schemas.source import (
     SourceNoteLink,
     SourcePreviewResponse,
     SourceResponse,
+    SourceDocumentPreviewResponse,
 )
 from app.services import source_service
 
@@ -115,6 +116,29 @@ def get_source(
     """Get a single source record per CONTRACT §10.1."""
     source = source_service.get_source(db, source_id)
     return SourceResponse.model_validate(source)
+
+
+
+@router.get(
+    "/sources/{source_id}/preview",
+    response_model=SourceDocumentPreviewResponse,
+    status_code=status.HTTP_200_OK,
+)
+def get_source_document_preview(
+    source_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> SourceDocumentPreviewResponse:
+    """Get clean sanitized Markdown document preview representation per CONTRACT v0.4.2."""
+    source = source_service.get_source(db, source_id)
+    from app.services.document_preview_service import generate_source_preview
+    res = generate_source_preview(
+        source_id=source.id,
+        original_path=source.original_path,
+        source_type=source.source_type,
+        file_bytes=None,
+        raw_metadata=source.raw_metadata,
+    )
+    return SourceDocumentPreviewResponse.model_validate(res)
 
 
 @router.delete(

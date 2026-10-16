@@ -24,6 +24,8 @@ dependencies = [
     "arq>=0.26.0,<1.0",
     "redis>=5.0.0,<6.0",
     "fastembed>=0.8.1",
+    "beautifulsoup4>=4.15.0",
+    "python-docx>=1.2.0",
 ]
 
 [dependency-groups]

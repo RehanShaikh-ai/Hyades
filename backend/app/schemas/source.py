@@ -175,3 +175,18 @@ class SourceNoteLink(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SourceDocumentPreviewResponse(BaseModel):
+    """Schema for document preview representation."""
+
+    source_id: uuid.UUID
+    title: str
+    file_name: str
+    format: str
+    markdown_content: str
+    is_converted: bool
+    converter: str
+    file_size_bytes: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
