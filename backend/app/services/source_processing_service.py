@@ -39,48 +39,44 @@ def _get_storage_dir(workspace_id: uuid.UUID) -> Path:
 
 
 def extract_text(file_bytes: bytes, filename: str, source_type: str) -> tuple[str, int | None]:
-    """Extract text content and page count (for PDFs) from file bytes per CONTRACT §7.1.
+    """Extract text content and page count from file bytes per CONTRACT v0.4.2 §11.
 
-    Supports PDF (via docling or pypdf), Markdown, and plain text.
+    Routes via unified get_extractor(source_type) supporting PDF, DOCX, HTML, EPUB, JSON, CSV, Image, Markdown, and plain text.
     """
-    if source_type == "pdf" or filename.lower().endswith(".pdf"):
-        # Try docling if available, else pypdf
-        try:
-            import docling  # type: ignore # noqa: F401
-            # If docling is installed and configured
-            # (fallback to pypdf for deterministic fast execution in test/prod)
-        except ImportError:
-            pass
+    from app.services.extractors import get_extractor
 
-        try:
-            reader = PdfReader(io.BytesIO(file_bytes))
-            page_count = len(reader.pages)
-            pages_text: list[str] = []
-            for page in reader.pages:
-                t = page.extract_text()
-                if t:
-                    pages_text.append(t)
-            extracted = "\n\n".join(pages_text)
-            return extracted, page_count
-        except Exception as e:
-            raise ValueError(f"PDF text extraction failed: {e}") from e
+    st = (source_type or "").lower()
+    if filename:
+        ext = os.path.splitext(filename)[1].lower()
+        if ext == ".pdf":
+            st = "pdf"
+        elif ext in (".md", ".markdown"):
+            st = "markdown"
+        elif ext in (".txt", ".text"):
+            st = "text"
+        elif ext == ".docx":
+            st = "docx"
+        elif ext in (".html", ".htm"):
+            st = "html"
+        elif ext == ".epub":
+            st = "epub"
+        elif ext == ".json":
+            st = "json"
+        elif ext == ".csv":
+            st = "csv"
+        elif ext in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
+            st = "image"
 
-    elif source_type in ("markdown", "obsidian_note") or filename.lower().endswith(
-        (".md", ".markdown")
-    ):
+    try:
+        extractor = get_extractor(st)
+        result = extractor.extract(file_bytes, filename)
+        page_count = result.metadata.get("page_count")
+        return result.text, page_count
+    except Exception as e:
         try:
-            text = file_bytes.decode("utf-8")
-        except UnicodeDecodeError:
-            text = file_bytes.decode("latin-1", errors="replace")
-        return text, None
-
-    else:
-        # Plain text
-        try:
-            text = file_bytes.decode("utf-8")
-        except UnicodeDecodeError:
-            text = file_bytes.decode("latin-1", errors="replace")
-        return text, None
+            return file_bytes.decode("utf-8"), None
+        except Exception:
+            raise ValueError(f"Text extraction failed: {e}") from e
 
 
 def normalize_text(text: str) -> str:
