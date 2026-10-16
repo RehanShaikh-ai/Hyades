@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Workspace } from '@/types/workspaces';
 import { HealthStatus } from '@/hooks/useHealth';
 
-export type HyadesDestination = 'overview' | 'library' | 'observatory' | 'stella';
+export type HyadesDestination = 'overview' | 'library' | 'observatory' | 'stella' | 'collections' | 'threads' | 'inbox';
 
 interface HyadesHeaderProps {
   currentDestination: HyadesDestination;
@@ -39,6 +39,9 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
     library: null,
     observatory: null,
     stella: null,
+    collections: null,
+    threads: null,
+    inbox: null,
   });
   const [indicatorStyle, setIndicatorStyle] = useState<{ x: number; width: number; visible: boolean }>({
     x: 0,
@@ -76,12 +79,15 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const destinationTitle = {
+  const destinationTitle: Record<HyadesDestination, string> = {
     overview: 'Overview',
     library: 'Library',
     observatory: 'Observatory',
     stella: 'Stella',
-  }[currentDestination];
+    collections: 'Collections',
+    threads: 'Threads',
+    inbox: 'Inbox',
+  };
 
   return (
     <header className="hyades-header sticky top-0 z-30 w-full bg-[var(--bg-base)]/85 backdrop-blur-md border-b border-[var(--border-parchment)] px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex items-center justify-between transition-all select-none">
@@ -112,7 +118,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             <span className="serif text-[22px] font-semibold tracking-tight text-[var(--ink-primary)] leading-none">Hyades</span>
             <div className="w-px h-3 bg-[var(--border-strong)] hidden xs:block" />
             <span className="text-[10px] tracking-[0.2em] font-medium text-[var(--ink-secondary)] uppercase hidden xs:inline">
-              {destinationTitle}
+              {destinationTitle[currentDestination]}
             </span>
           </div>
         </button>
@@ -160,6 +166,37 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
           >
             <span>Stella</span>
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-brass)]" />
+          </button>
+
+          <button
+            ref={(el) => { tabRefs.current.collections = el; }}
+            type="button"
+            aria-label="Collections"
+            onClick={() => onNavigate('collections')}
+            className={`nav-item hyades-nav-tab flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] focus-visible:rounded-md ${currentDestination === 'collections' ? 'active' : ''}`}
+            aria-current={currentDestination === 'collections' ? 'page' : undefined}
+          >
+            <span>Collections</span>
+          </button>
+          <button
+            ref={(el) => { tabRefs.current.threads = el; }}
+            type="button"
+            aria-label="Threads"
+            onClick={() => onNavigate('threads')}
+            className={`nav-item hyades-nav-tab flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] focus-visible:rounded-md ${currentDestination === 'threads' ? 'active' : ''}`}
+            aria-current={currentDestination === 'threads' ? 'page' : undefined}
+          >
+            <span>Threads</span>
+          </button>
+          <button
+            ref={(el) => { tabRefs.current.inbox = el; }}
+            type="button"
+            aria-label="Inbox"
+            onClick={() => onNavigate('inbox')}
+            className={`nav-item hyades-nav-tab flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] focus-visible:rounded-md ${currentDestination === 'inbox' ? 'active' : ''}`}
+            aria-current={currentDestination === 'inbox' ? 'page' : undefined}
+          >
+            <span>Inbox</span>
           </button>
 
           {/* Gliding terracotta underline indicator */}

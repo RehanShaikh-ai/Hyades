@@ -1,3 +1,4 @@
+import { SavedViewsModal } from '@/components/observatory/SavedViewsModal';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
@@ -834,6 +835,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
   // Focus node, hover & search state
   const [selectedNode, setSelectedNode] = useState<CelestialNode | null>(null);
+  const [isSavedViewsModalOpen, setIsSavedViewsModalOpen] = useState(false);
   const selectedNodeRef = useRef<CelestialNode | null>(null);
   useEffect(() => {
     selectedNodeRef.current = selectedNode;
@@ -2877,6 +2879,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
         {/* SEGMENT 3 (RIGHT): Search Trigger & Fullscreen Controls */}
         <div className="flex items-center gap-2 bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-2.5 py-1.5 pointer-events-auto">
+          <button onClick={() => setIsSavedViewsModalOpen(true)} className="px-2.5 py-1 text-xs font-semibold bg-slate-900/80 border border-slate-700/80 hover:bg-slate-800 rounded text-amber-200 transition-colors mr-2">Saved Views</button>
           {onOpenSearch && (
             <button
               type="button"
@@ -3728,6 +3731,25 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         onClose={() => setIsSuggestionsOpen(false)}
         onLinkCreated={() => fetchGraph()}
         onNavigateToNote={onNavigateToNote}
+      />
+
+      <SavedViewsModal
+        isOpen={isSavedViewsModalOpen}
+        onClose={() => setIsSavedViewsModalOpen(false)}
+        workspaceId={workspaceId}
+        currentState={{
+          version: 1,
+          zoom: 1.0,
+          center: { x: 0.0, y: 0.0 },
+          filters: {},
+          focus_entity_ids: selectedNode ? [selectedNode.id] : [],
+        }}
+        onRestoreState={(restoredState) => {
+          if (restoredState.focus_entity_ids?.length && celestialNodes.length) {
+            const target = celestialNodes.find((n: CelestialNode) => restoredState.focus_entity_ids.includes(n.id));
+            if (target) setSelectedNode(target);
+          }
+        }}
       />
     </div>
   );

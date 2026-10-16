@@ -51,3 +51,6 @@ skills-lock.json
 docs/backups/
 *.dump
 *.tar.gz
+
+test-results/
+playwright-report/
