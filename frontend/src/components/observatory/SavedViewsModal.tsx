@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { X, Bookmark, RotateCcw, Trash2 } from 'lucide-react';
 import { SavedView, SavedViewState } from '@/types/saved_views';
 import { listSavedViews, createSavedView, deleteSavedView, restoreSavedView } from '@/api/saved_views';
 
@@ -36,6 +37,18 @@ export const SavedViewsModal: React.FC<SavedViewsModalProps> = ({
       loadViews();
     }
   }, [isOpen, workspaceId]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -77,66 +90,105 @@ export const SavedViewsModal: React.FC<SavedViewsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950/80 flex items-center justify-center p-4 z-50">
-      <div className="bg-slate-900 border border-slate-800 p-6 rounded-lg max-w-lg w-full space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <h3 className="text-lg font-bold text-amber-200">Saved Observatory Views</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-200 text-sm">
-            ✕
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-xs dialog-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="saved-views-title"
+    >
+      <div className="dialog-content w-full max-w-lg bg-[#FAF8F2] border border-[#C9C2B0] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+        {/* Modal Header */}
+        <div className="px-6 py-4 border-b border-[#DCD6C8] flex items-center justify-between bg-[#F7F5EE]">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-[#162135] text-[#FAF8F2] flex items-center justify-center">
+              <Bookmark size={16} className="text-[#C05638]" />
+            </div>
+            <div>
+              <h3 id="saved-views-title" className="serif text-lg font-semibold text-[#1C1917] leading-tight">
+                Saved Observatory Views
+              </h3>
+              <p className="text-xs text-[#878074]">
+                Preserve and restore custom camera & constellation coordinates
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 text-[#878074] hover:text-[#1C1917] hover:bg-[#EFECE4] rounded-lg transition-colors focus:outline-none"
+            aria-label="Close"
+          >
+            <X size={18} />
           </button>
         </div>
 
-        {error && <div className="p-2 bg-red-950/60 text-red-300 text-xs rounded border border-red-800">{error}</div>}
+        <div className="p-6 space-y-4">
+          {error && (
+            <div className="p-3 bg-[#FDF2E9] border border-[#FADBD8] text-[#9A3412] text-xs rounded-lg">
+              {error}
+            </div>
+          )}
 
-        {/* Save Current View Form */}
-        <form onSubmit={handleSaveCurrentView} className="flex gap-2">
-          <input
-            type="text"
-            placeholder="Name current view..."
-            value={viewName}
-            onChange={(e) => setViewName(e.target.value)}
-            className="flex-1 bg-slate-950 border border-slate-800 text-xs px-3 py-1.5 rounded focus:outline-none focus:border-amber-400 text-slate-200"
-          />
-          <button
-            type="submit"
-            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded transition-colors"
-          >
-            Save View
-          </button>
-        </form>
-
-        {/* Saved Views List */}
-        <div className="max-h-60 overflow-y-auto space-y-2">
-          {views.map((v) => (
-            <div
-              key={v.id}
-              className="p-2.5 bg-slate-950/60 border border-slate-800/80 rounded flex items-center justify-between"
+          {/* Save Current View Form */}
+          <form onSubmit={handleSaveCurrentView} className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Name current coordinates view..."
+              value={viewName}
+              onChange={(e) => setViewName(e.target.value)}
+              className="flex-1 bg-white border border-[#C9C2B0] text-xs px-3 py-2 rounded-lg text-[#1C1917] placeholder:text-[#878074] focus:outline-none focus:border-[#C05638] transition-colors"
+            />
+            <button
+              type="submit"
+              className="px-4 py-2 bg-[#C05638] hover:bg-[#A9482E] text-[#FAF8F2] text-xs font-semibold rounded-lg transition-colors shadow-xs"
             >
-              <div>
-                <div className="text-sm font-medium text-slate-200">{v.name}</div>
-                <div className="text-[10px] text-slate-500">
-                  Zoom: {v.state.zoom} • Focus: {v.state.focus_entity_ids?.length || 0} entities
+              Save View
+            </button>
+          </form>
+
+          {/* Saved Views List */}
+          <div className="max-h-64 overflow-y-auto hyades-scroll space-y-2 pr-1">
+            {views.map((v) => (
+              <div
+                key={v.id}
+                className="p-3 bg-white border border-[#DCD6C8] rounded-xl flex items-center justify-between hover:border-[#C9C2B0] transition-colors shadow-xs"
+              >
+                <div>
+                  <div className="text-sm font-medium text-[#1C1917]">{v.name}</div>
+                  <div className="text-[11px] text-[#878074] mono mt-0.5">
+                    Zoom: {v.state.zoom} • Focus: {v.state.focus_entity_ids?.length || 0} entities
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleRestore(v.id)}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-[#EFECE4] hover:bg-[#E5E0D5] text-xs font-medium text-[#1C1917] rounded-lg border border-[#DCD6C8] transition-colors"
+                  >
+                    <RotateCcw size={12} className="text-[#C05638]" />
+                    <span>Restore</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(v.id)}
+                    className="p-1.5 text-[#878074] hover:text-[#C05638] rounded-lg hover:bg-[#FDF2E9] transition-colors"
+                    title="Delete view"
+                    aria-label="Delete view"
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleRestore(v.id)}
-                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-amber-300 rounded"
-                >
-                  Restore
-                </button>
-                <button
-                  onClick={() => handleDelete(v.id)}
-                  className="text-slate-500 hover:text-red-400 text-xs p-1"
-                >
-                  ✕
-                </button>
+            ))}
+            {views.length === 0 && (
+              <div className="text-xs text-[#878074] italic py-8 text-center bg-white/50 border border-dashed border-[#DCD6C8] rounded-xl">
+                No saved observatory views yet. Position the map and save your first view above.
               </div>
-            </div>
-          ))}
-          {views.length === 0 && (
-            <div className="text-xs text-slate-500 italic py-4 text-center">No saved views yet.</div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>

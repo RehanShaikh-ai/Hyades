@@ -95,8 +95,10 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
       if (pinnedRes.status === 'fulfilled') setPinnedNotes(pinnedRes.value.items || []);
       if (recentRes.status === 'fulfilled') setRecentNotes(recentRes.value.items || []);
       if (clusterRes.status === 'fulfilled') {
+        const rawClusters = clusterRes.value;
+        const clusterList = Array.isArray(rawClusters) ? rawClusters : ((rawClusters as any)?.items || []);
         setClusters(
-          clusterRes.value.map((c) => ({
+          clusterList.map((c: any) => ({
             id: c.id,
             label: c.label,
             member_count: c.member_count ?? 0,
