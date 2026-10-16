@@ -46,3 +46,8 @@ htmlcov/
 # Agents & AI Tooling
 .agents/
 skills-lock.json
+
+# Backups
+docs/backups/
+*.dump
+*.tar.gz
