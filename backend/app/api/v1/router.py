@@ -10,6 +10,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     activity,
     clusters,
+    collections,
     conversations,
     dashboard,
     entities,
@@ -51,3 +52,4 @@ api_router.include_router(jobs.router)
 api_router.include_router(versions.router)
 api_router.include_router(activity.router)
 api_router.include_router(saved_searches.router)
+api_router.include_router(collections.router)
