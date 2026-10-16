@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Boolean, DateTime, FetchedValue, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, Index, text, DateTime, FetchedValue, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.dialects.sqlite import JSON as SQLITE_JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -38,6 +38,13 @@ class Note(Base):
     """
 
     __tablename__ = "notes"
+    __table_args__ = (
+        Index("idx_notes_workspace_updated", "workspace_id", text("updated_at DESC")),
+        Index("idx_notes_workspace_created", "workspace_id", text("created_at DESC")),
+        Index("idx_notes_workspace_pinned", "workspace_id", "is_pinned"),
+        Index("idx_notes_workspace_archived", "workspace_id", "is_archived"),
+        Index("idx_notes_search", "search_vector", postgresql_using="gin"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

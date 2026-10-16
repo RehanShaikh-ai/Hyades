@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, func
+from sqlalchemy import DateTime, ForeignKey, Index, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,6 +28,9 @@ class NoteLink(Base):
     """
 
     __tablename__ = "note_links"
+    __table_args__ = (
+        Index("idx_note_links_target", "target_note_id"),
+    )
 
     source_note_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
