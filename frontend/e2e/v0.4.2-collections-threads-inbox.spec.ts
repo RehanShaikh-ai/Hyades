@@ -167,7 +167,7 @@ test.describe('v0.4.2 Collections, Threads, Saved Views and Knowledge Inbox Flow
   });
 
   test('user can create a collection and view newly created collection', async ({ page }) => {
-    let collectionsList: any[] = [];
+    const collectionsList: any[] = [];
     await setupMockApis(page);
 
     await page.route('**/api/v1/collections*', async (route) => {
@@ -227,7 +227,7 @@ test.describe('v0.4.2 Collections, Threads, Saved Views and Knowledge Inbox Flow
   });
 
   test('user can create a thread with guiding question', async ({ page }) => {
-    let threadsList: any[] = [];
+    const threadsList: any[] = [];
     await setupMockApis(page);
 
     await page.route('**/api/v1/threads*', async (route) => {

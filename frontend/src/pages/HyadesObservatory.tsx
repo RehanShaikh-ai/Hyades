@@ -1624,7 +1624,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       if (!svgNode) return;
       const serializer = new XMLSerializer();
       let source = serializer.serializeToString(svgNode);
-      if (!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)) {
+      if (!source.match(/^<svg[^>]+xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)) {
         source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
       }
       const svgBlob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
