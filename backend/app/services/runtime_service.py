@@ -31,12 +31,14 @@ def get_freellmapi_paths() -> list[Path]:
         candidates.append(Path(env_path))
 
     # Common relative locations in dev environments
-    candidates.extend([
-        Path("/freellmapi"),
-        Path("/app/freellmapi"),
-        Path("../freellmapi"),
-        Path(r"C:\Users\rehan\OneDrive\Desktop\Personal\freellmapi"),
-    ])
+    candidates.extend(
+        [
+            Path("/freellmapi"),
+            Path("/app/freellmapi"),
+            Path("../freellmapi"),
+            Path(r"C:\Users\rehan\OneDrive\Desktop\Personal\freellmapi"),
+        ]
+    )
     return candidates
 
 
@@ -47,11 +49,11 @@ def detect_installed_version() -> tuple[bool, str | None, str | None]:
             pkg_file = path / "package.json"
             server_pkg_file = path / "server" / "package.json"
             if server_pkg_file.exists():
-                with open(server_pkg_file, "r", encoding="utf-8") as f:
+                with open(server_pkg_file, encoding="utf-8") as f:
                     data = json.load(f)
                     return True, data.get("version", "0.2.1"), str(path)
             elif pkg_file.exists():
-                with open(pkg_file, "r", encoding="utf-8") as f:
+                with open(pkg_file, encoding="utf-8") as f:
                     data = json.load(f)
                     if "freellmapi" in data.get("name", "").lower():
                         return True, data.get("version", "0.2.1"), str(path)

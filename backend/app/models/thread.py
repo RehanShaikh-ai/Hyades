@@ -116,9 +116,7 @@ class ThreadNote(Base):
     """Many-to-many membership between Thread and Note."""
 
     __tablename__ = "thread_notes"
-    __table_args__ = (
-        Index("idx_thread_notes_note", "note_id"),
-    )
+    __table_args__ = (Index("idx_thread_notes_note", "note_id"),)
 
     thread_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -145,9 +143,7 @@ class ThreadSource(Base):
     """Many-to-many membership between Thread and Source."""
 
     __tablename__ = "thread_sources"
-    __table_args__ = (
-        Index("idx_thread_sources_source", "source_id"),
-    )
+    __table_args__ = (Index("idx_thread_sources_source", "source_id"),)
 
     thread_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -174,9 +170,7 @@ class ThreadEntity(Base):
     """Many-to-many membership between Thread and GraphEntity."""
 
     __tablename__ = "thread_entities"
-    __table_args__ = (
-        Index("idx_thread_entities_entity", "entity_id"),
-    )
+    __table_args__ = (Index("idx_thread_entities_entity", "entity_id"),)
 
     thread_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -203,9 +197,7 @@ class ThreadConversation(Base):
     """Many-to-many membership between Thread and Conversation."""
 
     __tablename__ = "thread_conversations"
-    __table_args__ = (
-        Index("idx_thread_conversations_conversation", "conversation_id"),
-    )
+    __table_args__ = (Index("idx_thread_conversations_conversation", "conversation_id"),)
 
     thread_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -232,9 +224,7 @@ class ThreadQuestion(Base):
     """Question item tracked within a research thread."""
 
     __tablename__ = "thread_questions"
-    __table_args__ = (
-        Index("idx_thread_questions_thread", "thread_id"),
-    )
+    __table_args__ = (Index("idx_thread_questions_thread", "thread_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -276,9 +266,7 @@ class ThreadDiscovery(Base):
     """Discovery / finding logged within a research thread."""
 
     __tablename__ = "thread_discoveries"
-    __table_args__ = (
-        Index("idx_thread_discoveries_thread", "thread_id"),
-    )
+    __table_args__ = (Index("idx_thread_discoveries_thread", "thread_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

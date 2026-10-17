@@ -19,8 +19,8 @@ class DocxExtractor(BaseExtractor):
 
         try:
             import docx
-        except ImportError:
-            raise ValueError("python-docx is not installed in the runtime environment.")
+        except ImportError as err:
+            raise ValueError("python-docx is not installed in the runtime environment.") from err
 
         try:
             doc = docx.Document(io.BytesIO(file_bytes))
@@ -28,7 +28,7 @@ class DocxExtractor(BaseExtractor):
             raise ValueError(f"Failed to parse DOCX document: {e}") from e
 
         paragraphs_text = [p.text for p in doc.paragraphs if p.text.strip()]
-        
+
         # Also extract table text
         tables_text = []
         for table in doc.tables:

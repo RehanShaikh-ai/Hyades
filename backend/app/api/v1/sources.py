@@ -6,21 +6,21 @@ Canonical endpoints per contract §7 (v0.2.2) and CONTRACT v0.4.1 §10.1.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.source import Source
 from app.schemas.source import (
+    SourceDocumentPreviewResponse,
     SourceImportResponse,
     SourceLinkRequest,
     SourceListResponse,
     SourceNoteLink,
     SourcePreviewResponse,
-    SourceUpdate,
     SourceResponse,
-    SourceDocumentPreviewResponse,
+    SourceUpdate,
 )
-from app.models.source import Source
 from app.services import source_service
 
 router = APIRouter(tags=["sources"])
@@ -120,7 +120,6 @@ def get_source(
     return SourceResponse.model_validate(source)
 
 
-
 @router.get(
     "/sources/{source_id}/preview",
     response_model=SourceDocumentPreviewResponse,
@@ -133,6 +132,7 @@ def get_source_document_preview(
     """Get clean sanitized Markdown document preview representation per CONTRACT v0.4.2."""
     source = source_service.get_source(db, source_id)
     from app.services.document_preview_service import generate_source_preview
+
     res = generate_source_preview(
         source_id=source.id,
         original_path=source.original_path,

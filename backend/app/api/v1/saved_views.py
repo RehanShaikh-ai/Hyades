@@ -1,7 +1,7 @@
 """Saved Observatory Views API routes per CONTRACT v0.4.2 §8.3."""
 
-from typing import Annotated
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session

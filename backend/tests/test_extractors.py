@@ -14,12 +14,17 @@ Verifies:
 import io
 import json
 import zipfile
+
+import docx
 import pytest
 from PIL import Image
 
 from app.services.extractors import get_extractor
 from app.services.extractors.base import safe_open_zip
-from app.services.file_validation_service import detect_and_validate_format, resolve_and_verify_storage_path
+from app.services.file_validation_service import (
+    detect_and_validate_format,
+    resolve_and_verify_storage_path,
+)
 
 
 def test_get_extractor_resolution():
@@ -59,7 +64,9 @@ def test_json_extractor_and_depth_limit():
     ext = get_extractor("json")
 
     # Valid JSON
-    valid_data = json.dumps({"project": "Hyades", "version": "0.4.2", "features": ["Inbox", "Collections"]}).encode()
+    valid_data = json.dumps(
+        {"project": "Hyades", "version": "0.4.2", "features": ["Inbox", "Collections"]}
+    ).encode()
     res = ext.extract(valid_data)
     assert "project: Hyades" in res.text
     assert "version: 0.4.2" in res.text
@@ -140,12 +147,6 @@ def test_storage_path_traversal_prevention(tmp_path):
     # Traversal attempt in filename
     with pytest.raises(ValueError):
         resolve_and_verify_storage_path(root, ws_id, src_id, "..")
-
-
-import io
-import zipfile
-import docx
-from app.services.extractors import get_extractor
 
 
 def test_real_docx_extraction():

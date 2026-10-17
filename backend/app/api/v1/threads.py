@@ -1,8 +1,8 @@
-"""Threads API endpoints per CONTRACT v0.4.2 §8.2.
-"""
+"""Threads API endpoints per CONTRACT v0.4.2 §8.2."""
 
-from typing import Annotated
 import uuid
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
@@ -31,7 +31,11 @@ router = APIRouter(tags=["threads"])
 
 
 @router.post("/threads", response_model=ThreadResponse, status_code=status.HTTP_201_CREATED)
-@router.post("/workspaces/{workspace_id}/threads", response_model=ThreadResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/workspaces/{workspace_id}/threads",
+    response_model=ThreadResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_thread(
     data: ThreadCreate,
     db: Annotated[Session, Depends(get_db)],
@@ -40,7 +44,10 @@ def create_thread(
     ws_id = workspace_id or data.workspace_id
     if not ws_id:
         from fastapi import HTTPException
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="workspace_id is required")
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="workspace_id is required"
+        )
     return thread_service.create_thread(db, ws_id, data)
 
 
@@ -55,7 +62,10 @@ def list_threads(
 ) -> ThreadListResponse:
     if not workspace_id:
         from fastapi import HTTPException
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="workspace_id is required")
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="workspace_id is required"
+        )
     items, total = thread_service.list_threads(db, workspace_id, status_filter, page, page_size)
     return ThreadListResponse(items=items, total=total, page=page, page_size=page_size)
 
@@ -89,6 +99,7 @@ def delete_thread(
 
 # -- Membership Endpoints (§8.2) --
 
+
 @router.get("/threads/{thread_id}/items", response_model=KnowledgeItemListResponse)
 def list_thread_items(
     thread_id: uuid.UUID,
@@ -100,7 +111,11 @@ def list_thread_items(
     return membership_service.list_thread_items(db, t, page, page_size)
 
 
-@router.post("/threads/{thread_id}/items", response_model=KnowledgeItemResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/threads/{thread_id}/items",
+    response_model=KnowledgeItemResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def add_thread_item(
     thread_id: uuid.UUID,
     req: KnowledgeItemAddRequest,
@@ -110,7 +125,9 @@ def add_thread_item(
     return membership_service.add_thread_item(db, t, req.item_type, req.item_id)
 
 
-@router.delete("/threads/{thread_id}/items/{item_type}/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/threads/{thread_id}/items/{item_type}/{item_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 def remove_thread_item(
     thread_id: uuid.UUID,
     item_type: KnowledgeItemType,
@@ -124,6 +141,7 @@ def remove_thread_item(
 
 # -- Questions Endpoints (§8.2) --
 
+
 @router.get("/threads/{thread_id}/questions", response_model=list[ThreadQuestionResponse])
 def list_thread_questions(
     thread_id: uuid.UUID,
@@ -132,7 +150,11 @@ def list_thread_questions(
     return thread_service.list_thread_questions(db, thread_id)
 
 
-@router.post("/threads/{thread_id}/questions", response_model=ThreadQuestionResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/threads/{thread_id}/questions",
+    response_model=ThreadQuestionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_thread_question(
     thread_id: uuid.UUID,
     data: ThreadQuestionCreate,
@@ -151,7 +173,9 @@ def update_thread_question(
     return thread_service.update_thread_question(db, thread_id, question_id, data)
 
 
-@router.delete("/threads/{thread_id}/questions/{question_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/threads/{thread_id}/questions/{question_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 def delete_thread_question(
     thread_id: uuid.UUID,
     question_id: uuid.UUID,
@@ -163,6 +187,7 @@ def delete_thread_question(
 
 # -- Discoveries Endpoints (§8.2) --
 
+
 @router.get("/threads/{thread_id}/discoveries", response_model=list[ThreadDiscoveryResponse])
 def list_thread_discoveries(
     thread_id: uuid.UUID,
@@ -171,7 +196,11 @@ def list_thread_discoveries(
     return thread_service.list_thread_discoveries(db, thread_id)
 
 
-@router.post("/threads/{thread_id}/discoveries", response_model=ThreadDiscoveryResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/threads/{thread_id}/discoveries",
+    response_model=ThreadDiscoveryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_thread_discovery(
     thread_id: uuid.UUID,
     data: ThreadDiscoveryCreate,
@@ -180,7 +209,9 @@ def create_thread_discovery(
     return thread_service.create_thread_discovery(db, thread_id, data)
 
 
-@router.delete("/threads/{thread_id}/discoveries/{discovery_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/threads/{thread_id}/discoveries/{discovery_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 def delete_thread_discovery(
     thread_id: uuid.UUID,
     discovery_id: uuid.UUID,
@@ -191,6 +222,7 @@ def delete_thread_discovery(
 
 
 # -- Activity Timeline (§8.2) --
+
 
 @router.get("/threads/{thread_id}/activity", response_model=ThreadActivityResponse)
 def get_thread_activity(

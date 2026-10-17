@@ -10,7 +10,6 @@ Verifies:
 - Activity timeline aggregation in reverse chronological order
 """
 
-import uuid
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -87,12 +86,16 @@ def test_thread_questions_and_discoveries_lifecycle(client: TestClient, setup_wo
     thread_id = r_t.json()["id"]
 
     # 1. Add questions
-    r_q1 = client.post(f"/api/v1/threads/{thread_id}/questions", json={"text": "Is HNSW index optimal?"})
+    r_q1 = client.post(
+        f"/api/v1/threads/{thread_id}/questions", json={"text": "Is HNSW index optimal?"}
+    )
     assert r_q1.status_code == 201
     q1_id = r_q1.json()["id"]
     assert r_q1.json()["is_resolved"] is False
 
-    r_q2 = client.post(f"/api/v1/threads/{thread_id}/questions", json={"text": "What is the memory footprint?"})
+    r_q2 = client.post(
+        f"/api/v1/threads/{thread_id}/questions", json={"text": "What is the memory footprint?"}
+    )
     q2_id = r_q2.json()["id"]
 
     # 2. List questions
@@ -101,12 +104,17 @@ def test_thread_questions_and_discoveries_lifecycle(client: TestClient, setup_wo
     assert len(r_ql.json()) == 2
 
     # 3. Resolve question
-    r_qr = client.patch(f"/api/v1/threads/{thread_id}/questions/{q1_id}", json={"is_resolved": True})
+    r_qr = client.patch(
+        f"/api/v1/threads/{thread_id}/questions/{q1_id}", json={"is_resolved": True}
+    )
     assert r_qr.status_code == 200
     assert r_qr.json()["is_resolved"] is True
 
     # 4. Log discovery
-    r_d1 = client.post(f"/api/v1/threads/{thread_id}/discoveries", json={"content": "Quantization cuts memory by 4x with 1% loss"})
+    r_d1 = client.post(
+        f"/api/v1/threads/{thread_id}/discoveries",
+        json={"content": "Quantization cuts memory by 4x with 1% loss"},
+    )
     assert r_d1.status_code == 201
     d1_id = r_d1.json()["id"]
 
@@ -130,7 +138,9 @@ def test_thread_questions_and_discoveries_lifecycle(client: TestClient, setup_wo
     assert client.delete(f"/api/v1/threads/{thread_id}/discoveries/{d1_id}").status_code == 204
 
 
-def test_thread_membership_and_cross_workspace_isolation(client: TestClient, setup_workspace, db_session: Session):
+def test_thread_membership_and_cross_workspace_isolation(
+    client: TestClient, setup_workspace, db_session: Session
+):
     ws, user = setup_workspace
 
     ws_other = Workspace(name="Isolated WS", owner_id=user.id)
@@ -138,23 +148,36 @@ def test_thread_membership_and_cross_workspace_isolation(client: TestClient, set
     db_session.commit()
 
     note_local = Note(workspace_id=ws.id, created_by=user.id, title="Local Note", content="text")
-    note_foreign = Note(workspace_id=ws_other.id, created_by=user.id, title="Foreign Note", content="text")
+    note_foreign = Note(
+        workspace_id=ws_other.id, created_by=user.id, title="Foreign Note", content="text"
+    )
     db_session.add_all([note_local, note_foreign])
     db_session.commit()
 
-    r_t = client.post("/api/v1/threads", json={"workspace_id": str(ws.id), "title": "Isolation Test"})
+    r_t = client.post(
+        "/api/v1/threads", json={"workspace_id": str(ws.id), "title": "Isolation Test"}
+    )
     thread_id = r_t.json()["id"]
 
     # 1. Add local note
-    r_add = client.post(f"/api/v1/threads/{thread_id}/items", json={"item_type": "note", "item_id": str(note_local.id)})
+    r_add = client.post(
+        f"/api/v1/threads/{thread_id}/items",
+        json={"item_type": "note", "item_id": str(note_local.id)},
+    )
     assert r_add.status_code == 201
 
     # 2. Duplicate note rejected (409)
-    r_dup = client.post(f"/api/v1/threads/{thread_id}/items", json={"item_type": "note", "item_id": str(note_local.id)})
+    r_dup = client.post(
+        f"/api/v1/threads/{thread_id}/items",
+        json={"item_type": "note", "item_id": str(note_local.id)},
+    )
     assert r_dup.status_code == 409
 
     # 3. Cross-workspace note rejected (422)
-    r_cross = client.post(f"/api/v1/threads/{thread_id}/items", json={"item_type": "note", "item_id": str(note_foreign.id)})
+    r_cross = client.post(
+        f"/api/v1/threads/{thread_id}/items",
+        json={"item_type": "note", "item_id": str(note_foreign.id)},
+    )
     assert r_cross.status_code == 422
 
     # 4. List items

@@ -1,11 +1,10 @@
-﻿# -*- coding: utf-8 -*-
 """Unit and integration tests for FreeLLMAPI authentication and error handling."""
 
-import uuid
 from unittest.mock import MagicMock, patch
+
 import pytest
 
-from app.core.exceptions import LLMProviderUnavailableError, LLMTimeoutError
+from app.core.exceptions import LLMProviderUnavailableError
 from app.services import llm_service
 from app.services.llm_service import FreeLLMAPILMProvider
 
@@ -33,7 +32,9 @@ def test_freellmapi_health_check_requires_api_key():
 
 def test_freellmapi_401_structured_error():
     """Provider 401 returns actionable structured error without leaking headers."""
-    provider = FreeLLMAPILMProvider(base_url="http://localhost:3001", api_key="freellmapi-invalid", model="auto")
+    provider = FreeLLMAPILMProvider(
+        base_url="http://localhost:3001", api_key="freellmapi-invalid", model="auto"
+    )
 
     mock_resp = MagicMock()
     mock_resp.status_code = 401
@@ -50,7 +51,9 @@ def test_freellmapi_401_structured_error():
 
 def test_freellmapi_stream_401_structured_error():
     """Streaming 401 returns actionable structured error without leaking headers."""
-    provider = FreeLLMAPILMProvider(base_url="http://localhost:3001", api_key="freellmapi-invalid", model="auto")
+    provider = FreeLLMAPILMProvider(
+        base_url="http://localhost:3001", api_key="freellmapi-invalid", model="auto"
+    )
 
     mock_stream_resp = MagicMock()
     mock_stream_resp.status_code = 401

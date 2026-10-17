@@ -389,13 +389,23 @@ def is_entity_referenced_in_memberships(db: Session, entity_id: uuid.UUID) -> bo
     from app.models.collection import CollectionEntity
     from app.models.thread import ThreadEntity
 
-    in_coll = db.scalar(
-        select(func.count()).select_from(CollectionEntity).where(CollectionEntity.entity_id == entity_id)
-    ) or 0
+    in_coll = (
+        db.scalar(
+            select(func.count())
+            .select_from(CollectionEntity)
+            .where(CollectionEntity.entity_id == entity_id)
+        )
+        or 0
+    )
     if in_coll > 0:
         return True
 
-    in_thread = db.scalar(
-        select(func.count()).select_from(ThreadEntity).where(ThreadEntity.entity_id == entity_id)
-    ) or 0
+    in_thread = (
+        db.scalar(
+            select(func.count())
+            .select_from(ThreadEntity)
+            .where(ThreadEntity.entity_id == entity_id)
+        )
+        or 0
+    )
     return in_thread > 0

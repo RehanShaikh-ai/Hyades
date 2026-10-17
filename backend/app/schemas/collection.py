@@ -1,9 +1,9 @@
-"""Collection and membership schemas per CONTRACT v0.4.2 §5.2, §8.1.
-"""
+"""Collection and membership schemas per CONTRACT v0.4.2 §5.2, §8.1."""
 
+import uuid
 from datetime import datetime
 from typing import Any, Literal
-import uuid
+
 from pydantic import BaseModel, ConfigDict, Field
 
 KnowledgeItemType = Literal["note", "source", "entity", "conversation"]

@@ -1,8 +1,8 @@
-"""Collections API endpoints per CONTRACT v0.4.2 §8.1.
-"""
+"""Collections API endpoints per CONTRACT v0.4.2 §8.1."""
 
-from typing import Annotated
 import uuid
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
@@ -25,7 +25,11 @@ router = APIRouter(tags=["collections"])
 
 
 @router.post("/collections", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED)
-@router.post("/workspaces/{workspace_id}/collections", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/workspaces/{workspace_id}/collections",
+    response_model=CollectionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_collection(
     data: CollectionCreate,
     db: Annotated[Session, Depends(get_db)],
@@ -34,7 +38,10 @@ def create_collection(
     ws_id = workspace_id or data.workspace_id
     if not ws_id:
         from fastapi import HTTPException
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="workspace_id is required")
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="workspace_id is required"
+        )
     return collection_service.create_collection(db, ws_id, data)
 
 
@@ -48,7 +55,10 @@ def list_collections(
 ) -> CollectionListResponse:
     if not workspace_id:
         from fastapi import HTTPException
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="workspace_id is required")
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="workspace_id is required"
+        )
     items, total = collection_service.list_collections(db, workspace_id, page, page_size)
     return CollectionListResponse(items=items, total=total, page=page, page_size=page_size)
 
@@ -84,6 +94,7 @@ def delete_collection(
 
 # -- Membership Endpoints (§8.1) --
 
+
 @router.get("/collections/{collection_id}/items", response_model=KnowledgeItemListResponse)
 def list_collection_items(
     collection_id: uuid.UUID,
@@ -95,7 +106,11 @@ def list_collection_items(
     return membership_service.list_collection_items(db, coll, page, page_size)
 
 
-@router.post("/collections/{collection_id}/items", response_model=KnowledgeItemResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/collections/{collection_id}/items",
+    response_model=KnowledgeItemResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def add_collection_item(
     collection_id: uuid.UUID,
     req: KnowledgeItemAddRequest,
@@ -105,7 +120,10 @@ def add_collection_item(
     return membership_service.add_collection_item(db, coll, req.item_type, req.item_id)
 
 
-@router.delete("/collections/{collection_id}/items/{item_type}/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/collections/{collection_id}/items/{item_type}/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 def remove_collection_item(
     collection_id: uuid.UUID,
     item_type: KnowledgeItemType,
@@ -118,6 +136,7 @@ def remove_collection_item(
 
 
 # -- Stats & Related Knowledge (§8.1, §14.3) --
+
 
 @router.get("/collections/{collection_id}/stats", response_model=CollectionStatsResponse)
 def get_collection_stats(

@@ -1,9 +1,9 @@
 """Knowledge Inbox API routes per CONTRACT v0.4.2 §8.4."""
 
-from typing import Annotated
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -11,7 +11,6 @@ from app.schemas.inbox import (
     InboxAcceptResponse,
     InboxItemDetailResponse,
     InboxItemListResponse,
-    InboxItemResponse,
     InboxItemUpdate,
     InboxRejectResponse,
 )
@@ -24,7 +23,9 @@ router = APIRouter(prefix="/inbox", tags=["inbox"])
 def list_inbox(
     workspace_id: Annotated[uuid.UUID, Query(..., description="Workspace ID")],
     db: Annotated[Session, Depends(get_db)],
-    status: Annotated[str | None, Query(description="Filter by status (pending, accepted, rejected)")] = None,
+    status: Annotated[
+        str | None, Query(description="Filter by status (pending, accepted, rejected)")
+    ] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ):

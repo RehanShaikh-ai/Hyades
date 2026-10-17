@@ -1,4 +1,4 @@
-﻿"""Source Pydantic schemas.
+"""Source Pydantic schemas.
 
 Canonical schemas per CONTRACT §4.2, §5.1, §6.1, and CONTRACT v0.4.1 §4.2.
 """
@@ -124,7 +124,11 @@ class SourceResponse(BaseModel):
         elif isinstance(data, dict):
             meta = data.get("raw_metadata") or {}
             orig_path = data.get("original_path", "") or ""
-            fn = data.get("file_name") or meta.get("file_name") or (os.path.basename(orig_path) if orig_path else None)
+            fn = (
+                data.get("file_name")
+                or meta.get("file_name")
+                or (os.path.basename(orig_path) if orig_path else None)
+            )
             ti = data.get("title") or meta.get("title") or fn
             ex = data.get("excerpt") or meta.get("excerpt")
             tx = data.get("extracted_text") or meta.get("extracted_text")

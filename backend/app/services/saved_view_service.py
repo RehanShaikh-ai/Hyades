@@ -1,9 +1,8 @@
 """Saved Observatory Views service per CONTRACT v0.4.2 §7.1, §8.3, §13."""
 
-import json
 import logging
-from typing import Any
 import uuid
+from typing import Any
 
 from fastapi import status
 from sqlalchemy import func, select
@@ -14,7 +13,7 @@ from app.core.exceptions import AppException, ConflictError, WorkspaceNotFoundEr
 from app.models.graph_entity import GraphEntity
 from app.models.saved_view import SavedView
 from app.models.workspace import Workspace
-from app.schemas.saved_view import MAX_SAVED_VIEW_STATE_BYTES, SavedViewCreate, SavedViewUpdate
+from app.schemas.saved_view import SavedViewCreate, SavedViewUpdate
 
 logger = logging.getLogger("app.services.saved_view_service")
 
@@ -30,7 +29,9 @@ class SavedViewNotFoundError(AppException):
         )
 
 
-def create_saved_view(db: Session, data: SavedViewCreate, user_id: uuid.UUID | None = None) -> SavedView:
+def create_saved_view(
+    db: Session, data: SavedViewCreate, user_id: uuid.UUID | None = None
+) -> SavedView:
     """Create a new saved observatory view."""
     ws = db.get(Workspace, data.workspace_id)
     if not ws:
@@ -44,7 +45,9 @@ def create_saved_view(db: Session, data: SavedViewCreate, user_id: uuid.UUID | N
         )
     ).first()
     if existing:
-        raise ConflictError(f"A saved view with name '{data.name}' already exists in this workspace")
+        raise ConflictError(
+            f"A saved view with name '{data.name}' already exists in this workspace"
+        )
 
     creator_id = user_id or data.created_by or ws.owner_id
     state_dict = data.state.model_dump()
@@ -78,7 +81,11 @@ def list_saved_views(
         raise WorkspaceNotFoundError("Workspace not found")
 
     offset = (page - 1) * page_size
-    query = select(SavedView).where(SavedView.workspace_id == workspace_id).order_by(SavedView.created_at.desc())
+    query = (
+        select(SavedView)
+        .where(SavedView.workspace_id == workspace_id)
+        .order_by(SavedView.created_at.desc())
+    )
     count_query = select(func.count(SavedView.id)).where(SavedView.workspace_id == workspace_id)
 
     total = db.scalar(count_query) or 0
@@ -109,7 +116,9 @@ def update_saved_view(db: Session, saved_view_id: uuid.UUID, data: SavedViewUpda
                 )
             ).first()
             if conflict:
-                raise ConflictError(f"A saved view with name '{new_name}' already exists in this workspace")
+                raise ConflictError(
+                    f"A saved view with name '{new_name}' already exists in this workspace"
+                )
             view.name = new_name
 
     if data.state is not None:

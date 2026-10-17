@@ -1,11 +1,8 @@
 """Tests for FreeLLMAPI Runtime Discovery, Health Checking, and Management."""
 
-from unittest.mock import MagicMock, patch
-from fastapi.testclient import TestClient
-import httpx
-import pytest
+from unittest.mock import patch
 
-from app.services import runtime_service
+from fastapi.testclient import TestClient
 
 
 def test_runtime_status_not_installed(client: TestClient):
@@ -81,8 +78,10 @@ def test_runtime_test_connection_endpoint(client: TestClient):
 
 
 def test_runtime_start_and_stop_service(client: TestClient):
-    with patch("app.services.runtime_service.start_freellmapi_service") as mock_start, \
-         patch("app.services.runtime_service.stop_freellmapi_service") as mock_stop:
+    with (
+        patch("app.services.runtime_service.start_freellmapi_service") as mock_start,
+        patch("app.services.runtime_service.stop_freellmapi_service") as mock_stop,
+    ):
         mock_start.return_value = {
             "success": True,
             "message": "FreeLLMAPI started successfully.",

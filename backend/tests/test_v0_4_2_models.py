@@ -9,6 +9,7 @@ Verifies:
 """
 
 import uuid
+
 import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -16,22 +17,12 @@ from sqlalchemy.orm import Session
 from app.db.base import Base
 from app.models import (
     Collection,
-    CollectionNote,
-    CollectionSource,
-    CollectionEntity,
-    CollectionConversation,
-    Thread,
-    ThreadNote,
-    ThreadSource,
-    ThreadEntity,
-    ThreadConversation,
-    ThreadQuestion,
-    ThreadDiscovery,
-    SavedView,
     InboxItem,
-    Note,
+    SavedView,
     Source,
-    EntityChunk,
+    Thread,
+    ThreadDiscovery,
+    ThreadQuestion,
     User,
     Workspace,
 )
@@ -67,7 +58,10 @@ def test_existing_table_extensions_on_metadata():
     """Verify notes, sources, and entity_chunks column extensions."""
     notes_cols = Base.metadata.tables["notes"].columns
     assert "extract_knowledge" in notes_cols
-    assert notes_cols["extract_knowledge"].default is not None or notes_cols["extract_knowledge"].server_default is not None
+    assert (
+        notes_cols["extract_knowledge"].default is not None
+        or notes_cols["extract_knowledge"].server_default is not None
+    )
 
     sources_cols = Base.metadata.tables["sources"].columns
     assert "extract_knowledge" in sources_cols

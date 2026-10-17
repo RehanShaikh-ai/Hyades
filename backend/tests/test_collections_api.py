@@ -12,12 +12,15 @@ Verifies:
 """
 
 import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models.collection import Collection
+from app.models.content_chunk import ContentChunk
+from app.models.entity_chunk import EntityChunk
 from app.models.graph_entity import GraphEntity
+from app.models.graph_relationship import GraphRelationship
 from app.models.note import Note
 from app.models.source import Source
 from app.models.user import User
@@ -84,7 +87,9 @@ def test_collections_crud(client: TestClient, setup_workspace):
     assert r_after.status_code == 404
 
 
-def test_collection_membership_and_cross_workspace_rejection(client: TestClient, setup_workspace, db_session: Session):
+def test_collection_membership_and_cross_workspace_rejection(
+    client: TestClient, setup_workspace, db_session: Session
+):
     ws, user = setup_workspace
 
     # Create another workspace for cross-workspace testing
@@ -93,41 +98,66 @@ def test_collection_membership_and_cross_workspace_rejection(client: TestClient,
     db_session.commit()
 
     # Create note in WS 1
-    note1 = Note(workspace_id=ws.id, created_by=user.id, title="PyTorch Guide", content="Guide text")
+    note1 = Note(
+        workspace_id=ws.id, created_by=user.id, title="PyTorch Guide", content="Guide text"
+    )
     # Create note in WS Other
-    note_other = Note(workspace_id=ws_other.id, created_by=user.id, title="Other WS Note", content="Secret text")
+    note_other = Note(
+        workspace_id=ws_other.id, created_by=user.id, title="Other WS Note", content="Secret text"
+    )
     # Create source in WS 1
     src1 = Source(
-        workspace_id=ws.id, source_type="pdf", original_path="/path/test.pdf",
-        source_identifier="/path/test.pdf", content_hash="123", import_batch_id=uuid.uuid4(),
-        import_status="completed"
+        workspace_id=ws.id,
+        source_type="pdf",
+        original_path="/path/test.pdf",
+        source_identifier="/path/test.pdf",
+        content_hash="123",
+        import_batch_id=uuid.uuid4(),
+        import_status="completed",
     )
     # Create entity in WS 1
-    ent1 = GraphEntity(workspace_id=ws.id, name="Gradient Descent", entity_type="concept", is_manual=True)
+    ent1 = GraphEntity(
+        workspace_id=ws.id, name="Gradient Descent", entity_type="concept", is_manual=True
+    )
 
     db_session.add_all([note1, note_other, src1, ent1])
     db_session.commit()
 
     # Create Collection in WS 1
-    r_coll = client.post("/api/v1/collections", json={"workspace_id": str(ws.id), "name": "AI Foundations"})
+    r_coll = client.post(
+        "/api/v1/collections", json={"workspace_id": str(ws.id), "name": "AI Foundations"}
+    )
     coll_id = r_coll.json()["id"]
 
     # 1. Add Note to collection
-    r_add_note = client.post(f"/api/v1/collections/{coll_id}/items", json={"item_type": "note", "item_id": str(note1.id)})
+    r_add_note = client.post(
+        f"/api/v1/collections/{coll_id}/items", json={"item_type": "note", "item_id": str(note1.id)}
+    )
     assert r_add_note.status_code == 201
     assert r_add_note.json()["title"] == "PyTorch Guide"
 
     # 2. Duplicate item returns 409 CONFLICT (§6.2)
-    r_dup = client.post(f"/api/v1/collections/{coll_id}/items", json={"item_type": "note", "item_id": str(note1.id)})
+    r_dup = client.post(
+        f"/api/v1/collections/{coll_id}/items", json={"item_type": "note", "item_id": str(note1.id)}
+    )
     assert r_dup.status_code == 409
 
     # 3. Cross-workspace item returns 422 (§6.2, §6.3)
-    r_cross = client.post(f"/api/v1/collections/{coll_id}/items", json={"item_type": "note", "item_id": str(note_other.id)})
+    r_cross = client.post(
+        f"/api/v1/collections/{coll_id}/items",
+        json={"item_type": "note", "item_id": str(note_other.id)},
+    )
     assert r_cross.status_code == 422
 
     # 4. Add Source and Entity
-    client.post(f"/api/v1/collections/{coll_id}/items", json={"item_type": "source", "item_id": str(src1.id)})
-    client.post(f"/api/v1/collections/{coll_id}/items", json={"item_type": "entity", "item_id": str(ent1.id)})
+    client.post(
+        f"/api/v1/collections/{coll_id}/items",
+        json={"item_type": "source", "item_id": str(src1.id)},
+    )
+    client.post(
+        f"/api/v1/collections/{coll_id}/items",
+        json={"item_type": "entity", "item_id": str(ent1.id)},
+    )
 
     # 5. List items
     r_items = client.get(f"/api/v1/collections/{coll_id}/items")
@@ -159,37 +189,55 @@ def test_collection_membership_and_cross_workspace_rejection(client: TestClient,
     assert r_after.json()["total"] == 2
 
 
-from app.models.content_chunk import ContentChunk
-from app.models.entity_chunk import EntityChunk
-from app.models.graph_relationship import GraphRelationship
-
-
-def test_collection_related_knowledge_dynamic_without_graph_mutation(client: TestClient, setup_workspace, db_session: Session):
+def test_collection_related_knowledge_dynamic_without_graph_mutation(
+    client: TestClient, setup_workspace, db_session: Session
+):
     ws, user = setup_workspace
 
-    note = Note(workspace_id=ws.id, created_by=user.id, title="Quantum Computing", content="Qubits and entanglement")
-    ent = GraphEntity(workspace_id=ws.id, name="Superposition", entity_type="concept", is_manual=True)
+    note = Note(
+        workspace_id=ws.id,
+        created_by=user.id,
+        title="Quantum Computing",
+        content="Qubits and entanglement",
+    )
+    ent = GraphEntity(
+        workspace_id=ws.id, name="Superposition", entity_type="concept", is_manual=True
+    )
     db_session.add_all([note, ent])
     db_session.commit()
 
     chunk = ContentChunk(
-        workspace_id=ws.id, note_id=note.id, chunk_index=0, content="Entanglement",
-        content_hash="h1", token_count=1, embedding_model="bge", embedding_dimension=384
+        workspace_id=ws.id,
+        note_id=note.id,
+        chunk_index=0,
+        content="Entanglement",
+        content_hash="h1",
+        token_count=1,
+        embedding_model="bge",
+        embedding_dimension=384,
     )
     db_session.add(chunk)
     db_session.commit()
 
     ec = EntityChunk(
-        entity_id=ent.id, chunk_id=chunk.id, note_id=note.id, workspace_id=ws.id,
-        extraction_model="test", confidence=1.0
+        entity_id=ent.id,
+        chunk_id=chunk.id,
+        note_id=note.id,
+        workspace_id=ws.id,
+        extraction_model="test",
+        confidence=1.0,
     )
     db_session.add(ec)
     db_session.commit()
 
     # Create collection with only the note (not the entity)
-    r_coll = client.post("/api/v1/collections", json={"workspace_id": str(ws.id), "name": "Physics"})
+    r_coll = client.post(
+        "/api/v1/collections", json={"workspace_id": str(ws.id), "name": "Physics"}
+    )
     coll_id = r_coll.json()["id"]
-    client.post(f"/api/v1/collections/{coll_id}/items", json={"item_type": "note", "item_id": str(note.id)})
+    client.post(
+        f"/api/v1/collections/{coll_id}/items", json={"item_type": "note", "item_id": str(note.id)}
+    )
 
     rel_count_before = db_session.query(GraphRelationship).count()
 

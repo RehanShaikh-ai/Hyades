@@ -5,10 +5,11 @@ Extracts book/chapter text from ZIP-based EPUB archives with strict safety limit
 """
 
 import os
-from typing import Any
 import xml.etree.ElementTree as ET
+from typing import Any
 
 from bs4 import BeautifulSoup
+
 from app.services.extractors.base import BaseExtractor, ExtractedContent, safe_open_zip
 
 
@@ -24,7 +25,9 @@ class EpubExtractor(BaseExtractor):
             container_data = zf.read("META-INF/container.xml")
             container_root = ET.fromstring(container_data)
             # Find rootfile element
-            rootfile = container_root.find(".//{urn:oasis:names:tc:opendocument:xmlns:container}rootfile")
+            rootfile = container_root.find(
+                ".//{urn:oasis:names:tc:opendocument:xmlns:container}rootfile"
+            )
             if rootfile is None:
                 raise ValueError("EPUB missing rootfile in container.xml")
             opf_path = rootfile.attrib.get("full-path", "")
@@ -44,7 +47,11 @@ class EpubExtractor(BaseExtractor):
             title = title_elem.text.strip() if title_elem is not None and title_elem.text else None
 
             creator_elem = opf_root.find(".//{http://purl.org/dc/elements/1.1/}creator")
-            author = creator_elem.text.strip() if creator_elem is not None and creator_elem.text else None
+            author = (
+                creator_elem.text.strip()
+                if creator_elem is not None and creator_elem.text
+                else None
+            )
 
             # Map manifest items by id -> href
             manifest = {}

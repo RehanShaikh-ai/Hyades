@@ -1,11 +1,10 @@
 """Knowledge Inbox service per CONTRACT v0.4.2 §7.1, §8.4, §12."""
 
-from datetime import UTC, datetime
 import logging
 import os
-from pathlib import Path
-from typing import Any
 import uuid
+from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import status
 from sqlalchemy import func, select
@@ -36,11 +35,11 @@ def _populate_item_metadata(item: InboxItem) -> None:
         meta = item.source.raw_metadata or {}
         # If user explicitly renamed source, original_path contains the new name
         title = orig if orig and orig != meta.get("file_name") else (meta.get("title") or orig)
-        setattr(item, "source_title", title)
-        setattr(item, "source_type", item.source.source_type)
-        setattr(item, "file_size_bytes", item.source.file_size_bytes)
-        setattr(item, "extract_knowledge", getattr(item.source, "extract_knowledge", True))
-        setattr(item, "raw_metadata", item.source.raw_metadata)
+        item.source_title = title
+        item.source_type = item.source.source_type
+        item.file_size_bytes = item.source.file_size_bytes
+        item.extract_knowledge = getattr(item.source, "extract_knowledge", True)
+        item.raw_metadata = item.source.raw_metadata
 
 
 def create_inbox_item_for_source(db: Session, source: Source) -> InboxItem:
@@ -87,6 +86,7 @@ def run_dry_run_detection(db: Session, inbox_item: InboxItem) -> None:
     file_bytes: bytes | None = None
     if source.raw_metadata and "content_base64" in source.raw_metadata:
         import base64
+
         try:
             file_bytes = base64.b64decode(source.raw_metadata["content_base64"])
         except Exception:
@@ -116,7 +116,11 @@ def run_dry_run_detection(db: Session, inbox_item: InboxItem) -> None:
             if line_clean and 2 < len(line_clean) < 120:
                 derived_title = line_clean
                 break
-        excerpt_lines = [l.strip() for l in text.splitlines() if l.strip() and not l.strip().startswith("#")]
+        excerpt_lines = [
+            line_str.strip()
+            for line_str in text.splitlines()
+            if line_str.strip() and not line_str.strip().startswith("#")
+        ]
         excerpt = " ".join(excerpt_lines)[:300] if excerpt_lines else text[:300]
 
         meta = dict(source.raw_metadata or {})
@@ -132,6 +136,7 @@ def run_dry_run_detection(db: Session, inbox_item: InboxItem) -> None:
         raw_entities = []
         if text.strip():
             from app.services import llm_service
+
             provider = llm_service.get_llm_provider()
             if not provider.health_check():
                 logger.info("LLM provider unavailable during dry run; setting status to queued")
@@ -142,7 +147,10 @@ def run_dry_run_detection(db: Session, inbox_item: InboxItem) -> None:
             try:
                 raw_entities = entity_extraction_service.extract_entities(text)
             except Exception as llm_err:
-                logger.info("LLM entity extraction failed during dry run (%s); setting status to queued", llm_err)
+                logger.info(
+                    "LLM entity extraction failed during dry run (%s); setting status to queued",
+                    llm_err,
+                )
                 inbox_item.detection_status = "queued"
                 db.commit()
                 return
@@ -318,7 +326,11 @@ def reject_inbox_item(db: Session, inbox_item_id: uuid.UUID) -> uuid.UUID:
     db.refresh(item)
     db.refresh(source)
 
-    logger.info("Permanently rejected and purged content for inbox item %s and source %s", inbox_item_id, source_id)
+    logger.info(
+        "Permanently rejected and purged content for inbox item %s and source %s",
+        inbox_item_id,
+        source_id,
+    )
     return source_id
 
 

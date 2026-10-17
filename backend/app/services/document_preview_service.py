@@ -5,21 +5,22 @@ without altering the original file on disk. Evaluates Microsoft's MarkItDown
 or internal extractors. Enforces script/macro sanitization.
 """
 
+import logging
 import os
 import re
 import uuid
-import logging
 from typing import Any
-from pathlib import Path
 
 from fastapi import status
-from app.core.exceptions import AppException, SourceNotFoundError
+
+from app.core.exceptions import AppException
 
 logger = logging.getLogger(__name__)
 
 # Check for Microsoft's MarkItDown availability
 try:
     import markitdown
+
     HAS_MARKITDOWN = True
 except ImportError:
     HAS_MARKITDOWN = False
@@ -38,31 +39,38 @@ class PreviewConversionError(AppException):
 
 def sanitize_markdown(content: str) -> str:
     """Sanitize rendered content to remove executable scripts, macros, and unsafe HTML tags.
-    
+
     Preserves readable formatting, headers, paragraphs, and safe inline styling.
     """
     if not content:
         return ""
 
     # Strip HTML script, iframe, object, embed, style tags and content
-    cleaned = re.sub(r"<(script|iframe|object|embed|style)[^>]*>.*?</(script|iframe|object|embed|style)>", "", content, flags=re.IGNORECASE | re.DOTALL)
+    cleaned = re.sub(
+        r"<(script|iframe|object|embed|style)[^>]*>.*?</(script|iframe|object|embed|style)>",
+        "",
+        content,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
     # Strip self-closing or unclosed unsafe tags
     cleaned = re.sub(r"<(script|iframe|object|embed|style)[^>]*>", "", cleaned, flags=re.IGNORECASE)
     # Strip javascript: and inline event handlers (e.g., onload=, onerror=, onclick=)
     cleaned = re.sub(r'on[a-zA-Z]+\s*=\s*["\'][^"\']*["\']', "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r'javascript:[^\\s\\)]+', '#', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"javascript:[^\\s\\)]+", "#", cleaned, flags=re.IGNORECASE)
     # Also strip javascript and vbscript URIs
-    cleaned = re.sub(r'javascript:[^\\s\\)]+', '#', cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r'vbscript:[^\\s\\)]+', '#', cleaned, flags=re.IGNORECASE)
-    
+    cleaned = re.sub(r"javascript:[^\\s\\)]+", "#", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"vbscript:[^\\s\\)]+", "#", cleaned, flags=re.IGNORECASE)
+
     return cleaned.strip()
 
 
 def convert_docx_to_markdown(file_bytes: bytes) -> str:
     """Convert DOCX file bytes to clean Markdown paragraphs and headings."""
     import io
+
     try:
         import docx
+
         doc = docx.Document(io.BytesIO(file_bytes))
         md_lines = []
         for p in doc.paragraphs:
@@ -80,7 +88,7 @@ def convert_docx_to_markdown(file_bytes: bytes) -> str:
                 md_lines.append(f"* {text}")
             else:
                 md_lines.append(f"{text}\n")
-        
+
         # Also extract table text
         for table in doc.tables:
             table_rows = []
@@ -127,7 +135,10 @@ def generate_source_preview(
     converter_used = "native"
 
     # Unsupported formats check (images, executables, binaries)
-    if ext in (".exe", ".dll", ".bin", ".iso", ".zip", ".tar", ".gz", ".7z") or source_type in ("image", "binary"):
+    if ext in (".exe", ".dll", ".bin", ".iso", ".zip", ".tar", ".gz", ".7z") or source_type in (
+        "image",
+        "binary",
+    ):
         raise PreviewConversionError(
             f"Document format '{ext or source_type}' is not supported for text preview."
         )
@@ -161,6 +172,7 @@ def generate_source_preview(
             if HAS_MARKITDOWN:
                 try:
                     import io
+
                     md = markitdown.MarkItDown()
                     res = md.convert_stream(io.BytesIO(file_bytes), file_extension=".docx")
                     markdown_content = res.text_content
@@ -186,6 +198,7 @@ def generate_source_preview(
     elif ext == ".epub" or source_type == "epub":
         if file_bytes:
             from app.services.extractors.epub_extractor import extract_text
+
             text, _ = extract_text(file_bytes, clean_filename)
             markdown_content = f"# {title}\n\n{text}"
             is_converted = True
@@ -201,6 +214,7 @@ def generate_source_preview(
     elif ext in (".html", ".htm") or source_type == "html":
         if file_bytes:
             from app.services.extractors.html_extractor import extract_text
+
             text, _ = extract_text(file_bytes, clean_filename)
             markdown_content = f"# {title}\n\n{text}"
             is_converted = True
@@ -216,6 +230,7 @@ def generate_source_preview(
     elif ext == ".pdf" or source_type == "pdf":
         if file_bytes:
             from app.services.extractors.text_and_pdf import extract_text_and_pdf
+
             text, _ = extract_text_and_pdf(file_bytes, clean_filename)
             markdown_content = f"# {title}\n\n{text}"
             is_converted = True

@@ -22,9 +22,7 @@ class NoteTag(Base):
     """
 
     __tablename__ = "note_tags"
-    __table_args__ = (
-        Index("idx_note_tags_tag_id", "tag_id"),
-    )
+    __table_args__ = (Index("idx_note_tags_tag_id", "tag_id"),)
 
     note_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

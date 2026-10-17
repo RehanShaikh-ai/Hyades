@@ -45,7 +45,17 @@ def is_transient_error(exc: Exception) -> bool:
 
     # Authentication and permission errors must fail fast without retry
     msg = str(exc).lower()
-    if any(auth_term in msg for auth_term in ("401", "403", "unauthorized", "forbidden", "invalid api key", "authentication failed")):
+    if any(
+        auth_term in msg
+        for auth_term in (
+            "401",
+            "403",
+            "unauthorized",
+            "forbidden",
+            "invalid api key",
+            "authentication failed",
+        )
+    ):
         return False
 
     if isinstance(exc, LLMTimeoutError):
@@ -55,9 +65,24 @@ def is_transient_error(exc: Exception) -> bool:
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code in (408, 429, 500, 502, 503, 504)
     if isinstance(exc, LLMProviderUnavailableError):
-        if any(code in msg for code in ("502", "503", "504", "429", "timed out", "timeout", "temporarily unavailable")):
+        if any(
+            code in msg
+            for code in (
+                "502",
+                "503",
+                "504",
+                "429",
+                "timed out",
+                "timeout",
+                "temporarily unavailable",
+            )
+        ):
             return True
-        if "500 internal server error" in msg or "status code 500" in msg or "http status 500" in msg:
+        if (
+            "500 internal server error" in msg
+            or "status code 500" in msg
+            or "http status 500" in msg
+        ):
             return True
     return any(
         term in msg for term in ("timed out", "timeout", "connection reset", "502", "503", "504")

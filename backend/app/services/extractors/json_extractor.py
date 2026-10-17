@@ -52,7 +52,9 @@ class JsonExtractor(BaseExtractor):
 
     def extract(self, file_bytes: bytes, filename: str = "", **kwargs: Any) -> ExtractedContent:
         if len(file_bytes) > self.max_size_bytes:
-            raise ValueError(f"JSON file size ({len(file_bytes)} bytes) exceeds limit ({self.max_size_bytes} bytes)")
+            raise ValueError(
+                f"JSON file size ({len(file_bytes)} bytes) exceeds limit ({self.max_size_bytes} bytes)"
+            )
 
         try:
             text_str = file_bytes.decode("utf-8")

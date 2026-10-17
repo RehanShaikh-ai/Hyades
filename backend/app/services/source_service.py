@@ -204,7 +204,10 @@ def upload_source(
     if not clean_filename:
         clean_filename = "uploaded_source"
 
-    from app.services.file_validation_service import detect_and_validate_format, resolve_and_verify_storage_path
+    from app.services.file_validation_service import (
+        detect_and_validate_format,
+    )
+
     try:
         source_type, _ = detect_and_validate_format(file_content, clean_filename)
     except ValueError as e:
@@ -280,6 +283,7 @@ def upload_source(
     # If review_mode is inbox, create InboxItem and do NOT extract into graph
     if review_mode == "inbox":
         from app.services import inbox_service
+
         inbox_service.create_inbox_item_for_source(db, source)
         db.refresh(source)
         return source

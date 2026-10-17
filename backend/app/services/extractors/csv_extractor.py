@@ -40,7 +40,9 @@ class CsvExtractor(BaseExtractor):
             rows.append(row)
 
         if not rows:
-            return ExtractedContent(text="", metadata={"format": "csv", "row_count": 0, "column_count": 0})
+            return ExtractedContent(
+                text="", metadata={"format": "csv", "row_count": 0, "column_count": 0}
+            )
 
         # Format as Markdown table for chunking readability
         header = rows[0]

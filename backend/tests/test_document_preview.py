@@ -1,18 +1,17 @@
 import io
 import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models.user import User
 from app.models.workspace import Workspace
-from app.models.source import Source
 from app.services.document_preview_service import (
+    PreviewConversionError,
     generate_source_preview,
     sanitize_markdown,
-    PreviewConversionError,
 )
-
 
 
 @pytest.fixture
@@ -69,6 +68,7 @@ The Hyades cluster is the nearest open cluster to the Sun.
 def test_generate_source_preview_docx_file():
     """Verify supported non-markdown format (DOCX) is converted into structured markdown."""
     import docx
+
     doc = docx.Document()
     doc.add_heading("Research Notes on Knowledge Graphs", level=1)
     doc.add_paragraph("Knowledge graphs represent structured relationships between entities.")

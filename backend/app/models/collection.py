@@ -104,9 +104,7 @@ class CollectionNote(Base):
     """Many-to-many membership between Collection and Note."""
 
     __tablename__ = "collection_notes"
-    __table_args__ = (
-        Index("idx_collection_notes_note", "note_id"),
-    )
+    __table_args__ = (Index("idx_collection_notes_note", "note_id"),)
 
     collection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -133,9 +131,7 @@ class CollectionSource(Base):
     """Many-to-many membership between Collection and Source."""
 
     __tablename__ = "collection_sources"
-    __table_args__ = (
-        Index("idx_collection_sources_source", "source_id"),
-    )
+    __table_args__ = (Index("idx_collection_sources_source", "source_id"),)
 
     collection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -162,9 +158,7 @@ class CollectionEntity(Base):
     """Many-to-many membership between Collection and GraphEntity."""
 
     __tablename__ = "collection_entities"
-    __table_args__ = (
-        Index("idx_collection_entities_entity", "entity_id"),
-    )
+    __table_args__ = (Index("idx_collection_entities_entity", "entity_id"),)
 
     collection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -191,9 +185,7 @@ class CollectionConversation(Base):
     """Many-to-many membership between Collection and Conversation."""
 
     __tablename__ = "collection_conversations"
-    __table_args__ = (
-        Index("idx_collection_conversations_conversation", "conversation_id"),
-    )
+    __table_args__ = (Index("idx_collection_conversations_conversation", "conversation_id"),)
 
     collection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

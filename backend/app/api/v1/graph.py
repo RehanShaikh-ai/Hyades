@@ -6,10 +6,15 @@ Canonical endpoints per CONTRACT v0.3.2 §9.1, §9.4, §16.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.entity_chunk import EntityChunk
+from app.models.index_job import IndexJob
+from app.models.note import Note
+from app.models.source import Source
+from app.models.workspace import Workspace
 from app.schemas.graph import (
     ExtractionCategorySummary,
     ExtractionStatusItem,
@@ -20,13 +25,6 @@ from app.schemas.graph import (
 )
 from app.schemas.job import ExtractionJobResponse, IndexJobRequest
 from app.services import graph_service, job_service
-
-from app.models.note import Note
-from app.models.source import Source
-from app.models.entity_chunk import EntityChunk
-from app.models.workspace import Workspace
-from app.models.index_job import IndexJob
-
 
 router = APIRouter(tags=["graph"])
 
@@ -147,34 +145,57 @@ def get_workspace_extraction_status(
     if not ws:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
 
-    notes = db.query(Note).filter(
-        Note.workspace_id == workspace_id,
-        Note.is_archived.is_(False),
-    ).order_by(Note.created_at.desc()).all()
+    notes = (
+        db.query(Note)
+        .filter(
+            Note.workspace_id == workspace_id,
+            Note.is_archived.is_(False),
+        )
+        .order_by(Note.created_at.desc())
+        .all()
+    )
 
-    sources = db.query(Source).filter(
-        Source.workspace_id == workspace_id,
-    ).order_by(Source.imported_at.desc()).all()
+    sources = (
+        db.query(Source)
+        .filter(
+            Source.workspace_id == workspace_id,
+        )
+        .order_by(Source.imported_at.desc())
+        .all()
+    )
 
     # Query distinct note_ids and source_ids with extracted provenance
     extracted_note_ids = set(
-        r[0] for r in db.query(EntityChunk.note_id).filter(
+        r[0]
+        for r in db.query(EntityChunk.note_id)
+        .filter(
             EntityChunk.workspace_id == workspace_id,
             EntityChunk.note_id.isnot(None),
-        ).distinct().all()
+        )
+        .distinct()
+        .all()
     )
 
     extracted_source_ids = set(
-        r[0] for r in db.query(EntityChunk.source_id).filter(
+        r[0]
+        for r in db.query(EntityChunk.source_id)
+        .filter(
             EntityChunk.workspace_id == workspace_id,
             EntityChunk.source_id.isnot(None),
-        ).distinct().all()
+        )
+        .distinct()
+        .all()
     )
 
     # Check latest indexing job for failed note records
-    latest_job = db.query(IndexJob).filter(
-        IndexJob.workspace_id == workspace_id,
-    ).order_by(IndexJob.enqueued_at.desc()).first()
+    latest_job = (
+        db.query(IndexJob)
+        .filter(
+            IndexJob.workspace_id == workspace_id,
+        )
+        .order_by(IndexJob.enqueued_at.desc())
+        .first()
+    )
 
     failed_notes_map: dict[str, str] = {}
     if latest_job and isinstance(latest_job.progress, dict):
@@ -232,7 +253,11 @@ def get_workspace_extraction_status(
         is_eligible = bool(getattr(source, "extract_knowledge", True))
         err_msg = source.error_message
         proc_status = (source.processing_status or "").upper()
-        orig_title = getattr(source, "title", None) or (source.raw_metadata or {}).get("title") or source.original_path
+        orig_title = (
+            getattr(source, "title", None)
+            or (source.raw_metadata or {}).get("title")
+            or source.original_path
+        )
 
         if not is_eligible:
             item_status = "ineligible"

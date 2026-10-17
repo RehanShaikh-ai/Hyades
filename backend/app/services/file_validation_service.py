@@ -4,9 +4,9 @@ Canonical module per CONTRACT v0.4.2 §8.6, §11.7, §17, §18.1.
 Enforces magic bytes verification, SVG rejection, and storage path traversal prevention.
 """
 
+import os
 from pathlib import Path
 from typing import Any
-import os
 
 SUPPORTED_SOURCE_TYPES = {
     "pdf",
@@ -87,7 +87,9 @@ def detect_and_validate_format(file_bytes: bytes, filename: str) -> tuple[str, s
         }
         return st, mime_map.get(st, "application/octet-stream")
 
-    raise ValueError(f"Unsupported file format for '{filename}'. Allowed formats: {', '.join(sorted(SUPPORTED_SOURCE_TYPES))}")
+    raise ValueError(
+        f"Unsupported file format for '{filename}'. Allowed formats: {', '.join(sorted(SUPPORTED_SOURCE_TYPES))}"
+    )
 
 
 def resolve_and_verify_storage_path(
@@ -115,6 +117,8 @@ def resolve_and_verify_storage_path(
     try:
         target_file.relative_to(root_path)
     except ValueError as e:
-        raise ValueError(f"Path traversal detected: path {target_file} is outside storage root {root_path}") from e
+        raise ValueError(
+            f"Path traversal detected: path {target_file} is outside storage root {root_path}"
+        ) from e
 
     return target_file

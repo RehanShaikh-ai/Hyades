@@ -1,9 +1,9 @@
 """Schemas for Saved Observatory Views per CONTRACT v0.4.2 §7.1, §8.3, §13."""
 
-from datetime import datetime
 import json
-from typing import Any
 import uuid
+from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -44,7 +44,9 @@ class SavedViewCreate(BaseModel):
     def validate_state_size(cls, v: SavedViewState) -> SavedViewState:
         serialized = json.dumps(v.model_dump())
         if len(serialized.encode("utf-8")) > MAX_SAVED_VIEW_STATE_BYTES:
-            raise ValueError(f"Saved view state size exceeds 50KB limit ({len(serialized.encode('utf-8'))} bytes)")
+            raise ValueError(
+                f"Saved view state size exceeds 50KB limit ({len(serialized.encode('utf-8'))} bytes)"
+            )
         return v
 
 
@@ -58,7 +60,9 @@ class SavedViewUpdate(BaseModel):
         if v is not None:
             serialized = json.dumps(v.model_dump())
             if len(serialized.encode("utf-8")) > MAX_SAVED_VIEW_STATE_BYTES:
-                raise ValueError(f"Saved view state size exceeds 50KB limit ({len(serialized.encode('utf-8'))} bytes)")
+                raise ValueError(
+                    f"Saved view state size exceeds 50KB limit ({len(serialized.encode('utf-8'))} bytes)"
+                )
         return v
 
 

@@ -22,12 +22,14 @@ class ImageExtractor(BaseExtractor):
         # Reject SVG by explicit signature/header check
         sample = file_bytes[:1024].lower()
         if b"<svg" in sample or b"<?xml" in sample and b"svg" in sample:
-            raise ValueError("SVG images are not supported per Contract §11.7. Raster formats only.")
+            raise ValueError(
+                "SVG images are not supported per Contract §11.7. Raster formats only."
+            )
 
         try:
             from PIL import Image
-        except ImportError:
-            raise ValueError("Pillow is not installed in the runtime environment.")
+        except ImportError as err:
+            raise ValueError("Pillow is not installed in the runtime environment.") from err
 
         try:
             img = Image.open(io.BytesIO(file_bytes))

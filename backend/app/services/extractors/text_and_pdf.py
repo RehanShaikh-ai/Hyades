@@ -5,6 +5,7 @@ Provides unified extractor interface for existing formats (PDF, Markdown, plain 
 
 import io
 from typing import Any
+
 from pypdf import PdfReader
 
 from app.services.extractors.base import BaseExtractor, ExtractedContent

@@ -338,6 +338,7 @@ def test_source_upload_review_mode_creates_inbox_item_fast(
 ):
     """Verify upload in review_mode=inbox creates pending item without blocking on dry-run LLMs."""
     import time
+
     _, ws = test_user_and_workspace
     doc_content = b"""# Epistemological Inquiry
 A philosophical examination into personal knowledge structures and synthetic memory.
@@ -354,4 +355,8 @@ A philosophical examination into personal knowledge structures and synthetic mem
     inbox_res = client.get(f"/api/v1/inbox?workspace_id={ws.id}&status=pending")
     assert inbox_res.status_code == 200
     items = inbox_res.json()["items"]
-    assert any("Epistemological Inquiry" in (it.get("source_title") or "") or "epistemology.txt" in (it.get("source_title") or "") for it in items)
+    assert any(
+        "Epistemological Inquiry" in (it.get("source_title") or "")
+        or "epistemology.txt" in (it.get("source_title") or "")
+        for it in items
+    )

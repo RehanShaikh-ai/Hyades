@@ -168,7 +168,6 @@ Mechanisms:
 Links: [[Local-First Software Architecture]], [[Data Ownership and Long-Term Archival]].
 """,
     },
-
     # Cluster 2: Learning Systems, Memory, and Cognitive Tools
     {
         "title": "Spaced Repetition and the Forgetting Curve",
@@ -288,7 +287,6 @@ Role of Chunking:
 Related: [[Cognitive Load Theory in Interface Design]], [[Spaced Repetition and the Forgetting Curve]].
 """,
     },
-
     # Bridges & Intersections between Cluster 1 and Cluster 2
     {
         "title": "Algorithmic Spaced Retrieval from Local Graphs",
@@ -347,7 +345,6 @@ Key Functions:
 See also: [[Local-First Software Architecture]], [[Metacognitive Scaffolding in Digital Notebooks]].
 """,
     },
-
     # Diverse Independent Research Notes
     {
         "title": "Keplerian Orbital Harmonics and Celestial Mechanics",
@@ -446,7 +443,11 @@ def seed_workspace_notes(
     logger.info("Workspace '%s' (%s) starting note count: %d", ws.name, ws.id, existing_count)
 
     if existing_count >= target_count:
-        logger.info("Workspace already has %d notes (target: %d). No notes added.", existing_count, target_count)
+        logger.info(
+            "Workspace already has %d notes (target: %d). No notes added.",
+            existing_count,
+            target_count,
+        )
         return existing_count
 
     needed = target_count - existing_count
@@ -454,8 +455,7 @@ def seed_workspace_notes(
 
     # Filter catalog items not already in workspace
     candidates = [
-        item for item in SEED_NOTES_CATALOG
-        if item["title"].strip().lower() not in existing_titles
+        item for item in SEED_NOTES_CATALOG if item["title"].strip().lower() not in existing_titles
     ]
 
     selected = candidates[:needed]
@@ -539,13 +539,17 @@ def seed_workspace_notes(
 
     db.commit()
 
-    final_count = db.scalar(select(func.count(Note.id)).where(Note.workspace_id == workspace_id)) or 0
+    final_count = (
+        db.scalar(select(func.count(Note.id)).where(Note.workspace_id == workspace_id)) or 0
+    )
     logger.info("Successfully seeded workspace. Final note count: %d", final_count)
     return final_count
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Seed development workspace notes up to exactly 25.")
+    parser = argparse.ArgumentParser(
+        description="Seed development workspace notes up to exactly 25."
+    )
     parser.add_argument("--workspace-id", type=str, help="Workspace UUID to seed.")
     parser.add_argument("--target-count", type=int, default=25, help="Target total note count.")
     args = parser.parse_args()

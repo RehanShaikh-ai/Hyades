@@ -28,9 +28,7 @@ class NoteLink(Base):
     """
 
     __tablename__ = "note_links"
-    __table_args__ = (
-        Index("idx_note_links_target", "target_note_id"),
-    )
+    __table_args__ = (Index("idx_note_links_target", "target_note_id"),)
 
     source_note_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

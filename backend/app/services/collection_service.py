@@ -1,8 +1,8 @@
-"""Collection service per CONTRACT v0.4.2 §5.3, §8.1, §14.3.
-"""
+"""Collection service per CONTRACT v0.4.2 §5.3, §8.1, §14.3."""
 
-from datetime import UTC, datetime
 import uuid
+from datetime import UTC, datetime
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -16,7 +16,6 @@ from app.models.collection import (
 from app.models.entity_chunk import EntityChunk
 from app.models.graph_entity import GraphEntity
 from app.models.graph_relationship import GraphRelationship
-from app.models.user import User
 from app.models.workspace import Workspace
 from app.schemas.collection import (
     CollectionCreate,
@@ -48,9 +47,14 @@ def create_collection(
         creator_id = ws.owner_id
 
     # Check unique (workspace_id, name)
-    existing = db.query(Collection).filter_by(workspace_id=workspace_id, name=data.name.strip()).first()
+    existing = (
+        db.query(Collection).filter_by(workspace_id=workspace_id, name=data.name.strip()).first()
+    )
     if existing:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A collection with this name already exists in this workspace")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A collection with this name already exists in this workspace",
+        )
 
     now = datetime.now(UTC)
     coll = Collection(
@@ -115,7 +119,10 @@ def update_collection(
             .first()
         )
         if existing:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A collection with this name already exists in this workspace")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A collection with this name already exists in this workspace",
+            )
         coll.name = data.name.strip()
 
     if data.description is not None:
@@ -142,27 +149,45 @@ def delete_collection(db: Session, collection_id: uuid.UUID) -> None:
 def get_related_knowledge(db: Session, collection: Collection) -> CollectionRelatedResponse:
     """Compute related knowledge dynamically per Contract §14.3 without writing or mutating graph edges."""
     # Collect IDs of items in collection
-    note_ids = [cn.note_id for cn in db.query(CollectionNote.note_id).filter_by(collection_id=collection.id).all()]
-    source_ids = [cs.source_id for cs in db.query(CollectionSource.source_id).filter_by(collection_id=collection.id).all()]
-    member_entity_ids = set(ce.entity_id for ce in db.query(CollectionEntity.entity_id).filter_by(collection_id=collection.id).all())
+    note_ids = [
+        cn.note_id
+        for cn in db.query(CollectionNote.note_id).filter_by(collection_id=collection.id).all()
+    ]
+    source_ids = [
+        cs.source_id
+        for cs in db.query(CollectionSource.source_id).filter_by(collection_id=collection.id).all()
+    ]
+    member_entity_ids = set(
+        ce.entity_id
+        for ce in db.query(CollectionEntity.entity_id).filter_by(collection_id=collection.id).all()
+    )
 
     # Find entities connected through provenance (entity_chunks) of notes & sources in collection
     provenance_entity_ids = set()
     if note_ids:
-        for (eid,) in db.query(EntityChunk.entity_id).filter(EntityChunk.note_id.in_(note_ids)).distinct():
+        for (eid,) in (
+            db.query(EntityChunk.entity_id).filter(EntityChunk.note_id.in_(note_ids)).distinct()
+        ):
             provenance_entity_ids.add(eid)
     if source_ids:
-        for (eid,) in db.query(EntityChunk.entity_id).filter(EntityChunk.source_id.in_(source_ids)).distinct():
+        for (eid,) in (
+            db.query(EntityChunk.entity_id).filter(EntityChunk.source_id.in_(source_ids)).distinct()
+        ):
             provenance_entity_ids.add(eid)
 
     # Find neighbor entities connected via graph relationships to collection entities
     connected_entity_ids = set()
     all_starting_entities = member_entity_ids | provenance_entity_ids
     if all_starting_entities:
-        for rel in db.query(GraphRelationship).filter(
-            (GraphRelationship.source_entity_id.in_(all_starting_entities)) |
-            (GraphRelationship.target_entity_id.in_(all_starting_entities))
-        ).limit(100).all():
+        for rel in (
+            db.query(GraphRelationship)
+            .filter(
+                (GraphRelationship.source_entity_id.in_(all_starting_entities))
+                | (GraphRelationship.target_entity_id.in_(all_starting_entities))
+            )
+            .limit(100)
+            .all()
+        ):
             if rel.source_entity_id not in all_starting_entities:
                 connected_entity_ids.add(rel.source_entity_id)
             if rel.target_entity_id not in all_starting_entities:
@@ -175,13 +200,15 @@ def get_related_knowledge(db: Session, collection: Collection) -> CollectionRela
     if target_eids:
         entities = db.query(GraphEntity).filter(GraphEntity.id.in_(list(target_eids)[:50])).all()
         for e in entities:
-            items.append(RelatedKnowledgeItem(
-                item_type="entity",
-                item_id=e.id,
-                title=e.name,
-                relationship_type=e.entity_type,
-                score=1.0,
-            ))
+            items.append(
+                RelatedKnowledgeItem(
+                    item_type="entity",
+                    item_id=e.id,
+                    title=e.name,
+                    relationship_type=e.entity_type,
+                    score=1.0,
+                )
+            )
 
     return CollectionRelatedResponse(
         collection_id=collection.id,

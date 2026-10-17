@@ -1,9 +1,9 @@
-"""Thread, questions, discoveries, and activity schemas per CONTRACT v0.4.2 §5.2, §8.2.
-"""
+"""Thread, questions, discoveries, and activity schemas per CONTRACT v0.4.2 §5.2, §8.2."""
 
-from datetime import datetime
-from typing import Any, Literal
 import uuid
+from datetime import datetime
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 

@@ -1,16 +1,14 @@
-﻿# -*- coding: utf-8 -*-
 """Tests for assistant stream failure handling and ghost message prevention."""
 
 import json
 import uuid
 from unittest.mock import MagicMock, patch
-import pytest
 
 from app.core.exceptions import LLMProviderUnavailableError
 from app.models.conversation import Conversation
 from app.models.message import Message
-from app.models.workspace import Workspace
 from app.models.user import User
+from app.models.workspace import Workspace
 from app.services import assistant_service
 
 

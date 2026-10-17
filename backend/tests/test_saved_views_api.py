@@ -1,13 +1,13 @@
 """Contract & API tests for Saved Observatory Views per CONTRACT v0.4.2 §7.1, §7.5, §8.3, §13."""
 
 import uuid
-from fastapi.testclient import TestClient
+
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models.collection import Collection, CollectionEntity
 from app.models.graph_entity import GraphEntity
-from app.models.saved_view import SavedView
 from app.models.thread import Thread, ThreadEntity
 from app.models.user import User
 from app.models.workspace import Workspace
@@ -138,7 +138,9 @@ def test_saved_view_schema_validation_and_size_limit(client: TestClient, workspa
     assert res.status_code == 422
 
 
-def test_saved_view_restore_ignores_deleted_entities(client: TestClient, db_session: Session, workspace_with_user):
+def test_saved_view_restore_ignores_deleted_entities(
+    client: TestClient, db_session: Session, workspace_with_user
+):
     ws, _ = workspace_with_user
 
     # Create real entity
@@ -178,20 +180,28 @@ def test_reindex_safety_referenced_entities_protected(db_session: Session, works
     ws, user = workspace_with_user
 
     # 1. Create entities
-    ent_in_coll = GraphEntity(workspace_id=ws.id, name="Collection Protected Concept", entity_type="concept")
-    ent_in_thread = GraphEntity(workspace_id=ws.id, name="Thread Protected Concept", entity_type="concept")
+    ent_in_coll = GraphEntity(
+        workspace_id=ws.id, name="Collection Protected Concept", entity_type="concept"
+    )
+    ent_in_thread = GraphEntity(
+        workspace_id=ws.id, name="Thread Protected Concept", entity_type="concept"
+    )
     ent_orphan = GraphEntity(workspace_id=ws.id, name="Unreferenced Concept", entity_type="concept")
     db_session.add_all([ent_in_coll, ent_in_thread, ent_orphan])
     db_session.flush()
 
     # 2. Add to Collection
-    coll = Collection(workspace_id=ws.id, name=f"Safety Coll {uuid.uuid4().hex[:6]}", created_by=user.id)
+    coll = Collection(
+        workspace_id=ws.id, name=f"Safety Coll {uuid.uuid4().hex[:6]}", created_by=user.id
+    )
     db_session.add(coll)
     db_session.flush()
     db_session.add(CollectionEntity(collection_id=coll.id, entity_id=ent_in_coll.id))
 
     # 3. Add to Thread
-    thread = Thread(workspace_id=ws.id, title=f"Safety Thread {uuid.uuid4().hex[:6]}", created_by=user.id)
+    thread = Thread(
+        workspace_id=ws.id, title=f"Safety Thread {uuid.uuid4().hex[:6]}", created_by=user.id
+    )
     db_session.add(thread)
     db_session.flush()
     db_session.add(ThreadEntity(thread_id=thread.id, entity_id=ent_in_thread.id))

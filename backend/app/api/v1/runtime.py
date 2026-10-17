@@ -1,8 +1,9 @@
 """FreeLLMAPI runtime management and status endpoints."""
 
 from typing import Any
-from fastapi import APIRouter, status
-from pydantic import BaseModel, Field
+
+from fastapi import APIRouter
+from pydantic import BaseModel
 
 from app.services import runtime_service
 

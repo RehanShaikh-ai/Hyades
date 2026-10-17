@@ -9,8 +9,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
-    Boolean,
     BigInteger,
+    Boolean,
     DateTime,
     ForeignKey,
     Index,

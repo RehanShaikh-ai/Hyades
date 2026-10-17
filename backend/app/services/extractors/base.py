@@ -3,11 +3,11 @@
 Canonical module per CONTRACT v0.4.2 §11.1.
 """
 
+import io
+import zipfile
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-import io
 from typing import Any
-import zipfile
 
 
 @dataclass
@@ -35,10 +35,11 @@ def safe_open_zip(
 
     infolist = zf.infolist()
     if len(infolist) > max_files:
-        raise ValueError(f"Archive exceeds maximum file count limit ({len(infolist)} > {max_files})")
+        raise ValueError(
+            f"Archive exceeds maximum file count limit ({len(infolist)} > {max_files})"
+        )
 
     total_uncompressed = 0
-    compressed_size = max(len(file_bytes), 1)
 
     for info in infolist:
         total_uncompressed += info.file_size

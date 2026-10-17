@@ -1,18 +1,14 @@
 """Unit tests for knowledge extraction status and extract_knowledge settings."""
 
 import uuid
-import pytest
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.main import app
 from app.models.note import Note
 from app.models.source import Source
-from app.models.workspace import Workspace
 from app.models.user import User
-
-
-
+from app.models.workspace import Workspace
 
 
 def test_extraction_status_and_toggle_settings(client: TestClient, db_session: Session):

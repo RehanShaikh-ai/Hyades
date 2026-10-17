@@ -16,8 +16,8 @@ class HtmlExtractor(BaseExtractor):
     def extract(self, file_bytes: bytes, filename: str = "", **kwargs: Any) -> ExtractedContent:
         try:
             from bs4 import BeautifulSoup
-        except ImportError:
-            raise ValueError("beautifulsoup4 is not installed in the runtime environment.")
+        except ImportError as err:
+            raise ValueError("beautifulsoup4 is not installed in the runtime environment.") from err
 
         try:
             # Try utf-8 first, with fallback

@@ -1,8 +1,8 @@
 """Schemas for Knowledge Inbox per CONTRACT v0.4.2 §7.1, §8.4, §12."""
 
+import uuid
 from datetime import datetime
 from typing import Any
-import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
 

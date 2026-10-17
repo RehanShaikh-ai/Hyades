@@ -3,8 +3,6 @@
 Resolves extractor instances via get_extractor(source_type).
 """
 
-from typing import Union
-
 from app.services.extractors.base import BaseExtractor, ExtractedContent
 from app.services.extractors.csv_extractor import CsvExtractor
 from app.services.extractors.docx_extractor import DocxExtractor

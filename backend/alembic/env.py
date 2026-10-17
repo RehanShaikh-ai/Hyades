@@ -20,9 +20,9 @@ if config.config_file_name is not None:
 
 # Interface I-006: Fixed imports required in env.py
 try:
+    import app.models  # noqa: F401 - Register all models on Base.metadata (Contract §0.4)
     from app.core.config import settings
     from app.db.base import Base
-    import app.models  # noqa: F401 - Register all models on Base.metadata (Contract §0.4)
 
     target_metadata = Base.metadata
 except ImportError:

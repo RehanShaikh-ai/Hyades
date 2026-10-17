@@ -4,7 +4,6 @@ Canonical service per CONTRACT v0.4.1 §4.3, §7.1-§7.4.
 Provides process_source, extract_text, chunk_source, embed_and_index_source, delete_source_chunks.
 """
 
-import io
 import logging
 import os
 import re
@@ -13,7 +12,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from pypdf import PdfReader
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -265,7 +263,11 @@ def process_source(db: Session, source_id: uuid.UUID) -> None:
             derived_title = line_clean
             break
 
-    excerpt_lines = [l.strip() for l in normalized_text.splitlines() if l.strip() and not l.strip().startswith("#")]
+    excerpt_lines = [
+        line_str.strip()
+        for line_str in normalized_text.splitlines()
+        if line_str.strip() and not line_str.strip().startswith("#")
+    ]
     excerpt = " ".join(excerpt_lines)[:300] if excerpt_lines else normalized_text[:300]
 
     meta = dict(source.raw_metadata or {})

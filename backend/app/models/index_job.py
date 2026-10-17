@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Index, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.dialects.sqlite import JSON as SQLITE_JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -44,9 +44,7 @@ class IndexJob(Base):
     """
 
     __tablename__ = "index_jobs"
-    __table_args__ = (
-        Index("idx_index_jobs_workspace_status", "workspace_id", "status"),
-    )
+    __table_args__ = (Index("idx_index_jobs_workspace_status", "workspace_id", "status"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
