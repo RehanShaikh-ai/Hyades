@@ -714,7 +714,9 @@ html.vt-enabled .page-transition {
   transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
-#observatory-command-bar {
+#observatory-action-rail,
+#observatory-command-bar,
+#graph-controls {
   opacity: 1 !important;
   pointer-events: auto !important;
   transform: none !important;

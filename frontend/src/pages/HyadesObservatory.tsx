@@ -1616,6 +1616,31 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     return `M 0 ${-p} Q ${w} ${-w} ${p} 0 Q ${w} ${w} 0 ${p} Q ${-w} ${w} ${-p} 0 Q ${-w} ${-w} 0 ${-p} Z`;
   };
 
+  // Export current SVG view as downloadable SVG graphic
+  const handleExportView = useCallback(() => {
+    if (!svgRef.current) return;
+    try {
+      const svgNode = svgRef.current.node();
+      if (!svgNode) return;
+      const serializer = new XMLSerializer();
+      let source = serializer.serializeToString(svgNode);
+      if (!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)) {
+        source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+      }
+      const svgBlob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = url;
+      downloadLink.download = `hyades-observatory-${new Date().toISOString().slice(0, 10)}.svg`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export view:', err);
+    }
+  }, []);
+
   // ================= STABLE D3 FORCE SIMULATION INITIALIZER =================
   // Strictly calculated ONCE when graph data or structural filters change.
   // NEVER recreated or restarted when selectedNode or searchQuery changes!
@@ -1629,9 +1654,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     const width = containerRef.current.clientWidth || window.innerWidth;
     const height = containerRef.current.clientHeight || window.innerHeight;
 
-    // Render active visible nodes based on active filters and constellation
-    const filteredNodes: CelestialNode[] = visibleNodes;
-    const filteredLinks: CelestialLink[] = visibleLinks;
+    // Mount all celestial nodes & links into the SVG; visibility is managed non-destructively
+    const filteredNodes: CelestialNode[] = celestialNodes;
+    const filteredLinks: CelestialLink[] = celestialLinks;
 
     const svg = d3
       .select(containerRef.current)
@@ -2287,11 +2312,37 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       }
     };
   }, [
-    visibleNodes,
-    visibleLinks,
+    celestialNodes,
+    celestialLinks,
     renderCelestialGraticule,
     workspaceId,
   ]);
+
+  // High-performance, non-destructive visibility sync for filters & constellations
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svg = svgRef.current;
+
+    // 1. Update node visibility & pointer events
+    svg.selectAll<SVGGElement, CelestialNode>('.celestial-node').each(function (d) {
+      const isVisible = visibleNodeIds.has(d.id);
+      d3.select(this)
+        .style('display', isVisible ? 'block' : 'none')
+        .style('pointer-events', isVisible ? 'all' : 'none');
+    });
+
+    // 2. Update link visibility & pointer events (visible only if BOTH endpoints are visible)
+    if (visibleLinks) {
+      svg.selectAll<SVGPathElement, CelestialLink>('.celestial-link').each(function (l) {
+        const sId = typeof l.source === 'string' ? l.source : (l.source as any).id;
+        const tId = typeof l.target === 'string' ? l.target : (l.target as any).id;
+        const isVisible = visibleNodeIds.has(sId) && visibleNodeIds.has(tId);
+        d3.select(this)
+          .style('display', isVisible ? 'block' : 'none')
+          .style('pointer-events', isVisible ? 'stroke' : 'none');
+      });
+    }
+  }, [visibleNodeIds, visibleLinks]);
 
   // ================= STABLE SELECTION & HOVER HIGHLIGHTING EFFECT =================
   // Updates visual attributes purely in DOM without restarting force simulation!
@@ -2667,189 +2718,229 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         isFullscreen ? 'focused-view' : ''
       }`}
     >
-      {/* ================= TOP OBSERVATORY COMMAND BAR ================= */}
-      <header id="observatory-command-bar" className="h-12 w-full shrink-0 z-30 bg-[#FAF8F2]/95 backdrop-blur-md border-b border-[var(--border-parchment)] px-4 flex items-center justify-between gap-4 select-none pointer-events-auto">
-        {/* Left Toolbar Area: Constellations Shelf Toggle & Graph Actions */}
-        <div className="flex items-center gap-3">
-          {/* Constellations Shelf Toggle Column matching sidebar width */}
-          <div className="w-[288px] flex items-center justify-between shrink-0">
-            <button
-              type="button"
-              data-testid="toggle-constellations-shelf"
-              onClick={() => setIsLeftSidebarOpen((prev) => !prev)}
-              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
-                isLeftSidebarOpen
-                  ? 'bg-[var(--bg-panel-subtle)] border-[var(--border-strong)] text-[var(--ink-primary)]'
-                  : 'bg-white hover:bg-[var(--bg-panel-subtle)] border-[var(--border-parchment)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+      {/* Center Floating Astronomical Coordinates HUD */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none select-none">
+        {selectedNode ? (
+          <div className="bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-xs rounded-full px-3.5 py-1 flex items-center gap-2.5 truncate">
+            <div
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                selectedNode.hierarchy === "core"
+                  ? "bg-[var(--accent-terracotta)] animate-pulse"
+                  : selectedNode.hierarchy === "subtopic"
+                  ? "bg-[var(--accent-brass)]"
+                  : "bg-[var(--accent-midnight)]"
               }`}
-              title={isLeftSidebarOpen ? "Collapse Constellations Shelf" : "Expand Constellations Shelf"}
-              aria-label="Toggle Constellations Sidebar"
-            >
-              <i className="ph ph-compass text-sm text-[var(--accent-terracotta)]" />
-              <span className="serif font-semibold">Constellations</span>
-              <span className="text-[10px] mono px-1.5 py-0.5 rounded-full bg-black/5 text-[var(--ink-secondary)] font-normal">
-                {clusters.length || celestialNodes.length}
-              </span>
-            </button>
-            <div className="w-px h-5 bg-[var(--border-parchment)] mx-2" />
+            />
+            <span className="serif text-xs font-semibold text-[var(--ink-primary)] leading-none truncate max-w-[170px]">
+              {selectedNode.label}
+            </span>
+            <span className="w-px h-2.5 bg-[var(--border-parchment)] shrink-0" />
+            <span className="mono text-[10px] text-[var(--ink-tertiary)] shrink-0">
+              {selectedNode.coords}
+            </span>
+            <span className="mono text-[9px] text-[var(--accent-midnight)] bg-[var(--bg-panel-subtle)] px-1.5 py-0.5 rounded-full border border-[var(--border-parchment)] font-medium shrink-0">
+              {selectedNode.catalog}
+            </span>
           </div>
-
-          {/* Creation & Action Toolbar: Add Entity & Connect */}
-          <div className="flex items-center gap-2" role="toolbar" aria-label="Observatory Actions">
-            <button
-              type="button"
-              onClick={() => setIsEntityEditorOpen(true)}
-              data-testid="add-entity-btn"
-              className="px-3 py-1.5 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
-              title="Add Entity to Knowledge Sky (A)"
-              aria-label="Add Entity"
-            >
-              <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
-              <span>+ Entity</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsRelationshipEditorOpen(true)}
-              data-testid="connect-entities-btn"
-              className="px-3 py-1.5 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
-              title="Connect Two Entities (C)"
-              aria-label="Connect Two Entities"
-            >
-              <i className="ph ph-arrows-split text-xs text-[var(--accent-terracotta)]" />
-              <span>Connect</span>
-            </button>
-
-            {/* Overflow Menu */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsMoreMenuOpen((prev) => !prev)}
-                className="w-7 h-7 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
-                title="More Graph Actions"
-                aria-label="More Graph Actions"
-              >
-                <i className="ph-bold ph-dots-three-vertical text-xs" />
-              </button>
-
-              {isMoreMenuOpen && (
-                <div className="absolute left-0 mt-2 w-48 bg-white border border-[var(--border-strong)] rounded-xl shadow-lg py-1.5 z-50 text-xs animate-fade-in select-none">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleUntangle();
-                      setIsMoreMenuOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-                  >
-                    <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
-                    <span>Untangle / Organize (U)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsSuggestionsOpen(true);
-                      setIsMoreMenuOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-                  >
-                    <i className="ph ph-sparkle text-xs text-[var(--accent-terracotta)]" />
-                    <span>Link Suggestions</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAtlasPlate((p) => !p);
-                      setIsMoreMenuOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-                  >
-                    <i className="ph ph-newspaper text-xs text-[var(--accent-midnight)]" />
-                    <span>{showAtlasPlate ? "Hide Atlas Plate" : "Show Atlas Plate"}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowGraticule((p) => !p);
-                      setIsMoreMenuOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-                  >
-                    <i className="ph ph-grid-four text-xs text-[var(--accent-brass)]" />
-                    <span>{showGraticule ? "Hide Coordinates" : "Show Coordinates"}</span>
-                  </button>
-                </div>
-              )}
-            </div>
+        ) : (
+          <div className="text-[11px] text-[var(--ink-tertiary)] mono px-3 py-1 rounded-full bg-[#FAF8F2]/75 backdrop-blur-xs border border-[var(--border-parchment)]/60 shadow-2xs">
+            Click a star to focus coordinates · Drag canvas to chart
           </div>
-        </div>
+        )}
+      </div>
 
-        {/* Center Area: Focused Coordinate HUD */}
-        <div className="hidden md:flex items-center justify-center max-w-md truncate">
-          {selectedNode ? (
-            <div className="bg-white/80 border border-[var(--border-parchment)] shadow-2xs rounded-full px-3.5 py-1 flex items-center gap-2.5 truncate">
-              <div
-                className={`w-2 h-2 rounded-full shrink-0 ${
-                  selectedNode.hierarchy === "core"
-                    ? "bg-[var(--accent-terracotta)] animate-pulse"
-                    : selectedNode.hierarchy === "subtopic"
-                    ? "bg-[var(--accent-brass)]"
-                    : "bg-[var(--accent-midnight)]"
-                }`}
-              />
-              <span className="serif text-xs font-semibold text-[var(--ink-primary)] leading-none truncate max-w-[170px]">
-                {selectedNode.label}
-              </span>
-              <span className="w-px h-2.5 bg-[var(--border-parchment)] shrink-0" />
-              <span className="mono text-[10px] text-[var(--ink-tertiary)] shrink-0">
-                {selectedNode.coords}
-              </span>
-              <span className="mono text-[9px] text-[var(--accent-midnight)] bg-[var(--bg-panel-subtle)] px-1.5 py-0.5 rounded-full border border-[var(--border-parchment)] font-medium shrink-0">
-                {selectedNode.catalog}
-              </span>
-            </div>
-          ) : (
-            <div className="text-xs text-[var(--ink-tertiary)] mono px-3 py-1 rounded-full bg-black/[0.02] truncate">
-              Click a star to focus coordinates · Drag canvas to chart
-            </div>
-          )}
-        </div>
-
-        {/* Right Toolbar Area: Saved Views & Focus / Fullscreen in separate area */}
-        <div className="flex items-center gap-2 shrink-0" role="toolbar" aria-label="Observatory View Controls">
+      {/* ================= UPPER-RIGHT VERTICAL ACTION RAIL ================= */}
+      <div
+        id="observatory-action-rail"
+        data-testid="observatory-action-rail"
+        role="toolbar"
+        aria-label="Observatory Actions"
+        className={`absolute top-4 ${
+          isRightSidebarOpen && selectedNode ? 'right-[420px]' : 'right-6'
+        } z-30 pointer-events-auto flex flex-col items-center gap-1.5 bg-[#FAF8F2]/95 backdrop-blur-md border border-[var(--border-strong)] rounded-xl p-1.5 shadow-sm transition-all duration-300 select-none`}
+      >
+        {/* 1. Focus / Fullscreen Mode */}
+        {onToggleFullscreen && (
           <button
             type="button"
-            onClick={() => setIsSavedViewsModalOpen(true)}
-            data-testid="saved-views-btn"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-xs font-medium text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] shadow-2xs transition-all cursor-pointer"
-            title="Saved Observatory Views"
-            aria-label="Saved Views"
+            onClick={onToggleFullscreen}
+            data-testid="observatory-focus-btn"
+            className="w-8 h-8 rounded-lg bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center shadow-2xs transition-all active:scale-95 cursor-pointer"
+            title={isFullscreen ? "Exit Fullscreen Focus (Shift+F)" : "Enter Fullscreen Focus (Shift+F)"}
+            aria-label={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen Focus"}
           >
-            <i className="ph ph-bookmarks text-xs text-[var(--accent-terracotta)]" />
-            <span>Saved Views</span>
+            <i
+              className={`ph-bold ${
+                isFullscreen ? "ph-corners-in" : "ph-corners-out"
+              } text-sm text-[var(--accent-terracotta)]`}
+            />
+          </button>
+        )}
+
+        {/* 2. Connect Two Entities */}
+        <button
+          type="button"
+          onClick={() => setIsRelationshipEditorOpen(true)}
+          data-testid="connect-entities-btn"
+          className="w-8 h-8 rounded-lg bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center shadow-2xs transition-all active:scale-95 cursor-pointer"
+          title="Connect Two Entities (C)"
+          aria-label="Connect Two Entities"
+        >
+          <i className="ph ph-arrows-split text-sm text-[var(--accent-terracotta)]" />
+        </button>
+
+        {/* 3. More options (⋮) */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setIsMoreMenuOpen((prev) => !prev)}
+            data-testid="observatory-overflow-btn"
+            className={`w-8 h-8 rounded-lg border text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-all shadow-2xs active:scale-95 cursor-pointer ${
+              isMoreMenuOpen
+                ? 'bg-[var(--bg-panel-subtle)] border-[var(--border-strong)] text-[var(--ink-primary)]'
+                : 'bg-white hover:bg-[var(--bg-panel-subtle)] border-[var(--border-parchment)]'
+            }`}
+            title="More Options"
+            aria-label="More Graph Options"
+          >
+            <i className="ph-bold ph-dots-three-vertical text-sm" />
           </button>
 
-          {onToggleFullscreen && (
-            <button
-              type="button"
-              onClick={onToggleFullscreen}
-              data-testid="fullscreen-btn"
-              className="w-8 h-8 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center shadow-2xs transition-all cursor-pointer"
-              title={isFullscreen ? "Exit Fullscreen Focus (Shift+F)" : "Enter Fullscreen Focus (Shift+F)"}
-              aria-label={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen Focus"}
+          {/* Overflow Menu Dropdown */}
+          {isMoreMenuOpen && (
+            <div
+              data-testid="observatory-overflow-menu"
+              className="absolute right-0 mt-2 w-52 bg-[#FAF8F2]/98 backdrop-blur-md border border-[var(--border-strong)] rounded-xl shadow-lg p-1.5 z-50 text-xs animate-fade-in select-none"
             >
-              <i
-                className={`ph-bold ${
-                  isFullscreen ? "ph-arrows-in" : "ph-arrows-out"
-                } text-xs text-[var(--accent-terracotta)]`}
-              />
-            </button>
+              {/* Add Entity */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEntityEditorOpen(true);
+                  setIsMoreMenuOpen(false);
+                }}
+                data-testid="add-entity-btn"
+                className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center justify-between text-[var(--ink-primary)] cursor-pointer rounded-lg transition-colors"
+                title="Add Entity to Knowledge Sky (A)"
+              >
+                <div className="flex items-center gap-2">
+                  <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
+                  <span className="font-medium">Add Entity</span>
+                </div>
+                <span className="mono text-[10px] text-[var(--ink-tertiary)] bg-black/5 px-1.5 py-0.5 rounded">A</span>
+              </button>
+
+              {/* Saved Views */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSavedViewsModalOpen(true);
+                  setIsMoreMenuOpen(false);
+                }}
+                data-testid="saved-views-btn"
+                className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer rounded-lg transition-colors"
+                title="Saved Observatory Views"
+              >
+                <i className="ph ph-bookmarks text-xs text-[var(--accent-terracotta)]" />
+                <span>Saved Views</span>
+              </button>
+
+              {/* Export View */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleExportView();
+                  setIsMoreMenuOpen(false);
+                }}
+                data-testid="export-view-btn"
+                className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer rounded-lg transition-colors"
+                title="Export Observatory SVG"
+              >
+                <i className="ph ph-download-simple text-xs text-[var(--accent-midnight)]" />
+                <span>Export View (SVG)</span>
+              </button>
+
+              <div className="my-1 border-t border-[var(--border-parchment)]" />
+
+              {/* Graph Settings Section */}
+              <div className="px-2.5 py-1 text-[10px] uppercase tracking-wider font-semibold text-[var(--ink-tertiary)]">
+                Graph Settings
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowAtlasPlate((p) => !p)}
+                className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center justify-between text-[var(--ink-primary)] cursor-pointer rounded-lg transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <i className="ph ph-newspaper text-xs text-[var(--accent-midnight)]" />
+                  <span>Atlas Plate</span>
+                </div>
+                {showAtlasPlate && <i className="ph-bold ph-check text-xs text-[var(--accent-terracotta)]" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowGraticule((p) => !p)}
+                className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center justify-between text-[var(--ink-primary)] cursor-pointer rounded-lg transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <i className="ph ph-grid-four text-xs text-[var(--accent-brass)]" />
+                  <span>Coordinates Grid</span>
+                </div>
+                {showGraticule && <i className="ph-bold ph-check text-xs text-[var(--accent-terracotta)]" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSuggestionsOpen(true);
+                  setIsMoreMenuOpen(false);
+                }}
+                className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer rounded-lg transition-colors"
+              >
+                <i className="ph ph-sparkle text-xs text-[var(--accent-terracotta)]" />
+                <span>Link Suggestions</span>
+              </button>
+
+              <div className="my-1 border-t border-[var(--border-parchment)]" />
+
+              {/* Untangle / Organize */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleUntangle();
+                  setIsMoreMenuOpen(false);
+                }}
+                className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center justify-between text-[var(--ink-primary)] cursor-pointer rounded-lg transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
+                  <span>Untangle Layout</span>
+                </div>
+                <span className="mono text-[10px] text-[var(--ink-tertiary)] bg-black/5 px-1.5 py-0.5 rounded">U</span>
+              </button>
+
+              {/* Reset View */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleFitView();
+                  setIsMoreMenuOpen(false);
+                }}
+                data-testid="reset-view-menu-item"
+                className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center justify-between text-[var(--ink-primary)] cursor-pointer rounded-lg transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <i className="ph-bold ph-frame-corners text-xs text-[var(--ink-secondary)]" />
+                  <span>Reset View</span>
+                </div>
+                <span className="mono text-[10px] text-[var(--ink-tertiary)] bg-black/5 px-1.5 py-0.5 rounded">F</span>
+              </button>
+            </div>
           )}
         </div>
-      </header>
-
-      {/* Main Map Viewport below header */}
-      <div className="flex-1 min-h-0 w-full relative overflow-hidden">
+      </div>
       {/* Archival paper grain texture */}
       <div className="paper-grain" />
 
@@ -2987,7 +3078,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
       {/* Persistent Reopen Right Edge Tab */}
       {!isRightSidebarOpen && selectedNode && (
-        <div id="reopen-right-sidebar" className="fixed top-18 right-0 z-30 pointer-events-auto">
+        <div id="reopen-right-sidebar" className="absolute top-4 right-0 z-20 pointer-events-auto">
           <button
             type="button"
             onClick={() => setIsRightSidebarOpen(true)}
@@ -3016,7 +3107,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       {isLeftSidebarOpen && (
         <aside
           id="left-sidebar"
-          className="sidebar-transition absolute top-18 left-6 w-[280px] max-h-[calc(100vh-140px)] z-10 flex flex-col pointer-events-none"
+          className="sidebar-transition absolute top-4 left-6 w-[280px] max-h-[calc(100vh-100px)] z-20 flex flex-col pointer-events-none"
         >
           <div className="instrument-panel flex-1 flex flex-col pointer-events-auto overflow-hidden">
             <div className="panel-bracket-tl" />
@@ -3178,14 +3269,16 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       <div
         id="graph-controls"
         className={`absolute bottom-6 z-20 pointer-events-auto flex flex-col items-center gap-1 bg-[var(--bg-panel)]/95 backdrop-blur-md border border-[var(--border-strong)] rounded-xl p-1 shadow-sm w-9 transition-all duration-300 ${
-          isRightSidebarOpen && selectedNode ? 'right-[416px]' : 'right-6'
+          isRightSidebarOpen && selectedNode ? 'right-[420px]' : 'right-6'
         }`}
       >
         <button
           type="button"
           onClick={() => handleZoom(1.25)}
+          data-testid="zoom-in-btn"
           className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
           title="Zoom In (+)"
+          aria-label="Zoom In"
         >
           <i className="ph-bold ph-plus text-xs" />
         </button>
@@ -3193,62 +3286,87 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         <button
           type="button"
           onClick={() => handleZoom(0.8)}
+          data-testid="zoom-out-btn"
           className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
-          title="Zoom Out (–)"
+          title="Zoom Out (-)"
+          aria-label="Zoom Out"
         >
           <i className="ph-bold ph-minus text-xs" />
         </button>
 
-        <div className="w-4 h-px bg-[var(--border-parchment)] mx-auto my-0.5" />
-
-        <button
-          type="button"
-          onClick={handleUntangle}
-          data-testid="untangle-graph-btn"
-          className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--accent-terracotta)] transition-colors cursor-pointer"
-          title="Untangle / Organize (U)"
-        >
-          <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
-        </button>
-
+        {/* Reset View / Fit to Content */}
         <button
           type="button"
           onClick={handleFitView}
           data-testid="fit-view-btn"
           className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--accent-terracotta)] transition-colors cursor-pointer"
-          title="Fit to Content (F) - Fit all concepts into frame"
-          aria-label="Fit to Content"
+          title="Fit to Content (F) - Fit all concepts into viewport"
+          aria-label="Fit View to Content"
         >
           <i className="ph-bold ph-frame-corners text-xs" />
         </button>
 
+        {/* Focus / Fullscreen Mode */}
+        {onToggleFullscreen && (
+          <button
+            type="button"
+            onClick={onToggleFullscreen}
+            data-testid="fullscreen-btn"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--accent-terracotta)] transition-colors cursor-pointer"
+            title={isFullscreen ? "Exit Fullscreen Focus (Shift+F)" : "Enter Fullscreen Focus (Shift+F)"}
+            aria-label={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen Focus"}
+          >
+            <i
+              className={`ph-bold ${
+                isFullscreen ? "ph-corners-in" : "ph-corners-out"
+              } text-xs text-[var(--accent-terracotta)]`}
+            />
+          </button>
+        )}
+
+        <div className="w-5 h-px bg-[var(--border-parchment)] my-0.5" />
+
+        {/* Untangle / Organize Graph */}
+        <button
+          type="button"
+          onClick={handleUntangle}
+          data-testid="untangle-graph-btn"
+          className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--accent-terracotta)] transition-colors cursor-pointer"
+          title="Untangle / Organize Constellations (U)"
+          aria-label="Untangle Constellations"
+        >
+          <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
+        </button>
+
+        {/* Toggle Atlas Plate */}
         <button
           type="button"
           onClick={() => setShowAtlasPlate((prev) => !prev)}
           className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
             showAtlasPlate
               ? 'text-[var(--accent-midnight)] bg-[var(--bg-panel-subtle)]'
-              : 'text-[var(--ink-tertiary)]'
+              : 'text-[var(--ink-tertiary)] hover:text-[var(--ink-secondary)]'
           }`}
           title="Toggle Archival Atlas Plate"
+          aria-label="Toggle Atlas Plate"
         >
           <i className="ph-bold ph-newspaper-clipping text-xs" />
         </button>
 
+        {/* Toggle Coordinates Grid */}
         <button
           type="button"
           onClick={() => setShowGraticule((prev) => !prev)}
           className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
             showGraticule
               ? 'text-[var(--accent-midnight)] bg-[var(--bg-panel-subtle)]'
-              : 'text-[var(--ink-tertiary)]'
+              : 'text-[var(--ink-tertiary)] hover:text-[var(--ink-secondary)]'
           }`}
           title="Toggle Celestial Coordinates"
+          aria-label="Toggle Coordinates Grid"
         >
           <i className="ph-bold ph-grid-four text-xs" />
         </button>
-
-
       </div>
 
       {/* ================= RIGHT KNOWLEDGE DOSSIER PANEL (EXTENDS UPWARD) ================= */}
@@ -3696,8 +3814,6 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             )}
           </div>
         </div>
-      </div>
-
       </div>
 
       {/* Real Entity Editor Modal */}
