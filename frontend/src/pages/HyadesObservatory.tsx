@@ -3300,7 +3300,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           onClick={handleFitView}
           data-testid="fit-view-btn"
           className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--accent-terracotta)] transition-colors cursor-pointer"
-          title="Fit to Content (F) - Fit all concepts into viewport"
+          title="Fit View to Content (F)"
           aria-label="Fit View to Content"
         >
           <i className="ph-bold ph-frame-corners text-xs" />
