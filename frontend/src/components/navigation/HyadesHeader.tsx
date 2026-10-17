@@ -481,6 +481,9 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
                     : 'bg-rose-500'
                 }`}
               />
+              <span className="sr-only">
+                {`Backend: ${healthStatus === 'connected' ? 'Connected' : healthStatus === 'loading' ? 'Loading' : 'Unavailable'}`}
+              </span>
             </button>
           )}
 

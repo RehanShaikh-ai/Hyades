@@ -1024,7 +1024,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
                   <div
                     data-testid="library-topic-shelves-container"
-                    className="flex flex-col gap-1 pr-1"
+                    className="flex-1 overflow-y-auto flex flex-col gap-1 pr-1"
                   >
                     {topicShelves.length > 0 ? (
                       (isTopicsExpanded ? topicShelves : topicShelves.slice(0, 5)).map((topic) => (
