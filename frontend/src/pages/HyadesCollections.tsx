@@ -66,9 +66,6 @@ export const HyadesCollections: React.FC<HyadesCollectionsProps> = ({
   const [isCreatingColl, setIsCreatingColl] = useState(false);
 
   // Add member form state
-  const [newItemType, setNewItemType] = useState<KnowledgeItemType>('note');
-  const [newItemId, setNewItemId] = useState('');
-  const [isAddingItem, setIsAddingItem] = useState(false);
 
   const loadCollections = async () => {
     setIsLoading(true);
@@ -177,35 +174,6 @@ export const HyadesCollections: React.FC<HyadesCollectionsProps> = ({
     }
   };
 
-  const handleAddItem = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedCollection || !newItemId.trim()) return;
-
-    setIsAddingItem(true);
-    setError(null);
-    setSuccessMessage(null);
-
-    try {
-      await addKnowledgeItem(selectedCollection.id, {
-        item_type: newItemType,
-        item_id: newItemId.trim(),
-      });
-      setNewItemId('');
-      setSuccessMessage(`Added ${newItemType} to collection.`);
-      await loadCollectionDetails(selectedCollection.id);
-    } catch (err: unknown) {
-      const apiErr = err as { error?: { message?: string; code?: string } } | Error;
-      const code = (apiErr as { error?: { code?: string } })?.error?.code;
-      const msg =
-        code === 'DUPLICATE_MEMBERSHIP'
-          ? 'Item is already a member of this collection.'
-          : (apiErr as { error?: { message?: string } })?.error?.message ||
-            (err instanceof Error ? err.message : 'Failed adding member item');
-      setError(msg);
-    } finally {
-      setIsAddingItem(false);
-    }
-  };
 
   const handleRemoveItem = async (itemType: KnowledgeItemType, itemId: string) => {
     if (!selectedCollection) return;

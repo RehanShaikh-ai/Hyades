@@ -79,9 +79,6 @@ export const HyadesThreads: React.FC<HyadesThreadsProps> = ({
   const [newDiscoveryText, setNewDiscoveryText] = useState('');
   const [isAddingDiscovery, setIsAddingDiscovery] = useState(false);
 
-  const [newItemType, setNewItemType] = useState<'note' | 'source' | 'entity'>('note');
-  const [newItemId, setNewItemId] = useState('');
-  const [isAddingItem, setIsAddingItem] = useState(false);
   const loadThreads = async () => {
     setIsLoading(true);
     setError(null);
@@ -309,35 +306,6 @@ export const HyadesThreads: React.FC<HyadesThreadsProps> = ({
     }
   };
 
-  const handleAddItem = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedThread || !newItemId.trim()) return;
-
-    setIsAddingItem(true);
-    setError(null);
-    setSuccessMessage(null);
-
-    try {
-      await addThreadItem(selectedThread.id, {
-        item_type: newItemType,
-        item_id: newItemId.trim(),
-      });
-      setNewItemId('');
-      setSuccessMessage(`Attached ${newItemType} to thread.`);
-      await loadThreadDetails(selectedThread.id);
-    } catch (err: unknown) {
-      const apiErr = err as { error?: { message?: string; code?: string } } | Error;
-      const code = (apiErr as { error?: { code?: string } })?.error?.code;
-      const msg =
-        code === 'DUPLICATE_MEMBERSHIP'
-          ? 'Item is already attached to this thread.'
-          : (apiErr as { error?: { message?: string } })?.error?.message ||
-            (err instanceof Error ? err.message : 'Failed attaching item');
-      setError(msg);
-    } finally {
-      setIsAddingItem(false);
-    }
-  };
 
   const handleRemoveItem = async (itemType: string, itemId: string) => {
     if (!selectedThread) return;
