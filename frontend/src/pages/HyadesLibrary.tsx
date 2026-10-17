@@ -306,7 +306,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
         dateStr: s.created_at ? new Date(s.created_at).toLocaleDateString() : 'Recent',
         rawSource: s,
         extract_knowledge: s.extract_knowledge !== false,
-        extraction_status: statusMap.get(s.id)?.status || (s.processing_status === 'COMPLETED' ? 'extracted' : s.processing_status === 'FAILED' ? 'failed' : s.extract_knowledge !== false ? 'pending' : 'ineligible'),
+        extraction_status: statusMap.get(s.id)?.status || (s.processing_status === 'READY' ? 'extracted' : s.processing_status === 'FAILED' ? 'failed' : s.extract_knowledge !== false ? 'pending' : 'ineligible'),
         extraction_error: statusMap.get(s.id)?.error || s.error_message,
       });
     });

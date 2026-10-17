@@ -779,7 +779,7 @@ export const HyadesThreads: React.FC<HyadesThreadsProps> = ({
                 {/* Knowledge Attachment Interface */}
                 <KnowledgeAttachPicker
                   workspaceId={workspaceId}
-                  attachedItemIds={selectedThread.items?.map((it) => it.item_id) || []}
+                  attachedItemIds={items.map((it: any) => it.item_id || it.id).filter(Boolean)}
                   onAttach={async (type, id, title) => {
                     await addThreadItem(selectedThread.id, {
                       item_type: type,

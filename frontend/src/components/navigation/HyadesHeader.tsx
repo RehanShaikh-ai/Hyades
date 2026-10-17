@@ -245,6 +245,17 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             <span>Stella</span>
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-brass)]" />
           </button>
+
+          {/* Gliding terracotta underline indicator */}
+          <span
+            className="nav-indicator"
+            style={{
+              transform: `translateX(${indicatorStyle.x}px)`,
+              width: `${indicatorStyle.width}px`,
+              opacity: indicatorStyle.visible ? 1 : 0,
+            }}
+            aria-hidden="true"
+          />
         </nav>
 
         {/* Right Segment: Single Clear Workspace Selector + Global Actions */}
