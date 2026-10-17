@@ -1,3 +1,4 @@
+import { SavedViewsModal } from '@/components/observatory/SavedViewsModal';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
@@ -774,6 +775,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   onToggleFullscreen,
   onOpenSearch,
 }) => {
+  void onOpenSearch;
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null);
   const graticuleRef = useRef<SVGSVGElement>(null);
@@ -832,12 +834,17 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   const [filterConcepts, setFilterConcepts] = useState(true);
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null);
 
+
+
   // Focus node, hover & search state
   const [selectedNode, setSelectedNode] = useState<CelestialNode | null>(null);
+  const [isSavedViewsModalOpen, setIsSavedViewsModalOpen] = useState(false);
   const selectedNodeRef = useRef<CelestialNode | null>(null);
   useEffect(() => {
     selectedNodeRef.current = selectedNode;
   }, [selectedNode]);
+
+
 
   const [hoveredNode, setHoveredNode] = useState<CelestialNode | null>(null);
   const hoveredNodeRef = useRef<CelestialNode | null>(null);
@@ -1156,6 +1163,45 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     return { celestialNodes: nodes, celestialLinks: links };
   }, [graphData, clusters, workspaceId, containerDimensions]);
 
+  // Helper to determine if a node is visible under active filters
+  const isNodeVisible = useCallback(
+    (n: CelestialNode, hubs: boolean, concepts: boolean, clusterId: string | null) => {
+      if (!hubs && n.hierarchy === 'core') return false;
+      if (!concepts && n.hierarchy !== 'core') return false;
+      if (clusterId && n.clusterId !== clusterId && n.clusterKey !== clusterId) {
+        return false;
+      }
+      return true;
+    },
+    []
+  );
+
+  // Canonical memoized visible nodes across the entire Observatory
+  const visibleNodes = useMemo(() => {
+    return celestialNodes.filter((n) =>
+      isNodeVisible(n, filterHubs, filterConcepts, selectedClusterId)
+    );
+  }, [celestialNodes, filterHubs, filterConcepts, selectedClusterId, isNodeVisible]);
+
+  const visibleNodeIds = useMemo(() => {
+    return new Set(visibleNodes.map((n) => n.id));
+  }, [visibleNodes]);
+
+  // Automatically deselect node if it becomes filtered out
+  useEffect(() => {
+    if (selectedNode && !visibleNodeIds.has(selectedNode.id)) {
+      setSelectedNode(null);
+    }
+  }, [visibleNodeIds, selectedNode]);
+
+  const visibleLinks = useMemo(() => {
+    return celestialLinks.filter((l) => {
+      const sId = typeof l.source === 'string' ? l.source : (l.source as any).id;
+      const tId = typeof l.target === 'string' ? l.target : (l.target as any).id;
+      return visibleNodeIds.has(sId) && visibleNodeIds.has(tId);
+    });
+  }, [celestialLinks, visibleNodeIds]);
+
   // Keep nodePositionsRef synchronized with stored coordinates
   useEffect(() => {
     if (workspaceId) {
@@ -1239,18 +1285,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     const width = containerRef.current.clientWidth || window.innerWidth;
     const height = containerRef.current.clientHeight || window.innerHeight;
 
-    const visibleNodes = celestialNodes.filter((n) => {
-      if (!filterHubs && n.hierarchy === 'core') return false;
-      if (!filterConcepts && n.hierarchy !== 'core') return false;
-      if (
-        selectedClusterId &&
-        n.clusterId !== selectedClusterId &&
-        n.clusterKey !== selectedClusterId
-      ) {
-        return false;
-      }
-      return true;
-    });
+// Uses top-level visibleNodes
 
     const positions: Array<{ x: number; y: number }> = [];
     visibleNodes.forEach((n) => {
@@ -1581,6 +1616,31 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     return `M 0 ${-p} Q ${w} ${-w} ${p} 0 Q ${w} ${w} 0 ${p} Q ${-w} ${w} ${-p} 0 Q ${-w} ${-w} 0 ${-p} Z`;
   };
 
+  // Export current SVG view as downloadable SVG graphic
+  const handleExportView = useCallback(() => {
+    if (!svgRef.current) return;
+    try {
+      const svgNode = svgRef.current.node();
+      if (!svgNode) return;
+      const serializer = new XMLSerializer();
+      let source = serializer.serializeToString(svgNode);
+      if (!source.match(/^<svg[^>]+xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)) {
+        source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+      }
+      const svgBlob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = url;
+      downloadLink.download = `hyades-observatory-${new Date().toISOString().slice(0, 10)}.svg`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export view:', err);
+    }
+  }, []);
+
   // ================= STABLE D3 FORCE SIMULATION INITIALIZER =================
   // Strictly calculated ONCE when graph data or structural filters change.
   // NEVER recreated or restarted when selectedNode or searchQuery changes!
@@ -1594,20 +1654,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     const width = containerRef.current.clientWidth || window.innerWidth;
     const height = containerRef.current.clientHeight || window.innerHeight;
 
-    // Filter nodes based on user toggle
-    const filteredNodes: CelestialNode[] = celestialNodes.filter((n) => {
-      if (!filterHubs && n.hierarchy === 'core') return false;
-      if (!filterConcepts && n.hierarchy !== 'core') return false;
-      if (selectedClusterId && n.catalog !== selectedClusterId) return false;
-      return true;
-    });
-
-    const activeNodeIds = new Set(filteredNodes.map((n) => n.id));
-    const filteredLinks: CelestialLink[] = celestialLinks.filter(
-      (l) =>
-        activeNodeIds.has(typeof l.source === 'string' ? l.source : (l.source as any).id) &&
-        activeNodeIds.has(typeof l.target === 'string' ? l.target : (l.target as any).id)
-    );
+    // Mount all celestial nodes & links into the SVG; visibility is managed non-destructively
+    const filteredNodes: CelestialNode[] = celestialNodes;
+    const filteredLinks: CelestialLink[] = celestialLinks;
 
     const svg = d3
       .select(containerRef.current)
@@ -2265,12 +2314,35 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   }, [
     celestialNodes,
     celestialLinks,
-    filterHubs,
-    filterConcepts,
-    selectedClusterId,
     renderCelestialGraticule,
     workspaceId,
   ]);
+
+  // High-performance, non-destructive visibility sync for filters & constellations
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svg = svgRef.current;
+
+    // 1. Update node visibility & pointer events
+    svg.selectAll<SVGGElement, CelestialNode>('.celestial-node').each(function (d) {
+      const isVisible = visibleNodeIds.has(d.id);
+      d3.select(this)
+        .style('display', isVisible ? 'block' : 'none')
+        .style('pointer-events', isVisible ? 'all' : 'none');
+    });
+
+    // 2. Update link visibility & pointer events (visible only if BOTH endpoints are visible)
+    if (visibleLinks) {
+      svg.selectAll<SVGPathElement, CelestialLink>('.celestial-link').each(function (l) {
+        const sId = typeof l.source === 'string' ? l.source : (l.source as any).id;
+        const tId = typeof l.target === 'string' ? l.target : (l.target as any).id;
+        const isVisible = visibleNodeIds.has(sId) && visibleNodeIds.has(tId);
+        d3.select(this)
+          .style('display', isVisible ? 'block' : 'none')
+          .style('pointer-events', isVisible ? 'stroke' : 'none');
+      });
+    }
+  }, [visibleNodeIds, visibleLinks]);
 
   // ================= STABLE SELECTION & HOVER HIGHLIGHTING EFFECT =================
   // Updates visual attributes purely in DOM without restarting force simulation!
@@ -2425,7 +2497,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   // Search candidate ranking (Exact > Prefix > Word-prefix > Substring > Catalog) (§2)
   const searchCandidates = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q || celestialNodes.length === 0) return [];
+    if (!q || visibleNodes.length === 0) return [];
 
     interface ScoredCandidate {
       node: CelestialNode;
@@ -2435,7 +2507,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
     const scored: ScoredCandidate[] = [];
 
-    celestialNodes.forEach((n) => {
+    visibleNodes.forEach((n) => {
       const labelLower = n.label.toLowerCase();
       let score = 0;
       let matchType: ScoredCandidate['matchType'] = 'substring';
@@ -2468,7 +2540,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, 6).map((s) => s.node);
-  }, [searchQuery, celestialNodes]);
+  }, [searchQuery, visibleNodes]);
 
   // Search commit: center camera on target node WITHOUT recreating simulation (§2)
   const handleSearchCommit = (targetNode?: CelestialNode) => {
@@ -2514,7 +2586,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       isSelected: boolean;
     }> = [];
 
-    celestialNodes.forEach((n) => {
+    visibleNodes.forEach((n) => {
       const x = n.x;
       const y = n.y;
       if (x !== undefined && y !== undefined && !isNaN(x) && !isNaN(y)) {
@@ -2616,7 +2688,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       clusters: clusterCentroids,
       selectedPoint,
     };
-  }, [celestialNodes, selectedNode, currentTransform, isMinimapExpanded, clusters, containerDimensions]);
+  }, [visibleNodes, selectedNode, currentTransform, isMinimapExpanded, clusters, containerDimensions]);
 
   const handleMiniMapClick = useCallback(
     (clickX: number, clickY: number, width: number, height: number) => {
@@ -2642,10 +2714,233 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
   return (
     <div
-      className={`h-screen w-full relative text-[13px] leading-relaxed select-none overflow-hidden ${
+      className={`h-full w-full relative flex flex-col text-[13px] leading-relaxed select-none overflow-hidden ${
         isFullscreen ? 'focused-view' : ''
       }`}
     >
+      {/* Center Floating Astronomical Coordinates HUD */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none select-none">
+        {selectedNode ? (
+          <div className="bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-xs rounded-full px-3.5 py-1 flex items-center gap-2.5 truncate">
+            <div
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                selectedNode.hierarchy === "core"
+                  ? "bg-[var(--accent-terracotta)] animate-pulse"
+                  : selectedNode.hierarchy === "subtopic"
+                  ? "bg-[var(--accent-brass)]"
+                  : "bg-[var(--accent-midnight)]"
+              }`}
+            />
+            <span className="serif text-xs font-semibold text-[var(--ink-primary)] leading-none truncate max-w-[170px]">
+              {selectedNode.label}
+            </span>
+            <span className="w-px h-2.5 bg-[var(--border-parchment)] shrink-0" />
+            <span className="mono text-[10px] text-[var(--ink-tertiary)] shrink-0">
+              {selectedNode.coords}
+            </span>
+            <span className="mono text-[9px] text-[var(--accent-midnight)] bg-[var(--bg-panel-subtle)] px-1.5 py-0.5 rounded-full border border-[var(--border-parchment)] font-medium shrink-0">
+              {selectedNode.catalog}
+            </span>
+          </div>
+        ) : (
+          <div className="text-[11px] text-[var(--ink-tertiary)] mono px-3 py-1 rounded-full bg-[#FAF8F2]/75 backdrop-blur-xs border border-[var(--border-parchment)]/60 shadow-2xs">
+            Click a star to focus coordinates · Drag canvas to chart
+          </div>
+        )}
+      </div>
+
+      {/* ================= UPPER-RIGHT VERTICAL ACTION RAIL ================= */}
+      <div
+        id="observatory-action-rail"
+        data-testid="observatory-action-rail"
+        role="toolbar"
+        aria-label="Observatory Actions"
+        className={`absolute top-4 ${
+          isRightSidebarOpen && selectedNode ? 'right-[420px]' : 'right-6'
+        } z-30 pointer-events-auto flex flex-col items-center gap-1.5 bg-[#FAF8F2]/95 backdrop-blur-md border border-[var(--border-strong)] rounded-xl p-1.5 shadow-sm transition-all duration-300 select-none`}
+      >
+        {/* 1. Focus / Fullscreen Mode */}
+        {onToggleFullscreen && (
+          <button
+            type="button"
+            onClick={onToggleFullscreen}
+            data-testid="observatory-focus-btn"
+            className="w-8 h-8 rounded-lg bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center shadow-2xs transition-all active:scale-95 cursor-pointer"
+            title={isFullscreen ? "Exit Fullscreen Focus (Shift+F)" : "Enter Fullscreen Focus (Shift+F)"}
+            aria-label={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen Focus"}
+          >
+            <i
+              className={`ph-bold ${
+                isFullscreen ? "ph-corners-in" : "ph-corners-out"
+              } text-sm text-[var(--accent-terracotta)]`}
+            />
+          </button>
+        )}
+
+        {/* 2. Connect Two Entities */}
+        <button
+          type="button"
+          onClick={() => setIsRelationshipEditorOpen(true)}
+          data-testid="connect-entities-btn"
+          className="w-8 h-8 rounded-lg bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center shadow-2xs transition-all active:scale-95 cursor-pointer"
+          title="Connect Two Entities (C)"
+          aria-label="Connect Two Entities"
+        >
+          <i className="ph ph-arrows-split text-sm text-[var(--accent-terracotta)]" />
+        </button>
+
+        {/* 3. More options (⋮) */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setIsMoreMenuOpen((prev) => !prev)}
+            data-testid="observatory-overflow-btn"
+            className={`w-8 h-8 rounded-lg border text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-all shadow-2xs active:scale-95 cursor-pointer ${
+              isMoreMenuOpen
+                ? 'bg-[var(--bg-panel-subtle)] border-[var(--border-strong)] text-[var(--ink-primary)]'
+                : 'bg-white hover:bg-[var(--bg-panel-subtle)] border-[var(--border-parchment)]'
+            }`}
+            title="More Options"
+            aria-label="More Graph Options"
+          >
+            <i className="ph-bold ph-dots-three-vertical text-sm" />
+          </button>
+
+          {/* Overflow Menu Dropdown */}
+          {isMoreMenuOpen && (
+            <div
+              data-testid="observatory-overflow-menu"
+              className="absolute right-0 mt-2 w-52 bg-[#FAF8F2]/98 backdrop-blur-md border border-[var(--border-strong)] rounded-xl shadow-lg p-1.5 z-50 text-xs animate-fade-in select-none"
+            >
+              {/* Add Entity */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEntityEditorOpen(true);
+                  setIsMoreMenuOpen(false);
+                }}
+                data-testid="add-entity-btn"
+                className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center justify-between text-[var(--ink-primary)] cursor-pointer rounded-lg transition-colors"
+                title="Add Entity to Knowledge Sky (A)"
+              >
+                <div className="flex items-center gap-2">
+                  <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
+                  <span className="font-medium">Add Entity</span>
+                </div>
+                <span className="mono text-[10px] text-[var(--ink-tertiary)] bg-black/5 px-1.5 py-0.5 rounded">A</span>
+              </button>
+
+              {/* Saved Views */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSavedViewsModalOpen(true);
+                  setIsMoreMenuOpen(false);
+                }}
+                data-testid="saved-views-btn"
+                className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer rounded-lg transition-colors"
+                title="Saved Observatory Views"
+              >
+                <i className="ph ph-bookmarks text-xs text-[var(--accent-terracotta)]" />
+                <span>Saved Views</span>
+              </button>
+
+              {/* Export View */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleExportView();
+                  setIsMoreMenuOpen(false);
+                }}
+                data-testid="export-view-btn"
+                className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer rounded-lg transition-colors"
+                title="Export Observatory SVG"
+              >
+                <i className="ph ph-download-simple text-xs text-[var(--accent-midnight)]" />
+                <span>Export View (SVG)</span>
+              </button>
+
+              <div className="my-1 border-t border-[var(--border-parchment)]" />
+
+              {/* Graph Settings Section */}
+              <div className="px-2.5 py-1 text-[10px] uppercase tracking-wider font-semibold text-[var(--ink-tertiary)]">
+                Graph Settings
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowAtlasPlate((p) => !p)}
+                className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center justify-between text-[var(--ink-primary)] cursor-pointer rounded-lg transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <i className="ph ph-newspaper text-xs text-[var(--accent-midnight)]" />
+                  <span>Atlas Plate</span>
+                </div>
+                {showAtlasPlate && <i className="ph-bold ph-check text-xs text-[var(--accent-terracotta)]" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowGraticule((p) => !p)}
+                className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center justify-between text-[var(--ink-primary)] cursor-pointer rounded-lg transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <i className="ph ph-grid-four text-xs text-[var(--accent-brass)]" />
+                  <span>Coordinates Grid</span>
+                </div>
+                {showGraticule && <i className="ph-bold ph-check text-xs text-[var(--accent-terracotta)]" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSuggestionsOpen(true);
+                  setIsMoreMenuOpen(false);
+                }}
+                className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer rounded-lg transition-colors"
+              >
+                <i className="ph ph-sparkle text-xs text-[var(--accent-terracotta)]" />
+                <span>Link Suggestions</span>
+              </button>
+
+              <div className="my-1 border-t border-[var(--border-parchment)]" />
+
+              {/* Untangle / Organize */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleUntangle();
+                  setIsMoreMenuOpen(false);
+                }}
+                className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center justify-between text-[var(--ink-primary)] cursor-pointer rounded-lg transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
+                  <span>Untangle Layout</span>
+                </div>
+                <span className="mono text-[10px] text-[var(--ink-tertiary)] bg-black/5 px-1.5 py-0.5 rounded">U</span>
+              </button>
+
+              {/* Reset View */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleFitView();
+                  setIsMoreMenuOpen(false);
+                }}
+                data-testid="reset-view-menu-item"
+                className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center justify-between text-[var(--ink-primary)] cursor-pointer rounded-lg transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <i className="ph-bold ph-frame-corners text-xs text-[var(--ink-secondary)]" />
+                  <span>Reset View</span>
+                </div>
+                <span className="mono text-[10px] text-[var(--ink-tertiary)] bg-black/5 px-1.5 py-0.5 rounded">F</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
       {/* Archival paper grain texture */}
       <div className="paper-grain" />
 
@@ -2688,224 +2983,33 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         </div>
       )}
 
-      {/* ================= FLOATING MINIMAL SEGMENTED TOP NAVIGATION (APPROVED DESIGN) ================= */}
-      <header className="absolute top-4 left-6 right-6 z-30 flex items-center justify-between pointer-events-none select-none transition-all">
-        {/* SEGMENT 1 (LEFT): Brand + Nav Links + Real Graph Actions */}
-        <div className="flex items-center gap-2.5 bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-3.5 py-1.5 pointer-events-auto">
-          {/* Logo & Identity */}
-          <button
-            type="button"
-            onClick={() => onNavigateToDestination?.('overview')}
-            className="flex items-center gap-2 group text-left focus:outline-none cursor-pointer"
-            title="Hyades Overview"
-          >
-            <div className="w-6 h-6 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] flex items-center justify-center shadow-xs border border-[#2D3F5E] group-hover:bg-[var(--accent-midnight-light)] transition-colors">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                className="transition-transform duration-700 group-hover:rotate-90"
-              >
-                <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="1.2" strokeDasharray="2,2" strokeOpacity="0.4" />
-                <circle cx="12" cy="12" r="5.5" stroke="currentColor" strokeWidth="1.2" strokeOpacity="0.7" />
-                <path d="M 12 3.5 L 13.5 10.5 L 20.5 12 L 13.5 13.5 L 12 20.5 L 10.5 13.5 L 3.5 12 L 10.5 10.5 Z" fill="currentColor" />
-                <circle cx="12" cy="12" r="1.5" fill="#FAF8F2" />
-              </svg>
+      {/* Empty State when all concepts are hidden by active filters */}
+      {!isLoading && celestialNodes.length > 0 && visibleNodes.length === 0 && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-15 pointer-events-auto bg-[#FAF8F2]/60 backdrop-blur-xs select-none">
+          <div className="instrument-panel max-w-sm p-6 text-center flex flex-col items-center gap-3 bg-white/95 shadow-lg border border-[var(--border-parchment)] rounded-xl">
+            <div className="w-12 h-12 rounded-full bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[var(--accent-terracotta)] text-xl mb-1">
+              <i className="ph ph-funnel-simple-x" />
             </div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="serif text-base font-semibold tracking-tight text-[var(--ink-primary)] leading-none">
-                Hyades
-              </span>
-              <span className="text-[9px] tracking-[0.2em] font-medium text-[var(--ink-secondary)] uppercase">
-                Observatory
-              </span>
-            </div>
-          </button>
-
-          <div className="w-px h-3.5 bg-[var(--border-parchment)] mx-1" />
-
-          {/* Navigation Links */}
-          <nav aria-label="Main navigation" className="hidden md:flex items-center gap-3">
+            <h3 className="serif text-xl font-semibold text-[var(--ink-primary)]">
+              No Concepts Match Active Filters
+            </h3>
+            <p className="text-xs text-[var(--ink-secondary)] leading-relaxed">
+              All concepts have been hidden by the active constellation filter settings.
+            </p>
             <button
               type="button"
-              onClick={() => onNavigateToDestination?.('overview')}
-              className="text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
+              onClick={() => {
+                setFilterHubs(true);
+                setFilterConcepts(true);
+                setSelectedClusterId(null);
+              }}
+              className="mt-1 px-4 py-1.5 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium transition-all shadow-2xs cursor-pointer active:scale-95"
             >
-              Overview
+              Reset Filters
             </button>
-            <button
-              type="button"
-              onClick={() => onNavigateToDestination?.('library')}
-              className="text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
-            >
-              Library
-            </button>
-            <button
-              type="button"
-              className="text-xs font-semibold text-[var(--accent-midnight)] flex items-center gap-1 cursor-pointer"
-            >
-              <span>Observatory</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)]" />
-            </button>
-            <button
-              type="button"
-              onClick={() => onNavigateToDestination?.('stella')}
-              className="text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
-            >
-              Stella
-            </button>
-          </nav>
-
-          <div className="w-px h-3.5 bg-[var(--border-parchment)] mx-1" />
-
-          {/* Real Actions: + Entity & Connect & More */}
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setIsEntityEditorOpen(true)}
-              className="px-2.5 py-1 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer"
-              title="Add Entity to Knowledge Sky (A)"
-            >
-              <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
-              <span>+ Entity</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsRelationshipEditorOpen(true)}
-              className="px-2.5 py-1 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer"
-              title="Connect Two Entities (C)"
-            >
-              <i className="ph ph-arrows-split text-xs text-[var(--accent-terracotta)]" />
-              <span>Connect</span>
-            </button>
-
-            {/* Compact More Menu */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsMoreMenuOpen((prev) => !prev)}
-                className="w-6 h-6 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
-                title="More Graph Actions"
-              >
-                <i className="ph-bold ph-dots-three-vertical text-xs" />
-              </button>
-
-              {isMoreMenuOpen && (
-                <div className="absolute left-0 mt-2 w-48 bg-white border border-[var(--border-strong)] rounded-xl shadow-lg py-1.5 z-50 text-xs animate-fade-in">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleUntangle();
-                      setIsMoreMenuOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-                  >
-                    <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
-                    <span>Untangle / Organize (U)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsSuggestionsOpen(true);
-                      setIsMoreMenuOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-                  >
-                    <i className="ph ph-sparkle text-xs text-[var(--accent-terracotta)]" />
-                    <span>Link Suggestions</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAtlasPlate((p) => !p);
-                      setIsMoreMenuOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-                  >
-                    <i className="ph ph-newspaper text-xs text-[var(--accent-midnight)]" />
-                    <span>{showAtlasPlate ? 'Hide Atlas Plate' : 'Show Atlas Plate'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowGraticule((p) => !p);
-                      setIsMoreMenuOpen(false);
-                    }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-                  >
-                    <i className="ph ph-grid-four text-xs text-[var(--accent-brass)]" />
-                    <span>{showGraticule ? 'Hide Coordinates' : 'Show Coordinates'}</span>
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
         </div>
-
-        {/* SEGMENT 2 (CENTER): Compact Focused Coordinate HUD Capsule */}
-        <div className="hidden lg:flex items-center pointer-events-auto">
-          {selectedNode ? (
-            <div className="bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-3.5 py-1.5 flex items-center gap-2.5">
-              <div
-                className={`w-2 h-2 rounded-full ${
-                  selectedNode.hierarchy === 'core'
-                    ? 'bg-[var(--accent-terracotta)] animate-pulse'
-                    : selectedNode.hierarchy === 'subtopic'
-                    ? 'bg-[var(--accent-brass)]'
-                    : 'bg-[var(--accent-midnight)]'
-                }`}
-              />
-              <span className="serif text-xs font-semibold text-[var(--ink-primary)] leading-none max-w-[170px] truncate">
-                {selectedNode.label}
-              </span>
-              <span className="w-px h-2.5 bg-[var(--border-parchment)]" />
-              <span className="mono text-[10px] text-[var(--ink-tertiary)]">
-                {selectedNode.coords}
-              </span>
-              <span className="mono text-[9px] text-[var(--accent-midnight)] bg-white px-1.5 py-0.5 rounded-full border border-[var(--border-parchment)] font-medium">
-                {selectedNode.catalog}
-              </span>
-            </div>
-          ) : (
-            <div className="bg-[#FAF8F2]/80 backdrop-blur-md border border-[var(--border-parchment)] rounded-full px-3 py-1 text-xs text-[var(--ink-tertiary)] mono">
-              Click a star to focus coordinates
-            </div>
-          )}
-        </div>
-
-        {/* SEGMENT 3 (RIGHT): Search Trigger & Fullscreen Controls */}
-        <div className="flex items-center gap-2 bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-2.5 py-1.5 pointer-events-auto">
-          {onOpenSearch && (
-            <button
-              type="button"
-              onClick={onOpenSearch}
-              className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full hover:bg-white text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
-              title="Global Search (⌘K)"
-            >
-              <i className="ph ph-magnifying-glass text-xs" />
-              <span className="hidden sm:inline">Search</span>
-              <kbd className="mono text-[9.5px] text-[var(--ink-tertiary)] ml-0.5">⌘K</kbd>
-            </button>
-          )}
-
-          {onToggleFullscreen && (
-            <button
-              type="button"
-              onClick={onToggleFullscreen}
-              className="w-6 h-6 rounded-full hover:bg-white text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors cursor-pointer"
-              title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen / Focused View'}
-            >
-              <i
-                className={`ph-bold ${
-                  isFullscreen ? 'ph-corners-in' : 'ph-corners-out'
-                } text-xs text-[var(--accent-terracotta)]`}
-              />
-            </button>
-          )}
-        </div>
-      </header>
+      )}
 
       {/* Honest Empty State when Workspace Graph is Empty */}
       {!isLoading && celestialNodes.length === 0 && (
@@ -2921,7 +3025,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
             </h3>
             <p className="text-xs text-[var(--ink-secondary)] leading-relaxed">
               No concepts or relationships have been extracted yet in this workspace. Ingest notes or
-              trigger extraction in the Library to illuminate the celestial atlas.
+              trigger extraction in the Library to illuminate the celestial observatory.
             </p>
             <div className="flex items-center gap-3 mt-2">
               <button
@@ -2947,7 +3051,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
       {/* Persistent Reopen Left Edge Tab */}
       {!isLeftSidebarOpen && (
-        <div id="reopen-left-sidebar" className="fixed top-18 left-0 z-30 pointer-events-auto">
+        <div id="reopen-left-sidebar" className="absolute top-4 left-0 z-20 pointer-events-auto">
           <button
             type="button"
             onClick={() => setIsLeftSidebarOpen(true)}
@@ -2974,7 +3078,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
       {/* Persistent Reopen Right Edge Tab */}
       {!isRightSidebarOpen && selectedNode && (
-        <div id="reopen-right-sidebar" className="fixed top-18 right-0 z-30 pointer-events-auto">
+        <div id="reopen-right-sidebar" className="absolute top-4 right-0 z-20 pointer-events-auto">
           <button
             type="button"
             onClick={() => setIsRightSidebarOpen(true)}
@@ -3003,7 +3107,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       {isLeftSidebarOpen && (
         <aside
           id="left-sidebar"
-          className="sidebar-transition absolute top-18 left-6 w-[280px] max-h-[calc(100vh-140px)] z-10 flex flex-col pointer-events-none"
+          className="sidebar-transition absolute top-4 left-6 w-[280px] max-h-[calc(100vh-100px)] z-20 flex flex-col pointer-events-none"
         >
           <div className="instrument-panel flex-1 flex flex-col pointer-events-auto overflow-hidden">
             <div className="panel-bracket-tl" />
@@ -3054,7 +3158,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                   {clusters.length > 0 ? (
                     clusters.map((cl) => {
                       const starCount = celestialNodes.filter(
-                        (n) => n.clusterId === cl.id || n.clusterKey === cl.id
+                        (n) =>
+                          (n.clusterId === cl.id || n.clusterKey === cl.id) &&
+                          isNodeVisible(n, filterHubs, filterConcepts, null)
                       ).length;
                       return (
                         <button
@@ -3163,14 +3269,16 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       <div
         id="graph-controls"
         className={`absolute bottom-6 z-20 pointer-events-auto flex flex-col items-center gap-1 bg-[var(--bg-panel)]/95 backdrop-blur-md border border-[var(--border-strong)] rounded-xl p-1 shadow-sm w-9 transition-all duration-300 ${
-          isRightSidebarOpen && selectedNode ? 'right-[416px]' : 'right-6'
+          isRightSidebarOpen && selectedNode ? 'right-[420px]' : 'right-6'
         }`}
       >
         <button
           type="button"
           onClick={() => handleZoom(1.25)}
+          data-testid="zoom-in-btn"
           className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
           title="Zoom In (+)"
+          aria-label="Zoom In"
         >
           <i className="ph-bold ph-plus text-xs" />
         </button>
@@ -3178,77 +3286,87 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         <button
           type="button"
           onClick={() => handleZoom(0.8)}
+          data-testid="zoom-out-btn"
           className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
-          title="Zoom Out (–)"
+          title="Zoom Out (-)"
+          aria-label="Zoom Out"
         >
           <i className="ph-bold ph-minus text-xs" />
         </button>
 
-        <div className="w-4 h-px bg-[var(--border-parchment)] mx-auto my-0.5" />
+        {/* Reset View / Fit to Content */}
+        <button
+          type="button"
+          onClick={handleFitView}
+          data-testid="fit-view-btn"
+          className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--accent-terracotta)] transition-colors cursor-pointer"
+          title="Fit View to Content (F)"
+          aria-label="Fit View to Content"
+        >
+          <i className="ph-bold ph-frame-corners text-xs" />
+        </button>
 
+        {/* Focus / Fullscreen Mode */}
+        {onToggleFullscreen && (
+          <button
+            type="button"
+            onClick={onToggleFullscreen}
+            data-testid="fullscreen-btn"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--accent-terracotta)] transition-colors cursor-pointer"
+            title={isFullscreen ? "Exit Fullscreen Focus (Shift+F)" : "Enter Fullscreen Focus (Shift+F)"}
+            aria-label={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen Focus"}
+          >
+            <i
+              className={`ph-bold ${
+                isFullscreen ? "ph-corners-in" : "ph-corners-out"
+              } text-xs text-[var(--accent-terracotta)]`}
+            />
+          </button>
+        )}
+
+        <div className="w-5 h-px bg-[var(--border-parchment)] my-0.5" />
+
+        {/* Untangle / Organize Graph */}
         <button
           type="button"
           onClick={handleUntangle}
           data-testid="untangle-graph-btn"
           className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--accent-terracotta)] transition-colors cursor-pointer"
           title="Untangle / Organize (U)"
+          aria-label="Untangle Constellations"
         >
           <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
         </button>
 
-        <button
-          type="button"
-          onClick={handleFitView}
-          data-testid="fit-view-btn"
-          className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
-          title="Fit View to Content (F)"
-        >
-          <i className="ph-bold ph-corners-out text-xs" />
-        </button>
-
+        {/* Toggle Atlas Plate */}
         <button
           type="button"
           onClick={() => setShowAtlasPlate((prev) => !prev)}
           className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
             showAtlasPlate
               ? 'text-[var(--accent-midnight)] bg-[var(--bg-panel-subtle)]'
-              : 'text-[var(--ink-tertiary)]'
+              : 'text-[var(--ink-tertiary)] hover:text-[var(--ink-secondary)]'
           }`}
           title="Toggle Archival Atlas Plate"
+          aria-label="Toggle Atlas Plate"
         >
           <i className="ph-bold ph-newspaper-clipping text-xs" />
         </button>
 
+        {/* Toggle Coordinates Grid */}
         <button
           type="button"
           onClick={() => setShowGraticule((prev) => !prev)}
           className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
             showGraticule
               ? 'text-[var(--accent-midnight)] bg-[var(--bg-panel-subtle)]'
-              : 'text-[var(--ink-tertiary)]'
+              : 'text-[var(--ink-tertiary)] hover:text-[var(--ink-secondary)]'
           }`}
           title="Toggle Celestial Coordinates"
+          aria-label="Toggle Coordinates Grid"
         >
           <i className="ph-bold ph-grid-four text-xs" />
         </button>
-
-        {onToggleFullscreen && (
-          <>
-            <div className="w-4 h-px bg-[var(--border-parchment)] mx-auto my-0.5" />
-            <button
-              type="button"
-              onClick={onToggleFullscreen}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
-              title={isFullscreen ? 'Exit Focus View' : 'Focus / Fullscreen View'}
-            >
-              <i
-                className={`ph-bold ${
-                  isFullscreen ? 'ph-corners-in' : 'ph-corners-out'
-                } text-xs text-[var(--accent-terracotta)]`}
-              />
-            </button>
-          </>
-        )}
       </div>
 
       {/* ================= RIGHT KNOWLEDGE DOSSIER PANEL (EXTENDS UPWARD) ================= */}
@@ -3452,7 +3570,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
               </span>
               <div className="flex items-center gap-2">
                 <span className="text-[9px] text-[var(--ink-tertiary)] mono">
-                  {celestialNodes.length}★
+                  {visibleNodes.length}★
                 </span>
                 <button
                   type="button"
@@ -3728,6 +3846,47 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         onClose={() => setIsSuggestionsOpen(false)}
         onLinkCreated={() => fetchGraph()}
         onNavigateToNote={onNavigateToNote}
+      />
+
+      <SavedViewsModal
+        isOpen={isSavedViewsModalOpen}
+        onClose={() => setIsSavedViewsModalOpen(false)}
+        workspaceId={workspaceId}
+        currentState={{
+          version: 1,
+          zoom: currentTransform.k || 1.0,
+          center: { x: currentTransform.x || 0.0, y: currentTransform.y || 0.0 },
+          filters: {
+            filterHubs,
+            filterConcepts,
+            selectedClusterId,
+          },
+          focus_entity_ids: selectedNode ? [selectedNode.id] : [],
+        }}
+        onRestoreState={(restoredState, activeFocusIds) => {
+          if (restoredState.filters) {
+            if (typeof restoredState.filters.filterHubs === 'boolean') {
+              setFilterHubs(restoredState.filters.filterHubs);
+            }
+            if (typeof restoredState.filters.filterConcepts === 'boolean') {
+              setFilterConcepts(restoredState.filters.filterConcepts);
+            }
+            if (restoredState.filters.selectedClusterId !== undefined) {
+              setSelectedClusterId(restoredState.filters.selectedClusterId as string | null);
+            }
+          }
+          if (restoredState.zoom && restoredState.center && svgRef.current && zoomBehaviorRef.current) {
+            svgRef.current.transition().duration(600).call(
+              zoomBehaviorRef.current.transform,
+              d3.zoomIdentity.translate(restoredState.center.x, restoredState.center.y).scale(restoredState.zoom)
+            );
+          }
+          const focusId = activeFocusIds?.[0] || restoredState.focus_entity_ids?.[0];
+          if (focusId && celestialNodes.length) {
+            const target = celestialNodes.find((n: CelestialNode) => n.id === focusId);
+            if (target) setSelectedNode(target);
+          }
+        }}
       />
     </div>
   );

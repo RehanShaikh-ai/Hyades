@@ -19,5 +19,5 @@ if [ -d "frontend" ] && [ -f "frontend/.env.example" ] && [ ! -f "frontend/.env"
     cp frontend/.env.example frontend/.env
 fi
 
-echo "Starting Collaborative Second Brain stack (docker compose up --build)..."
+echo "Starting Hyades stack (docker compose up --build)..."
 exec docker compose up --build "$@"

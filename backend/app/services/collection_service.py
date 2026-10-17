@@ -1,11 +1,11 @@
-"""Collection service per CONTRACT v0.4.2 §5.3, §8.1."""
+"""Collection service per CONTRACT v0.4.2 §5.3, §8.1, §14.3."""
 
-from uuid import UUID
+import uuid
+from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import ConflictError, NotFoundError
 from app.models.collection import (
     Collection,
     CollectionConversation,
@@ -13,242 +13,205 @@ from app.models.collection import (
     CollectionNote,
     CollectionSource,
 )
-from app.models.conversation import Conversation
+from app.models.entity_chunk import EntityChunk
 from app.models.graph_entity import GraphEntity
 from app.models.graph_relationship import GraphRelationship
-from app.models.note import Note
-from app.models.source import Source
-from app.schemas.collection import CollectionCreate, CollectionUpdate, RelatedEntity
+from app.models.workspace import Workspace
+from app.schemas.collection import (
+    CollectionCreate,
+    CollectionRelatedResponse,
+    CollectionResponse,
+    CollectionUpdate,
+    RelatedKnowledgeItem,
+)
+
+
+def _get_item_count(db: Session, collection_id: uuid.UUID) -> int:
+    n = db.query(CollectionNote).filter_by(collection_id=collection_id).count()
+    s = db.query(CollectionSource).filter_by(collection_id=collection_id).count()
+    e = db.query(CollectionEntity).filter_by(collection_id=collection_id).count()
+    c = db.query(CollectionConversation).filter_by(collection_id=collection_id).count()
+    return n + s + e + c
 
 
 def create_collection(
-    session: Session,
-    workspace_id: UUID,
-    created_by: UUID,
-    data: CollectionCreate,
-) -> Collection:
-    existing = session.scalar(
-        select(Collection).where(
-            Collection.workspace_id == workspace_id,
-            Collection.name == data.name,
-        )
+    db: Session, workspace_id: uuid.UUID, data: CollectionCreate, user_id: uuid.UUID | None = None
+) -> CollectionResponse:
+    """Create a new collection. Enforces unique name per workspace."""
+    ws = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    if not ws:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+
+    creator_id = user_id or data.created_by
+    if not creator_id:
+        creator_id = ws.owner_id
+
+    # Check unique (workspace_id, name)
+    existing = (
+        db.query(Collection).filter_by(workspace_id=workspace_id, name=data.name.strip()).first()
     )
     if existing:
-        raise ConflictError(f"Collection with name '{data.name}' already exists in workspace")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A collection with this name already exists in this workspace",
+        )
 
-    collection = Collection(
+    now = datetime.now(UTC)
+    coll = Collection(
         workspace_id=workspace_id,
-        created_by=created_by,
-        name=data.name,
+        name=data.name.strip(),
         description=data.description,
         icon=data.icon,
+        created_by=creator_id,
+        created_at=now,
+        updated_at=now,
     )
-    session.add(collection)
-    session.commit()
-    session.refresh(collection)
-    return collection
+    db.add(coll)
+    db.commit()
+    db.refresh(coll)
+
+    resp = CollectionResponse.model_validate(coll)
+    resp.item_count = 0
+    return resp
 
 
-def get_collection(session: Session, collection_id: UUID) -> Collection:
-    collection = session.get(Collection, collection_id)
-    if not collection:
-        raise NotFoundError(f"Collection '{collection_id}' not found")
-    return collection
+def get_collection(db: Session, collection_id: uuid.UUID) -> Collection:
+    """Retrieve collection by id or raise 404."""
+    coll = db.query(Collection).filter(Collection.id == collection_id).first()
+    if not coll:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+    return coll
 
 
 def list_collections(
-    session: Session,
-    workspace_id: UUID,
-    page: int = 1,
-    page_size: int = 20,
-) -> tuple[list[Collection], int]:
-    stmt = (
-        select(Collection)
-        .where(Collection.workspace_id == workspace_id)
-        .order_by(Collection.updated_at.desc())
+    db: Session, workspace_id: uuid.UUID, page: int = 1, page_size: int = 20
+) -> tuple[list[CollectionResponse], int]:
+    """List collections in a workspace ordered by updated_at descending."""
+    q = db.query(Collection).filter(Collection.workspace_id == workspace_id)
+    total = q.count()
+    collections = (
+        q.order_by(Collection.updated_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
     )
-    count_stmt = select(func.count(Collection.id)).where(Collection.workspace_id == workspace_id)
 
-    total = session.scalar(count_stmt) or 0
-    items = session.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).all()
+    items = []
+    for c in collections:
+        r = CollectionResponse.model_validate(c)
+        r.item_count = _get_item_count(db, c.id)
+        items.append(r)
 
-    return list(items), total
+    return items, total
 
 
 def update_collection(
-    session: Session,
-    collection_id: UUID,
-    data: CollectionUpdate,
-) -> Collection:
-    collection = get_collection(session, collection_id)
-    if data.name is not None and data.name != collection.name:
-        existing = session.scalar(
-            select(Collection).where(
-                Collection.workspace_id == collection.workspace_id,
-                Collection.name == data.name,
-            )
+    db: Session, collection_id: uuid.UUID, data: CollectionUpdate
+) -> CollectionResponse:
+    """Update collection fields."""
+    coll = get_collection(db, collection_id)
+
+    if data.name is not None and data.name.strip() != coll.name:
+        existing = (
+            db.query(Collection)
+            .filter_by(workspace_id=coll.workspace_id, name=data.name.strip())
+            .filter(Collection.id != collection_id)
+            .first()
         )
         if existing:
-            raise ConflictError(f"Collection with name '{data.name}' already exists in workspace")
-        collection.name = data.name
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A collection with this name already exists in this workspace",
+            )
+        coll.name = data.name.strip()
 
     if data.description is not None:
-        collection.description = data.description
+        coll.description = data.description
     if data.icon is not None:
-        collection.icon = data.icon
+        coll.icon = data.icon
 
-    session.commit()
-    session.refresh(collection)
-    return collection
+    coll.updated_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(coll)
 
-
-def delete_collection(session: Session, collection_id: UUID) -> None:
-    collection = get_collection(session, collection_id)
-    session.delete(collection)
-    session.commit()
+    resp = CollectionResponse.model_validate(coll)
+    resp.item_count = _get_item_count(db, coll.id)
+    return resp
 
 
-def get_collection_items(session: Session, collection_id: UUID) -> list[dict]:
-    collection = get_collection(session, collection_id)
-    items = []
+def delete_collection(db: Session, collection_id: uuid.UUID) -> None:
+    """Delete a collection. Memberships cascade-delete automatically."""
+    coll = get_collection(db, collection_id)
+    db.delete(coll)
+    db.commit()
 
-    notes_res = session.execute(
-        select(CollectionNote, Note)
-        .join(Note, CollectionNote.note_id == Note.id)
-        .where(CollectionNote.collection_id == collection.id)
+
+def get_related_knowledge(db: Session, collection: Collection) -> CollectionRelatedResponse:
+    """Compute related knowledge dynamically per Contract §14.3 without writing or mutating graph edges."""
+    # Collect IDs of items in collection
+    note_ids = [
+        cn.note_id
+        for cn in db.query(CollectionNote.note_id).filter_by(collection_id=collection.id).all()
+    ]
+    source_ids = [
+        cs.source_id
+        for cs in db.query(CollectionSource.source_id).filter_by(collection_id=collection.id).all()
+    ]
+    member_entity_ids = set(
+        ce.entity_id
+        for ce in db.query(CollectionEntity.entity_id).filter_by(collection_id=collection.id).all()
     )
-    for cn, note in notes_res.all():
-        items.append(
-            {
-                "item_type": "note",
-                "item_id": note.id,
-                "title": note.title,
-                "added_at": cn.added_at,
-            }
-        )
 
-    sources_res = session.execute(
-        select(CollectionSource, Source)
-        .join(Source, CollectionSource.source_id == Source.id)
-        .where(CollectionSource.collection_id == collection.id)
-    )
-    for cs, src in sources_res.all():
-        items.append(
-            {
-                "item_type": "source",
-                "item_id": src.id,
-                "title": src.original_path.split("/")[-1],
-                "added_at": cs.added_at,
-            }
-        )
+    # Find entities connected through provenance (entity_chunks) of notes & sources in collection
+    provenance_entity_ids = set()
+    if note_ids:
+        for (eid,) in (
+            db.query(EntityChunk.entity_id).filter(EntityChunk.note_id.in_(note_ids)).distinct()
+        ):
+            provenance_entity_ids.add(eid)
+    if source_ids:
+        for (eid,) in (
+            db.query(EntityChunk.entity_id).filter(EntityChunk.source_id.in_(source_ids)).distinct()
+        ):
+            provenance_entity_ids.add(eid)
 
-    entities_res = session.execute(
-        select(CollectionEntity, GraphEntity)
-        .join(GraphEntity, CollectionEntity.entity_id == GraphEntity.id)
-        .where(CollectionEntity.collection_id == collection.id)
-    )
-    for ce, ent in entities_res.all():
-        items.append(
-            {
-                "item_type": "entity",
-                "item_id": ent.id,
-                "title": ent.name,
-                "added_at": ce.added_at,
-            }
-        )
-
-    convs_res = session.execute(
-        select(CollectionConversation, Conversation)
-        .join(Conversation, CollectionConversation.conversation_id == Conversation.id)
-        .where(CollectionConversation.collection_id == collection.id)
-    )
-    for cc, conv in convs_res.all():
-        items.append(
-            {
-                "item_type": "conversation",
-                "item_id": conv.id,
-                "title": conv.title,
-                "added_at": cc.added_at,
-            }
-        )
-
-    return items
-
-
-def get_collection_stats(session: Session, collection_id: UUID) -> dict:
-    collection = get_collection(session, collection_id)
-
-    note_count = (
-        session.scalar(
-            select(func.count(CollectionNote.note_id)).where(
-                CollectionNote.collection_id == collection.id
+    # Find neighbor entities connected via graph relationships to collection entities
+    connected_entity_ids = set()
+    all_starting_entities = member_entity_ids | provenance_entity_ids
+    if all_starting_entities:
+        for rel in (
+            db.query(GraphRelationship)
+            .filter(
+                (GraphRelationship.source_entity_id.in_(all_starting_entities))
+                | (GraphRelationship.target_entity_id.in_(all_starting_entities))
             )
-        )
-        or 0
-    )
+            .limit(100)
+            .all()
+        ):
+            if rel.source_entity_id not in all_starting_entities:
+                connected_entity_ids.add(rel.source_entity_id)
+            if rel.target_entity_id not in all_starting_entities:
+                connected_entity_ids.add(rel.target_entity_id)
 
-    source_count = (
-        session.scalar(
-            select(func.count(CollectionSource.source_id)).where(
-                CollectionSource.collection_id == collection.id
-            )
-        )
-        or 0
-    )
+    # Combine and exclude items already in collection
+    target_eids = (provenance_entity_ids | connected_entity_ids) - member_entity_ids
 
-    entity_count = (
-        session.scalar(
-            select(func.count(CollectionEntity.entity_id)).where(
-                CollectionEntity.collection_id == collection.id
-            )
-        )
-        or 0
-    )
-
-    conversation_count = (
-        session.scalar(
-            select(func.count(CollectionConversation.conversation_id)).where(
-                CollectionConversation.collection_id == collection.id
-            )
-        )
-        or 0
-    )
-
-    return {
-        "collection_id": collection.id,
-        "note_count": note_count,
-        "source_count": source_count,
-        "entity_count": entity_count,
-        "conversation_count": conversation_count,
-    }
-
-
-def get_collection_related(session: Session, collection_id: UUID) -> list[RelatedEntity]:
-    collection = get_collection(session, collection_id)
-
-    member_entities = session.scalars(
-        select(CollectionEntity.entity_id).where(CollectionEntity.collection_id == collection.id)
-    ).all()
-
-    if not member_entities:
-        return []
-
-    stmt = select(GraphRelationship).where(
-        GraphRelationship.source_entity_id.in_(member_entities),
-        GraphRelationship.target_entity_id.in_(member_entities),
-    )
-    rels = session.scalars(stmt).all()
-
-    related = []
-    for r in rels:
-        ent = session.get(GraphEntity, r.target_entity_id)
-        if ent:
-            related.append(
-                RelatedEntity(
-                    id=ent.id,
-                    name=ent.name,
-                    entity_type=ent.entity_type,
-                    connection_count=1,
+    items: list[RelatedKnowledgeItem] = []
+    if target_eids:
+        entities = db.query(GraphEntity).filter(GraphEntity.id.in_(list(target_eids)[:50])).all()
+        for e in entities:
+            items.append(
+                RelatedKnowledgeItem(
+                    item_type="entity",
+                    item_id=e.id,
+                    title=e.name,
+                    relationship_type=e.entity_type,
+                    score=1.0,
                 )
             )
-    return related
+
+    return CollectionRelatedResponse(
+        collection_id=collection.id,
+        items=items,
+        total=len(items),
+    )

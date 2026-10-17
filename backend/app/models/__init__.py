@@ -1,7 +1,6 @@
 """Models package.
 
-Canonical module per contract §8.1 (v0.2.1), CONTRACT v0.3.1 §5.1,
-CONTRACT v0.3.2 §5.1, CONTRACT v0.4.1 §4.1, and CONTRACT v0.4.2 §0.4, §5.1.
+Canonical module per CONTRACT v0.4.2 §0.4, §5.1, §7.1.
 Exports all domain models so they are registered on Base.metadata
 and Alembic can auto-generate accurate migration diffs.
 
@@ -10,10 +9,9 @@ v0.3.1 models: IndexJob, NoteVersion, SavedSearch
 v0.3.2 models: GraphEntity, GraphRelationship, EntityChunk,
                NoteCluster, NoteClusterMember, LinkSuggestion
 v0.4.1 models: ContentChunk, Conversation, Message, MessageCitation, SourceNoteLink
-v0.4.2 models: Collection, CollectionNote, CollectionSource, CollectionEntity,
-               CollectionConversation, Thread, ThreadNote, ThreadSource,
-               ThreadEntity, ThreadConversation, ThreadQuestion,
-               ThreadDiscovery, SavedView, InboxItem
+v0.4.2 models: Collection, CollectionNote, CollectionSource, CollectionEntity, CollectionConversation,
+               Thread, ThreadNote, ThreadSource, ThreadEntity, ThreadConversation, ThreadQuestion, ThreadDiscovery,
+               SavedView, InboxItem
 """
 
 from app.models.collection import (

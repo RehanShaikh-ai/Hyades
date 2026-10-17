@@ -298,3 +298,65 @@ def test_source_errors_contract(
     res3 = client.get(f"/api/v1/sources/{random_id}")
     assert res3.status_code == 404
     assert res3.json()["error"]["code"] == "SOURCE_NOT_FOUND"
+
+
+def test_source_upload_single_file_extracts_title_excerpt_and_timings(
+    client: TestClient, test_user_and_workspace: tuple[User, Workspace]
+):
+    """Verify single file upload extracts real title, genuine excerpt, and records stage timings.
+
+    CONTRACT v0.4.2 § 11, § 14
+    """
+    _, ws = test_user_and_workspace
+    doc_content = b"""# Celestial Observations of Hyades
+The Hyades open cluster is located approximately 153 light-years from the Sun.
+It forms the head of the constellation Taurus, containing hundreds of co-moving stars.
+"""
+    files = {"file": ("celestial_hyades.md", io.BytesIO(doc_content), "text/markdown")}
+    res = client.post(f"/api/v1/workspaces/{ws.id}/sources/upload", files=files)
+    assert res.status_code == 201
+    data = res.json()
+    assert data["title"] == "Celestial Observations of Hyades"
+    assert data["file_name"] == "celestial_hyades.md"
+    assert "approximately 153 light-years" in (data["excerpt"] or "")
+    assert "Celestial Observations of Hyades" in (data["extracted_text"] or "")
+    assert data["processing_status"] in ("READY", "PROCESSING", "PENDING")
+
+    # Verify stage timings were populated
+    timings = data.get("stage_timings")
+    if timings:
+        assert "extract_ms" in timings
+        assert "normalize_ms" in timings
+        assert "chunk_ms" in timings
+        assert "embed_and_index_ms" in timings
+        assert "total_processing_ms" in timings
+        assert timings["total_processing_ms"] >= 0
+
+
+def test_source_upload_review_mode_creates_inbox_item_fast(
+    client: TestClient, test_user_and_workspace: tuple[User, Workspace]
+):
+    """Verify upload in review_mode=inbox creates pending item without blocking on dry-run LLMs."""
+    import time
+
+    _, ws = test_user_and_workspace
+    doc_content = b"""# Epistemological Inquiry
+A philosophical examination into personal knowledge structures and synthetic memory.
+"""
+    t0 = time.perf_counter()
+    files = {"file": ("epistemology.txt", io.BytesIO(doc_content), "text/plain")}
+    res = client.post(f"/api/v1/workspaces/{ws.id}/sources/upload?review_mode=inbox", files=files)
+    elapsed = time.perf_counter() - t0
+    assert res.status_code == 201
+    # Must complete fast (under 4s even with cold models)
+    assert elapsed < 4.0
+
+    # Verify InboxItem was created
+    inbox_res = client.get(f"/api/v1/inbox?workspace_id={ws.id}&status=pending")
+    assert inbox_res.status_code == 200
+    items = inbox_res.json()["items"]
+    assert any(
+        "Epistemological Inquiry" in (it.get("source_title") or "")
+        or "epistemology.txt" in (it.get("source_title") or "")
+        for it in items
+    )

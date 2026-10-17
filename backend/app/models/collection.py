@@ -1,11 +1,7 @@
-"""Collection models per CONTRACT v0.4.2 §5.1, §7.1.
+"""Collection and typed membership SQLAlchemy models.
 
-Models:
-- Collection
-- CollectionNote
-- CollectionSource
-- CollectionEntity
-- CollectionConversation
+Canonical models per CONTRACT v0.4.2 §5.1, §7.1.
+Supports grouping notes, sources, entities, and conversations within a workspace.
 """
 
 import uuid
@@ -28,12 +24,13 @@ if TYPE_CHECKING:
 
 
 class Collection(Base):
-    """Collection model per CONTRACT v0.4.2 §7.1."""
+    """Collection model grouping knowledge items per Contract v0.4.2 §7.1."""
 
     __tablename__ = "collections"
     __table_args__ = (
         UniqueConstraint("workspace_id", "name", name="uq_collections_workspace_name"),
         Index("idx_collections_workspace_updated", "workspace_id", "updated_at"),
+        Index("idx_collections_workspace", "workspace_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -77,28 +74,37 @@ class Collection(Base):
         nullable=False,
     )
 
+    # Relationships
     workspace: Mapped["Workspace"] = relationship("Workspace")
     creator: Mapped["User"] = relationship("User")
 
-    collection_notes: Mapped[list["CollectionNote"]] = relationship(
-        "CollectionNote", back_populates="collection", cascade="all, delete-orphan"
+    notes: Mapped[list["CollectionNote"]] = relationship(
+        "CollectionNote",
+        back_populates="collection",
+        cascade="all, delete-orphan",
     )
-    collection_sources: Mapped[list["CollectionSource"]] = relationship(
-        "CollectionSource", back_populates="collection", cascade="all, delete-orphan"
+    sources: Mapped[list["CollectionSource"]] = relationship(
+        "CollectionSource",
+        back_populates="collection",
+        cascade="all, delete-orphan",
     )
-    collection_entities: Mapped[list["CollectionEntity"]] = relationship(
-        "CollectionEntity", back_populates="collection", cascade="all, delete-orphan"
+    entities: Mapped[list["CollectionEntity"]] = relationship(
+        "CollectionEntity",
+        back_populates="collection",
+        cascade="all, delete-orphan",
     )
-    collection_conversations: Mapped[list["CollectionConversation"]] = relationship(
-        "CollectionConversation", back_populates="collection", cascade="all, delete-orphan"
+    conversations: Mapped[list["CollectionConversation"]] = relationship(
+        "CollectionConversation",
+        back_populates="collection",
+        cascade="all, delete-orphan",
     )
 
 
 class CollectionNote(Base):
-    """Collection Note membership."""
+    """Many-to-many membership between Collection and Note."""
 
     __tablename__ = "collection_notes"
-    __table_args__ = (Index("idx_collection_notes_note_id", "note_id"),)
+    __table_args__ = (Index("idx_collection_notes_note", "note_id"),)
 
     collection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -117,15 +123,15 @@ class CollectionNote(Base):
         nullable=False,
     )
 
-    collection: Mapped["Collection"] = relationship("Collection", back_populates="collection_notes")
+    collection: Mapped["Collection"] = relationship("Collection", back_populates="notes")
     note: Mapped["Note"] = relationship("Note")
 
 
 class CollectionSource(Base):
-    """Collection Source membership."""
+    """Many-to-many membership between Collection and Source."""
 
     __tablename__ = "collection_sources"
-    __table_args__ = (Index("idx_collection_sources_source_id", "source_id"),)
+    __table_args__ = (Index("idx_collection_sources_source", "source_id"),)
 
     collection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -144,17 +150,15 @@ class CollectionSource(Base):
         nullable=False,
     )
 
-    collection: Mapped["Collection"] = relationship(
-        "Collection", back_populates="collection_sources"
-    )
+    collection: Mapped["Collection"] = relationship("Collection", back_populates="sources")
     source: Mapped["Source"] = relationship("Source")
 
 
 class CollectionEntity(Base):
-    """Collection Entity membership."""
+    """Many-to-many membership between Collection and GraphEntity."""
 
     __tablename__ = "collection_entities"
-    __table_args__ = (Index("idx_collection_entities_entity_id", "entity_id"),)
+    __table_args__ = (Index("idx_collection_entities_entity", "entity_id"),)
 
     collection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -173,17 +177,15 @@ class CollectionEntity(Base):
         nullable=False,
     )
 
-    collection: Mapped["Collection"] = relationship(
-        "Collection", back_populates="collection_entities"
-    )
+    collection: Mapped["Collection"] = relationship("Collection", back_populates="entities")
     entity: Mapped["GraphEntity"] = relationship("GraphEntity")
 
 
 class CollectionConversation(Base):
-    """Collection Conversation membership."""
+    """Many-to-many membership between Collection and Conversation."""
 
     __tablename__ = "collection_conversations"
-    __table_args__ = (Index("idx_collection_conversations_conversation_id", "conversation_id"),)
+    __table_args__ = (Index("idx_collection_conversations_conversation", "conversation_id"),)
 
     collection_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -202,7 +204,5 @@ class CollectionConversation(Base):
         nullable=False,
     )
 
-    collection: Mapped["Collection"] = relationship(
-        "Collection", back_populates="collection_conversations"
-    )
+    collection: Mapped["Collection"] = relationship("Collection", back_populates="conversations")
     conversation: Mapped["Conversation"] = relationship("Conversation")

@@ -1,22 +1,17 @@
 """Threads API endpoints per CONTRACT v0.4.2 §8.2."""
 
+import uuid
 from typing import Annotated
-from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models.thread import (
-    ThreadConversation,
-    ThreadEntity,
-    ThreadNote,
-    ThreadSource,
-)
-from app.models.workspace import Workspace
-from app.schemas.knowledge_item import (
+from app.schemas.collection import (
     KnowledgeItemAddRequest,
     KnowledgeItemListResponse,
+    KnowledgeItemResponse,
+    KnowledgeItemType,
 )
 from app.schemas.thread import (
     ThreadActivityResponse,
@@ -35,263 +30,204 @@ from app.services import membership_service, thread_service
 router = APIRouter(tags=["threads"])
 
 
+@router.post("/threads", response_model=ThreadResponse, status_code=status.HTTP_201_CREATED)
 @router.post(
     "/workspaces/{workspace_id}/threads",
     response_model=ThreadResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def create_thread(
-    workspace_id: UUID,
     data: ThreadCreate,
-    session: Annotated[Session, Depends(get_db)],
-):
-    ws = session.get(Workspace, workspace_id)
-    if not ws:
-        from app.core.exceptions import NotFoundError
+    db: Annotated[Session, Depends(get_db)],
+    workspace_id: uuid.UUID | None = None,
+) -> ThreadResponse:
+    ws_id = workspace_id or data.workspace_id
+    if not ws_id:
+        from fastapi import HTTPException
 
-        raise NotFoundError(f"Workspace '{workspace_id}' not found")
-
-    return thread_service.create_thread(
-        session=session,
-        workspace_id=workspace_id,
-        created_by=ws.owner_id,
-        data=data,
-    )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="workspace_id is required"
+        )
+    return thread_service.create_thread(db, ws_id, data)
 
 
-@router.get(
-    "/workspaces/{workspace_id}/threads",
-    response_model=ThreadListResponse,
-)
+@router.get("/threads", response_model=ThreadListResponse)
+@router.get("/workspaces/{workspace_id}/threads", response_model=ThreadListResponse)
 def list_threads(
-    workspace_id: UUID,
-    session: Annotated[Session, Depends(get_db)],
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=100),
-    status: str | None = Query(default=None),
-):
-    items, total = thread_service.list_threads(
-        session=session,
-        workspace_id=workspace_id,
-        page=page,
-        page_size=page_size,
-        status=status,
-    )
-    return ThreadListResponse(
-        items=items,
-        total=total,
-        page=page,
-        page_size=page_size,
-    )
+    db: Annotated[Session, Depends(get_db)],
+    workspace_id: uuid.UUID | None = None,
+    status_filter: str | None = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> ThreadListResponse:
+    if not workspace_id:
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="workspace_id is required"
+        )
+    items, total = thread_service.list_threads(db, workspace_id, status_filter, page, page_size)
+    return ThreadListResponse(items=items, total=total, page=page, page_size=page_size)
 
 
-@router.get(
-    "/workspaces/{workspace_id}/threads/{thread_id}",
-    response_model=ThreadResponse,
-)
+@router.get("/threads/{thread_id}", response_model=ThreadResponse)
 def get_thread(
-    workspace_id: UUID,
-    thread_id: UUID,
-    session: Annotated[Session, Depends(get_db)],
-):
-    return thread_service.get_thread(session, thread_id)
+    thread_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> ThreadResponse:
+    t = thread_service.get_thread(db, thread_id)
+    return thread_service._populate_thread_counts(db, t)
 
 
-@router.patch(
-    "/workspaces/{workspace_id}/threads/{thread_id}",
-    response_model=ThreadResponse,
-)
+@router.patch("/threads/{thread_id}", response_model=ThreadResponse)
 def update_thread(
-    workspace_id: UUID,
-    thread_id: UUID,
+    thread_id: uuid.UUID,
     data: ThreadUpdate,
-    session: Annotated[Session, Depends(get_db)],
-):
-    return thread_service.update_thread(session, thread_id, data)
+    db: Annotated[Session, Depends(get_db)],
+) -> ThreadResponse:
+    return thread_service.update_thread(db, thread_id, data)
 
 
-@router.delete(
-    "/workspaces/{workspace_id}/threads/{thread_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
+@router.delete("/threads/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_thread(
-    workspace_id: UUID,
-    thread_id: UUID,
-    session: Annotated[Session, Depends(get_db)],
-):
-    thread_service.delete_thread(session, thread_id)
+    thread_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    thread_service.delete_thread(db, thread_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get(
-    "/workspaces/{workspace_id}/threads/{thread_id}/items",
-    response_model=KnowledgeItemListResponse,
-)
-def get_thread_items(
-    workspace_id: UUID,
-    thread_id: UUID,
-    session: Annotated[Session, Depends(get_db)],
-):
-    items = thread_service.get_thread_items(session, thread_id)
-    return KnowledgeItemListResponse(
-        items=items,
-        total=len(items),
-        page=1,
-        page_size=100,
-    )
+# -- Membership Endpoints (§8.2) --
+
+
+@router.get("/threads/{thread_id}/items", response_model=KnowledgeItemListResponse)
+def list_thread_items(
+    thread_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> KnowledgeItemListResponse:
+    t = thread_service.get_thread(db, thread_id)
+    return membership_service.list_thread_items(db, t, page, page_size)
 
 
 @router.post(
-    "/workspaces/{workspace_id}/threads/{thread_id}/items",
+    "/threads/{thread_id}/items",
+    response_model=KnowledgeItemResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def add_thread_item(
-    workspace_id: UUID,
-    thread_id: UUID,
-    data: KnowledgeItemAddRequest,
-    session: Annotated[Session, Depends(get_db)],
-):
-    thread = thread_service.get_thread(session, thread_id)
-    membership_service.add_thread_item(
-        session=session,
-        thread=thread,
-        item_type=data.item_type,
-        item_id=data.item_id,
-    )
-    return {"status": "added"}
+    thread_id: uuid.UUID,
+    req: KnowledgeItemAddRequest,
+    db: Annotated[Session, Depends(get_db)],
+) -> KnowledgeItemResponse:
+    t = thread_service.get_thread(db, thread_id)
+    return membership_service.add_thread_item(db, t, req.item_type, req.item_id)
 
 
 @router.delete(
-    "/workspaces/{workspace_id}/threads/{thread_id}/items/{item_type}/{item_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    "/threads/{thread_id}/items/{item_type}/{item_id}", status_code=status.HTTP_204_NO_CONTENT
 )
 def remove_thread_item(
-    workspace_id: UUID,
-    thread_id: UUID,
-    item_type: str,
-    item_id: UUID,
-    session: Annotated[Session, Depends(get_db)],
-):
-    if item_type == "note":
-        session.query(ThreadNote).filter(
-            ThreadNote.thread_id == thread_id, ThreadNote.note_id == item_id
-        ).delete()
-    elif item_type == "source":
-        session.query(ThreadSource).filter(
-            ThreadSource.thread_id == thread_id, ThreadSource.source_id == item_id
-        ).delete()
-    elif item_type == "entity":
-        session.query(ThreadEntity).filter(
-            ThreadEntity.thread_id == thread_id, ThreadEntity.entity_id == item_id
-        ).delete()
-    elif item_type == "conversation":
-        session.query(ThreadConversation).filter(
-            ThreadConversation.thread_id == thread_id, ThreadConversation.conversation_id == item_id
-        ).delete()
-    session.commit()
+    thread_id: uuid.UUID,
+    item_type: KnowledgeItemType,
+    item_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    t = thread_service.get_thread(db, thread_id)
+    membership_service.remove_thread_item(db, t, item_type, item_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-# Questions
-@router.get(
-    "/workspaces/{workspace_id}/threads/{thread_id}/questions",
-    response_model=list[ThreadQuestionResponse],
-)
+# -- Questions Endpoints (§8.2) --
+
+
+@router.get("/threads/{thread_id}/questions", response_model=list[ThreadQuestionResponse])
 def list_thread_questions(
-    workspace_id: UUID,
-    thread_id: UUID,
-    session: Annotated[Session, Depends(get_db)],
-):
-    return thread_service.list_thread_questions(session, thread_id)
+    thread_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> list[ThreadQuestionResponse]:
+    return thread_service.list_thread_questions(db, thread_id)
 
 
 @router.post(
-    "/workspaces/{workspace_id}/threads/{thread_id}/questions",
+    "/threads/{thread_id}/questions",
     response_model=ThreadQuestionResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def create_thread_question(
-    workspace_id: UUID,
-    thread_id: UUID,
+    thread_id: uuid.UUID,
     data: ThreadQuestionCreate,
-    session: Annotated[Session, Depends(get_db)],
-):
-    return thread_service.create_thread_question(session, thread_id, data)
+    db: Annotated[Session, Depends(get_db)],
+) -> ThreadQuestionResponse:
+    return thread_service.create_thread_question(db, thread_id, data)
 
 
-@router.patch(
-    "/workspaces/{workspace_id}/threads/{thread_id}/questions/{question_id}",
-    response_model=ThreadQuestionResponse,
-)
+@router.patch("/threads/{thread_id}/questions/{question_id}", response_model=ThreadQuestionResponse)
 def update_thread_question(
-    workspace_id: UUID,
-    thread_id: UUID,
-    question_id: UUID,
+    thread_id: uuid.UUID,
+    question_id: uuid.UUID,
     data: ThreadQuestionUpdate,
-    session: Annotated[Session, Depends(get_db)],
-):
-    return thread_service.update_thread_question(session, thread_id, question_id, data)
+    db: Annotated[Session, Depends(get_db)],
+) -> ThreadQuestionResponse:
+    return thread_service.update_thread_question(db, thread_id, question_id, data)
 
 
 @router.delete(
-    "/workspaces/{workspace_id}/threads/{thread_id}/questions/{question_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    "/threads/{thread_id}/questions/{question_id}", status_code=status.HTTP_204_NO_CONTENT
 )
 def delete_thread_question(
-    workspace_id: UUID,
-    thread_id: UUID,
-    question_id: UUID,
-    session: Annotated[Session, Depends(get_db)],
-):
-    thread_service.delete_thread_question(session, thread_id, question_id)
+    thread_id: uuid.UUID,
+    question_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    thread_service.delete_thread_question(db, thread_id, question_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-# Discoveries
-@router.get(
-    "/workspaces/{workspace_id}/threads/{thread_id}/discoveries",
-    response_model=list[ThreadDiscoveryResponse],
-)
+# -- Discoveries Endpoints (§8.2) --
+
+
+@router.get("/threads/{thread_id}/discoveries", response_model=list[ThreadDiscoveryResponse])
 def list_thread_discoveries(
-    workspace_id: UUID,
-    thread_id: UUID,
-    session: Annotated[Session, Depends(get_db)],
-):
-    return thread_service.list_thread_discoveries(session, thread_id)
+    thread_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> list[ThreadDiscoveryResponse]:
+    return thread_service.list_thread_discoveries(db, thread_id)
 
 
 @router.post(
-    "/workspaces/{workspace_id}/threads/{thread_id}/discoveries",
+    "/threads/{thread_id}/discoveries",
     response_model=ThreadDiscoveryResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def create_thread_discovery(
-    workspace_id: UUID,
-    thread_id: UUID,
+    thread_id: uuid.UUID,
     data: ThreadDiscoveryCreate,
-    session: Annotated[Session, Depends(get_db)],
-):
-    return thread_service.create_thread_discovery(session, thread_id, data)
+    db: Annotated[Session, Depends(get_db)],
+) -> ThreadDiscoveryResponse:
+    return thread_service.create_thread_discovery(db, thread_id, data)
 
 
 @router.delete(
-    "/workspaces/{workspace_id}/threads/{thread_id}/discoveries/{discovery_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    "/threads/{thread_id}/discoveries/{discovery_id}", status_code=status.HTTP_204_NO_CONTENT
 )
 def delete_thread_discovery(
-    workspace_id: UUID,
-    thread_id: UUID,
-    discovery_id: UUID,
-    session: Annotated[Session, Depends(get_db)],
-):
-    thread_service.delete_thread_discovery(session, thread_id, discovery_id)
+    thread_id: uuid.UUID,
+    discovery_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    thread_service.delete_thread_discovery(db, thread_id, discovery_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get(
-    "/workspaces/{workspace_id}/threads/{thread_id}/activity",
-    response_model=ThreadActivityResponse,
-)
+# -- Activity Timeline (§8.2) --
+
+
+@router.get("/threads/{thread_id}/activity", response_model=ThreadActivityResponse)
 def get_thread_activity(
-    workspace_id: UUID,
-    thread_id: UUID,
-    session: Annotated[Session, Depends(get_db)],
-):
-    items = thread_service.get_thread_activity(session, thread_id)
-    return ThreadActivityResponse(items=items, total=len(items))
+    thread_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> ThreadActivityResponse:
+    t = thread_service.get_thread(db, thread_id)
+    return thread_service.get_thread_activity(db, t)

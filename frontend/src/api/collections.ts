@@ -1,40 +1,108 @@
-import { Collection, CollectionCreate, CollectionStats, KnowledgeItem } from '../types/v0_4_2';
+import { apiClient } from './client';
+import {
+  Collection,
+  CollectionListResponse,
+  CollectionStats,
+  CollectionRelatedResponse,
+  KnowledgeItem,
+  KnowledgeItemType,
+} from '@/types/collections';
 
-const API_BASE = '/api/v1';
-
-export async function listCollections(workspaceId: string): Promise<Collection[]> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/collections`);
-  if (!res.ok) throw new Error('Failed to list collections');
-  const data = await res.json();
-  return data.items;
+export async function listCollections(
+  workspaceId: string,
+  page = 1,
+  pageSize = 20
+): Promise<CollectionListResponse> {
+  return apiClient.request<CollectionListResponse>(
+    `/collections?workspace_id=${workspaceId}&page=${page}&page_size=${pageSize}`
+  );
 }
 
-export async function createCollection(workspaceId: string, data: CollectionCreate): Promise<Collection> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/collections`, {
+export async function getCollection(id: string): Promise<Collection> {
+  return apiClient.request<Collection>(`/collections/${id}`);
+}
+
+export async function createCollection(
+  workspaceIdOrData:
+    | string
+    | {
+        workspace_id: string;
+        name: string;
+        description?: string | null;
+        icon?: string | null;
+        created_by?: string | null;
+      },
+  maybeData?: {
+    name: string;
+    description?: string | null;
+    icon?: string | null;
+    created_by?: string | null;
+  }
+): Promise<Collection> {
+  const payload =
+    typeof workspaceIdOrData === 'string'
+      ? { workspace_id: workspaceIdOrData, ...maybeData }
+      : workspaceIdOrData;
+  return apiClient.request<Collection>('/collections', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateCollection(
+  id: string,
+  data: {
+    name?: string;
+    description?: string | null;
+    icon?: string | null;
+  }
+): Promise<Collection> {
+  return apiClient.request<Collection>(`/collections/${id}`, {
+    method: 'PATCH',
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error('Failed to create collection');
-  return res.json();
 }
 
-export async function getCollectionStats(workspaceId: string, collectionId: string): Promise<CollectionStats> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/collections/${collectionId}/stats`);
-  if (!res.ok) throw new Error('Failed to fetch collection stats');
-  return res.json();
-}
-
-export async function getCollectionItems(workspaceId: string, collectionId: string): Promise<KnowledgeItem[]> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/collections/${collectionId}/items`);
-  if (!res.ok) throw new Error('Failed to fetch collection items');
-  const data = await res.json();
-  return data.items;
-}
-
-export async function deleteCollection(workspaceId: string, collectionId: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/collections/${collectionId}`, {
+export async function deleteCollection(id: string): Promise<void> {
+  return apiClient.request<void>(`/collections/${id}`, {
     method: 'DELETE',
   });
-  if (!res.ok) throw new Error('Failed to delete collection');
+}
+
+export async function getCollectionStats(id: string): Promise<CollectionStats> {
+  return apiClient.request<CollectionStats>(`/collections/${id}/stats`);
+}
+
+export async function getCollectionRelated(id: string): Promise<CollectionRelatedResponse> {
+  return apiClient.request<CollectionRelatedResponse>(`/collections/${id}/related`);
+}
+
+export async function addKnowledgeItem(
+  collectionId: string,
+  data: { item_type: KnowledgeItemType; item_id: string }
+): Promise<KnowledgeItem> {
+  return apiClient.request<KnowledgeItem>(`/collections/${collectionId}/items`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listKnowledgeItems(
+  collectionId: string,
+  page = 1,
+  pageSize = 50
+): Promise<{ items: KnowledgeItem[]; total: number; page: number; page_size: number }> {
+  return apiClient.request<{ items: KnowledgeItem[]; total: number; page: number; page_size: number }>(
+    `/collections/${collectionId}/items?page=${page}&page_size=${pageSize}`
+  );
+}
+
+export async function removeKnowledgeItem(
+  collectionId: string,
+  itemType: KnowledgeItemType,
+  itemId: string
+): Promise<void> {
+  return apiClient.request<void>(`/collections/${collectionId}/items/${itemType}/${itemId}`, {
+    method: 'DELETE',
+  });
 }

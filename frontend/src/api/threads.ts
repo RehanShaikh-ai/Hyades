@@ -1,68 +1,179 @@
-import { Thread, ThreadCreate, ThreadQuestion, ThreadDiscovery, ThreadActivityItem, KnowledgeItem } from '../types/v0_4_2';
+﻿import { apiClient } from './client';
+import {
+  Thread,
+  ThreadListResponse,
+  ThreadQuestion,
+  ThreadDiscovery,
+  ThreadActivityItem,
+} from '@/types/threads';
 
-const API_BASE = '/api/v1';
-
-export async function listThreads(workspaceId: string, status?: string): Promise<Thread[]> {
-  const url = new URL(`${window.location.origin}${API_BASE}/workspaces/${workspaceId}/threads`);
-  if (status) url.searchParams.set('status', status);
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error('Failed to list threads');
-  const data = await res.json();
-  return data.items;
+export async function listThreads(
+  workspaceId: string,
+  status?: string,
+  page = 1,
+  pageSize = 20
+): Promise<ThreadListResponse> {
+  const query = new URLSearchParams({
+    workspace_id: workspaceId,
+    page: String(page),
+    page_size: String(pageSize),
+  });
+  if (status) {
+    query.append('status', status);
+    query.append('status_filter', status);
+  }
+  return apiClient.request<ThreadListResponse>(`/threads?${query.toString()}`);
 }
 
-export async function createThread(workspaceId: string, data: ThreadCreate): Promise<Thread> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/threads`, {
+export async function getThread(id: string): Promise<Thread> {
+  return apiClient.request<Thread>(`/threads/${id}`);
+}
+
+export async function createThread(data: {
+  workspace_id: string;
+  title: string;
+  question?: string | null;
+  guiding_question?: string | null;
+  status?: string;
+  created_by?: string | null;
+}): Promise<Thread> {
+  const payload = {
+    workspace_id: data.workspace_id,
+    title: data.title,
+    question: data.question || data.guiding_question || null,
+    status: data.status || 'active',
+    created_by: data.created_by,
+  };
+  return apiClient.request<Thread>('/threads', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateThread(
+  id: string,
+  data: {
+    title?: string;
+    question?: string | null;
+    guiding_question?: string | null;
+    status?: 'active' | 'archived';
+  }
+): Promise<Thread> {
+  const payload: Record<string, unknown> = {};
+  if (data.title !== undefined) payload.title = data.title;
+  if (data.question !== undefined || data.guiding_question !== undefined) {
+    payload.question = data.question ?? data.guiding_question ?? null;
+  }
+  if (data.status !== undefined) payload.status = data.status;
+
+  return apiClient.request<Thread>(`/threads/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteThread(id: string): Promise<void> {
+  return apiClient.request<void>(`/threads/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function listThreadQuestions(threadId: string): Promise<ThreadQuestion[]> {
+  return apiClient.request<ThreadQuestion[]>(`/threads/${threadId}/questions`);
+}
+
+export async function addThreadQuestion(
+  threadId: string,
+  data: { text?: string; question?: string }
+): Promise<ThreadQuestion> {
+  return apiClient.request<ThreadQuestion>(`/threads/${threadId}/questions`, {
+    method: 'POST',
+    body: JSON.stringify({ text: data.text || data.question || '' }),
+  });
+}
+
+export async function updateThreadQuestion(
+  threadId: string,
+  questionId: string,
+  data: { text?: string; question?: string; is_resolved?: boolean; status?: 'open' | 'answered' }
+): Promise<ThreadQuestion> {
+  const is_resolved =
+    data.is_resolved !== undefined
+      ? data.is_resolved
+      : data.status !== undefined
+      ? data.status === 'answered'
+      : undefined;
+
+  const payload: Record<string, unknown> = {};
+  if (is_resolved !== undefined) payload.is_resolved = is_resolved;
+  if (data.text || data.question) payload.text = data.text || data.question;
+
+  return apiClient.request<ThreadQuestion>(`/threads/${threadId}/questions/${questionId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteThreadQuestion(threadId: string, questionId: string): Promise<void> {
+  return apiClient.request<void>(`/threads/${threadId}/questions/${questionId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function listThreadDiscoveries(threadId: string): Promise<ThreadDiscovery[]> {
+  return apiClient.request<ThreadDiscovery[]>(`/threads/${threadId}/discoveries`);
+}
+
+export async function addThreadDiscovery(
+  threadId: string,
+  data: { content: string }
+): Promise<ThreadDiscovery> {
+  return apiClient.request<ThreadDiscovery>(`/threads/${threadId}/discoveries`, {
+    method: 'POST',
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error('Failed to create thread');
-  return res.json();
 }
 
-export async function getThreadItems(workspaceId: string, threadId: string): Promise<KnowledgeItem[]> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/threads/${threadId}/items`);
-  if (!res.ok) throw new Error('Failed to fetch thread items');
-  const data = await res.json();
-  return data.items;
-}
-
-export async function listThreadQuestions(workspaceId: string, threadId: string): Promise<ThreadQuestion[]> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/threads/${threadId}/questions`);
-  if (!res.ok) throw new Error('Failed to fetch thread questions');
-  return res.json();
-}
-
-export async function addThreadQuestion(workspaceId: string, threadId: string, text: string): Promise<ThreadQuestion> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/threads/${threadId}/questions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
+export async function deleteThreadDiscovery(threadId: string, discoveryId: string): Promise<void> {
+  return apiClient.request<void>(`/threads/${threadId}/discoveries/${discoveryId}`, {
+    method: 'DELETE',
   });
-  if (!res.ok) throw new Error('Failed to add question');
-  return res.json();
 }
 
-export async function listThreadDiscoveries(workspaceId: string, threadId: string): Promise<ThreadDiscovery[]> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/threads/${threadId}/discoveries`);
-  if (!res.ok) throw new Error('Failed to fetch thread discoveries');
-  return res.json();
+export async function listThreadItems(
+  threadId: string,
+  page = 1,
+  pageSize = 50
+): Promise<{ items: any[]; total: number; page: number; page_size: number }> {
+  return apiClient.request<{ items: any[]; total: number; page: number; page_size: number }>(
+    `/threads/${threadId}/items?page=${page}&page_size=${pageSize}`
+  );
 }
 
-export async function addThreadDiscovery(workspaceId: string, threadId: string, content: string): Promise<ThreadDiscovery> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/threads/${threadId}/discoveries`, {
+export async function addThreadItem(
+  threadId: string,
+  data: { item_type: string; item_id: string }
+): Promise<unknown> {
+  return apiClient.request<unknown>(`/threads/${threadId}/items`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error('Failed to add discovery');
-  return res.json();
 }
 
-export async function getThreadActivity(workspaceId: string, threadId: string): Promise<ThreadActivityItem[]> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/threads/${threadId}/activity`);
-  if (!res.ok) throw new Error('Failed to fetch thread activity');
-  const data = await res.json();
-  return data.items;
+export async function removeThreadItem(
+  threadId: string,
+  itemType: string,
+  itemId: string
+): Promise<void> {
+  return apiClient.request<void>(`/threads/${threadId}/items/${itemType}/${itemId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getThreadActivity(threadId: string): Promise<ThreadActivityItem[]> {
+  const res = await apiClient.request<{ thread_id: string; items: ThreadActivityItem[]; total: number } | ThreadActivityItem[]>(
+    `/threads/${threadId}/activity`
+  );
+  if (Array.isArray(res)) return res;
+  return res.items || [];
 }

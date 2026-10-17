@@ -1,15 +1,42 @@
-"""Collection Pydantic schemas per CONTRACT v0.4.2 §5.2."""
+"""Collection and membership schemas per CONTRACT v0.4.2 §5.2, §8.1."""
 
+import uuid
 from datetime import datetime
-from uuid import UUID
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+KnowledgeItemType = Literal["note", "source", "entity", "conversation"]
+
+
+class KnowledgeItemAddRequest(BaseModel):
+    item_type: KnowledgeItemType
+    item_id: uuid.UUID
+
+
+class KnowledgeItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    item_type: KnowledgeItemType
+    item_id: uuid.UUID
+    title: str
+    added_at: datetime
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class KnowledgeItemListResponse(BaseModel):
+    items: list[KnowledgeItemResponse]
+    total: int
+    page: int
+    page_size: int
+
 
 class CollectionCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=150)
+    workspace_id: uuid.UUID | None = None
+    name: str = Field(min_length=1, max_length=150)
     description: str | None = None
     icon: str | None = Field(default=None, max_length=32)
+    created_by: uuid.UUID | None = None
 
 
 class CollectionUpdate(BaseModel):
@@ -19,16 +46,17 @@ class CollectionUpdate(BaseModel):
 
 
 class CollectionResponse(BaseModel):
-    id: UUID
-    workspace_id: UUID
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    workspace_id: uuid.UUID
     name: str
-    description: str | None = None
-    icon: str | None = None
-    created_by: UUID
+    description: str | None
+    icon: str | None
+    created_by: uuid.UUID
     created_at: datetime
     updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
+    item_count: int | None = 0
 
 
 class CollectionListResponse(BaseModel):
@@ -39,20 +67,23 @@ class CollectionListResponse(BaseModel):
 
 
 class CollectionStatsResponse(BaseModel):
-    collection_id: UUID
-    note_count: int = 0
-    source_count: int = 0
-    entity_count: int = 0
-    conversation_count: int = 0
+    collection_id: uuid.UUID
+    note_count: int
+    source_count: int
+    entity_count: int
+    conversation_count: int
+    total_items: int
 
 
-class RelatedEntity(BaseModel):
-    id: UUID
-    name: str
-    entity_type: str
-    connection_count: int = 0
+class RelatedKnowledgeItem(BaseModel):
+    item_type: KnowledgeItemType
+    item_id: uuid.UUID
+    title: str
+    relationship_type: str | None = None
+    score: float | None = None
 
 
 class CollectionRelatedResponse(BaseModel):
-    collection_id: UUID
-    related_entities: list[RelatedEntity] = Field(default_factory=list)
+    collection_id: uuid.UUID
+    items: list[RelatedKnowledgeItem]
+    total: int

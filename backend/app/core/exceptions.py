@@ -21,17 +21,6 @@ class AppException(HTTPException):
         self.message = message
 
 
-class NotFoundError(AppException):
-    """Generic 404 Not Found exception."""
-
-    def __init__(self, message: str = "Resource not found.") -> None:
-        super().__init__(
-            status_code=status.HTTP_404_NOT_FOUND,
-            code="NOT_FOUND",
-            message=message,
-        )
-
-
 class UserNotFoundError(AppException):
     """Raised when a user is not found (404, USER_NOT_FOUND)."""
 

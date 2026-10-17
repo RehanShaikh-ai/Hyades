@@ -1,13 +1,7 @@
-"""Thread models per CONTRACT v0.4.2 §5.1, §7.1.
+"""Thread, questions, discoveries, and typed membership SQLAlchemy models.
 
-Models:
-- Thread
-- ThreadNote
-- ThreadSource
-- ThreadEntity
-- ThreadConversation
-- ThreadQuestion
-- ThreadDiscovery
+Canonical models per CONTRACT v0.4.2 §5.1, §7.1.
+Supports goal-oriented research threads with questions, discoveries, and member items.
 """
 
 import uuid
@@ -30,11 +24,12 @@ if TYPE_CHECKING:
 
 
 class Thread(Base):
-    """Thread database model per CONTRACT v0.4.2 §7.1."""
+    """Thread model tracking research questions and findings per Contract v0.4.2 §7.1."""
 
     __tablename__ = "threads"
     __table_args__ = (
-        Index("idx_threads_workspace_status_updated", "workspace_id", "status", "updated_at"),
+        Index("idx_threads_workspace_status", "workspace_id", "status"),
+        Index("idx_threads_workspace_updated", "workspace_id", "updated_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -79,34 +74,49 @@ class Thread(Base):
         nullable=False,
     )
 
+    # Relationships
     workspace: Mapped["Workspace"] = relationship("Workspace")
     creator: Mapped["User"] = relationship("User")
 
-    thread_notes: Mapped[list["ThreadNote"]] = relationship(
-        "ThreadNote", back_populates="thread", cascade="all, delete-orphan"
+    notes: Mapped[list["ThreadNote"]] = relationship(
+        "ThreadNote",
+        back_populates="thread",
+        cascade="all, delete-orphan",
     )
-    thread_sources: Mapped[list["ThreadSource"]] = relationship(
-        "ThreadSource", back_populates="thread", cascade="all, delete-orphan"
+    sources: Mapped[list["ThreadSource"]] = relationship(
+        "ThreadSource",
+        back_populates="thread",
+        cascade="all, delete-orphan",
     )
-    thread_entities: Mapped[list["ThreadEntity"]] = relationship(
-        "ThreadEntity", back_populates="thread", cascade="all, delete-orphan"
+    entities: Mapped[list["ThreadEntity"]] = relationship(
+        "ThreadEntity",
+        back_populates="thread",
+        cascade="all, delete-orphan",
     )
-    thread_conversations: Mapped[list["ThreadConversation"]] = relationship(
-        "ThreadConversation", back_populates="thread", cascade="all, delete-orphan"
+    conversations: Mapped[list["ThreadConversation"]] = relationship(
+        "ThreadConversation",
+        back_populates="thread",
+        cascade="all, delete-orphan",
     )
     questions: Mapped[list["ThreadQuestion"]] = relationship(
-        "ThreadQuestion", back_populates="thread", cascade="all, delete-orphan"
+        "ThreadQuestion",
+        back_populates="thread",
+        cascade="all, delete-orphan",
+        order_by="ThreadQuestion.created_at",
     )
     discoveries: Mapped[list["ThreadDiscovery"]] = relationship(
-        "ThreadDiscovery", back_populates="thread", cascade="all, delete-orphan"
+        "ThreadDiscovery",
+        back_populates="thread",
+        cascade="all, delete-orphan",
+        order_by="ThreadDiscovery.created_at",
     )
 
 
 class ThreadNote(Base):
-    """Thread Note membership."""
+    """Many-to-many membership between Thread and Note."""
 
     __tablename__ = "thread_notes"
-    __table_args__ = (Index("idx_thread_notes_note_id", "note_id"),)
+    __table_args__ = (Index("idx_thread_notes_note", "note_id"),)
 
     thread_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -125,15 +135,15 @@ class ThreadNote(Base):
         nullable=False,
     )
 
-    thread: Mapped["Thread"] = relationship("Thread", back_populates="thread_notes")
+    thread: Mapped["Thread"] = relationship("Thread", back_populates="notes")
     note: Mapped["Note"] = relationship("Note")
 
 
 class ThreadSource(Base):
-    """Thread Source membership."""
+    """Many-to-many membership between Thread and Source."""
 
     __tablename__ = "thread_sources"
-    __table_args__ = (Index("idx_thread_sources_source_id", "source_id"),)
+    __table_args__ = (Index("idx_thread_sources_source", "source_id"),)
 
     thread_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -152,15 +162,15 @@ class ThreadSource(Base):
         nullable=False,
     )
 
-    thread: Mapped["Thread"] = relationship("Thread", back_populates="thread_sources")
+    thread: Mapped["Thread"] = relationship("Thread", back_populates="sources")
     source: Mapped["Source"] = relationship("Source")
 
 
 class ThreadEntity(Base):
-    """Thread Entity membership."""
+    """Many-to-many membership between Thread and GraphEntity."""
 
     __tablename__ = "thread_entities"
-    __table_args__ = (Index("idx_thread_entities_entity_id", "entity_id"),)
+    __table_args__ = (Index("idx_thread_entities_entity", "entity_id"),)
 
     thread_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -179,15 +189,15 @@ class ThreadEntity(Base):
         nullable=False,
     )
 
-    thread: Mapped["Thread"] = relationship("Thread", back_populates="thread_entities")
+    thread: Mapped["Thread"] = relationship("Thread", back_populates="entities")
     entity: Mapped["GraphEntity"] = relationship("GraphEntity")
 
 
 class ThreadConversation(Base):
-    """Thread Conversation membership."""
+    """Many-to-many membership between Thread and Conversation."""
 
     __tablename__ = "thread_conversations"
-    __table_args__ = (Index("idx_thread_conversations_conversation_id", "conversation_id"),)
+    __table_args__ = (Index("idx_thread_conversations_conversation", "conversation_id"),)
 
     thread_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -206,15 +216,15 @@ class ThreadConversation(Base):
         nullable=False,
     )
 
-    thread: Mapped["Thread"] = relationship("Thread", back_populates="thread_conversations")
+    thread: Mapped["Thread"] = relationship("Thread", back_populates="conversations")
     conversation: Mapped["Conversation"] = relationship("Conversation")
 
 
 class ThreadQuestion(Base):
-    """Thread Question per CONTRACT v0.4.2 §7.1."""
+    """Question item tracked within a research thread."""
 
     __tablename__ = "thread_questions"
-    __table_args__ = (Index("idx_thread_questions_thread_id", "thread_id"),)
+    __table_args__ = (Index("idx_thread_questions_thread", "thread_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -253,10 +263,10 @@ class ThreadQuestion(Base):
 
 
 class ThreadDiscovery(Base):
-    """Thread Discovery per CONTRACT v0.4.2 §7.1."""
+    """Discovery / finding logged within a research thread."""
 
     __tablename__ = "thread_discoveries"
-    __table_args__ = (Index("idx_thread_discoveries_thread_id", "thread_id"),)
+    __table_args__ = (Index("idx_thread_discoveries_thread", "thread_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

@@ -1,27 +1,68 @@
-import { InboxItem } from '../types/v0_4_2';
+import { apiClient } from './client';
+import {
+  InboxItem,
+  InboxListResponse,
+  InboxAcceptResponse,
+  InboxRejectResponse,
+} from '@/types/inbox';
+import { Source } from '@/types/source';
 
-const API_BASE = '/api/v1';
-
-export async function listInboxItems(workspaceId: string, status?: string): Promise<InboxItem[]> {
-  const url = new URL(`${window.location.origin}${API_BASE}/workspaces/${workspaceId}/inbox`);
-  if (status) url.searchParams.set('status', status);
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error('Failed to list inbox items');
-  const data = await res.json();
-  return data.items;
+export async function listInbox(
+  workspaceId: string,
+  status?: string,
+  page = 1,
+  pageSize = 20
+): Promise<InboxListResponse> {
+  const query = new URLSearchParams({
+    workspace_id: workspaceId,
+    page: String(page),
+    page_size: String(pageSize),
+  });
+  if (status) query.append('status', status);
+  return apiClient.request<InboxListResponse>(`/inbox?${query.toString()}`);
 }
 
-export async function acceptInboxItem(workspaceId: string, inboxItemId: string): Promise<InboxItem> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/inbox/${inboxItemId}/accept`, {
-    method: 'POST',
-  });
-  if (!res.ok) throw new Error('Failed to accept inbox item');
-  return res.json();
+export async function getInboxItem(id: string): Promise<InboxItem> {
+  return apiClient.request<InboxItem>(`/inbox/${id}`);
 }
 
-export async function rejectInboxItem(workspaceId: string, inboxItemId: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/inbox/${inboxItemId}/reject`, {
+export async function updateInboxItem(
+  id: string,
+  data: { source_title?: string; extract_knowledge?: boolean }
+): Promise<InboxItem> {
+  return apiClient.request<InboxItem>(`/inbox/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function acceptInboxItem(id: string): Promise<InboxAcceptResponse> {
+  return apiClient.request<InboxAcceptResponse>(`/inbox/${id}/accept`, {
     method: 'POST',
   });
-  if (!res.ok) throw new Error('Failed to reject inbox item');
+}
+
+export async function rejectInboxItem(id: string): Promise<InboxRejectResponse> {
+  return apiClient.request<InboxRejectResponse>(`/inbox/${id}/reject`, {
+    method: 'POST',
+  });
+}
+
+export async function redetectInboxItem(id: string): Promise<InboxItem> {
+  return apiClient.request<InboxItem>(`/inbox/${id}/redetect`, {
+    method: 'POST',
+  });
+}
+
+export async function uploadToInbox(
+  workspaceId: string,
+  file: File
+): Promise<Source> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  return apiClient.upload<Source>(
+    `/sources/upload?workspace_id=${encodeURIComponent(workspaceId)}&review_mode=inbox`,
+    formData
+  );
 }

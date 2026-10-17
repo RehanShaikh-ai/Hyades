@@ -46,3 +46,25 @@ htmlcov/
 # Agents & AI Tooling
 .agents/
 skills-lock.json
+
+# Backups
+docs/backups/
+*.dump
+*.tar.gz
+
+test-results/
+playwright-report/
+
+# Graphify AST Cache (preserves graph.json, graph.html, and GRAPH_REPORT.md)
+graphify-out/
+
+# Playwright Per-Run Artifacts (preserves curated verification screenshots in tests/e2e/screenshots/)
+tests/e2e/test-results/
+tests/e2e/playwright-report/
+frontend/test-results/
+frontend/playwright-report/
+
+# Build caches & scratch files
+*.tsbuildinfo
+.vite/
+scratch/

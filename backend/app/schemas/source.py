@@ -3,11 +3,12 @@
 Canonical schemas per CONTRACT §4.2, §5.1, §6.1, and CONTRACT v0.4.1 §4.2.
 """
 
+import os
 import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class DetectedNote(BaseModel):
@@ -73,8 +74,71 @@ class SourceResponse(BaseModel):
     page_count: int | None = None
     chunk_count: int | None = None
     error_stage: str | None = None
+    extract_knowledge: bool = True
+
+    # Extended content fields per CONTRACT v0.4.2 §11, §14
+    title: str | None = None
+    file_name: str | None = None
+    excerpt: str | None = None
+    extracted_text: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_extracted_metadata(cls, data: Any) -> Any:
+        if hasattr(data, "raw_metadata"):
+            meta = getattr(data, "raw_metadata", None) or {}
+            orig_path = getattr(data, "original_path", "") or ""
+            fn = meta.get("file_name") or (os.path.basename(orig_path) if orig_path else None)
+            ti = meta.get("title") or fn
+            ex = meta.get("excerpt")
+            tx = meta.get("extracted_text")
+            return {
+                "id": getattr(data, "id", None),
+                "workspace_id": getattr(data, "workspace_id", None),
+                "note_id": getattr(data, "note_id", None),
+                "source_type": getattr(data, "source_type", ""),
+                "original_path": orig_path,
+                "source_identifier": getattr(data, "source_identifier", ""),
+                "content_hash": getattr(data, "content_hash", ""),
+                "import_batch_id": getattr(data, "import_batch_id", None),
+                "import_status": getattr(data, "import_status", "pending"),
+                "raw_metadata": meta,
+                "error_message": getattr(data, "error_message", None),
+                "imported_at": getattr(data, "imported_at", None),
+                "last_synced_at": getattr(data, "last_synced_at", None),
+                "processing_stage": getattr(data, "processing_stage", "upload"),
+                "processing_status": getattr(data, "processing_status", "PENDING"),
+                "file_size_bytes": getattr(data, "file_size_bytes", None),
+                "page_count": getattr(data, "page_count", None),
+                "chunk_count": getattr(data, "chunk_count", None),
+                "error_stage": getattr(data, "error_stage", None),
+                "extract_knowledge": getattr(data, "extract_knowledge", True),
+                "title": ti,
+                "file_name": fn,
+                "excerpt": ex,
+                "extracted_text": tx,
+                "stage_timings": meta.get("stage_timings"),
+            }
+        elif isinstance(data, dict):
+            meta = data.get("raw_metadata") or {}
+            orig_path = data.get("original_path", "") or ""
+            fn = (
+                data.get("file_name")
+                or meta.get("file_name")
+                or (os.path.basename(orig_path) if orig_path else None)
+            )
+            ti = data.get("title") or meta.get("title") or fn
+            ex = data.get("excerpt") or meta.get("excerpt")
+            tx = data.get("extracted_text") or meta.get("extracted_text")
+            data["title"] = ti
+            data["file_name"] = fn
+            data["excerpt"] = ex
+            data["extracted_text"] = tx
+            data["stage_timings"] = meta.get("stage_timings")
+            return data
+        return data
 
 
 class SourceListResponse(BaseModel):
@@ -95,6 +159,7 @@ class SourceProcessingStatusResponse(BaseModel):
     chunk_count: int | None = None
     page_count: int | None = None
     error_stage: str | None = None
+    extract_knowledge: bool = True
     error_message: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -114,3 +179,27 @@ class SourceNoteLink(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SourceDocumentPreviewResponse(BaseModel):
+    """Schema for document preview representation."""
+
+    source_id: uuid.UUID
+    title: str
+    file_name: str
+    format: str
+    markdown_content: str
+    is_converted: bool
+    converter: str
+    file_size_bytes: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SourceUpdate(BaseModel):
+    """Schema for updating source metadata and extraction settings."""
+
+    title: str | None = None
+    extract_knowledge: bool | None = None
+
+    model_config = ConfigDict(extra="forbid")

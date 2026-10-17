@@ -8,7 +8,16 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, String, UniqueConstraint, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.orm import relationship as sa_relationship
@@ -34,6 +43,10 @@ class EntityChunk(Base):
         Index("idx_entity_chunks_chunk", "chunk_id"),
         Index("idx_entity_chunks_note", "note_id"),
         Index("idx_entity_chunks_source", "source_id"),
+        CheckConstraint(
+            "(note_id IS NOT NULL AND source_id IS NULL) OR (note_id IS NULL AND source_id IS NOT NULL)",
+            name="ck_entity_chunks_single_parent",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

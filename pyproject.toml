@@ -1,12 +1,12 @@
 [project]
 name = "collaborative-second-brain-backend"
-version = "0.4.1"
-description = "Backend for Collaborative Second Brain - Knowledge Expansion"
+version = "0.4.2"
+description = "Hyades - Celestial Knowledge Observatory & Archival Research Platform"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [
-    { name = "Collaborative Second Brain Contributors" }
+    { name = "Hyades Contributors" }
 ]
 dependencies = [
     "fastapi>=0.115,<1.0",
@@ -24,6 +24,8 @@ dependencies = [
     "arq>=0.26.0,<1.0",
     "redis>=5.0.0,<6.0",
     "fastembed>=0.8.1",
+    "beautifulsoup4>=4.15.0",
+    "python-docx>=1.2.0",
 ]
 
 [dependency-groups]
@@ -49,6 +51,7 @@ extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "backend/tests"]

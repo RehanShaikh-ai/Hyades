@@ -1,4 +1,8 @@
-"""SavedView model per CONTRACT v0.4.2 §5.1, §7.1, §13."""
+"""SavedView SQLAlchemy model.
+
+Canonical model per CONTRACT v0.4.2 §5.1, §7.1.
+Stores named, versioned state configurations for the Observatory graph visualization.
+"""
 
 import uuid
 from datetime import UTC, datetime
@@ -17,7 +21,7 @@ if TYPE_CHECKING:
 
 
 class SavedView(Base):
-    """Saved Observatory View database model."""
+    """Saved Observatory view configuration per Contract v0.4.2 §7.1."""
 
     __tablename__ = "saved_views"
     __table_args__ = (

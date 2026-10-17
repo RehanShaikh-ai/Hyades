@@ -8,6 +8,7 @@ export interface Note {
   content: string;
   is_pinned: boolean;
   is_archived: boolean;
+  extract_knowledge?: boolean;
   tags: Tag[];
   created_at: string;
   updated_at: string;
@@ -28,6 +29,7 @@ export interface NoteUpdate {
   content?: string;
   is_pinned?: boolean;
   is_archived?: boolean;
+  extract_knowledge?: boolean;
 }
 
 export interface NoteListResponse {

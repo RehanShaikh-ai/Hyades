@@ -349,6 +349,22 @@ def stream_assistant_response(
     full_content = "".join(accumulated_chunks)
     latency_ms = int((time.perf_counter() - start_time) * 1000)
 
+    # If stream failed before any chunks were produced (0 tokens received),
+    # emit structured SSE error immediately and do NOT persist a ghost/fake message.
+    if stream_failed and not full_content:
+        err_code = (
+            "LLM_TIMEOUT"
+            if isinstance(failure_error, LLMTimeoutError)
+            else "LLM_PROVIDER_UNAVAILABLE"
+        )
+        err_event = {
+            "type": "error",
+            "code": err_code,
+            "message": str(failure_error) if failure_error else "Provider unavailable.",
+        }
+        yield f"data: {json.dumps(err_event)}\n\n"
+        return
+
     # 5. Persist assistant message (retaining partial content on stream failure §9.2)
     model_name = provider.model_name()
     if stream_failed:
@@ -358,7 +374,7 @@ def stream_assistant_response(
         db=db,
         conversation_id=conv.id,
         role="assistant",
-        content=full_content or "Generation interrupted.",
+        content=full_content,
         provider=provider.provider_name(),
         model=model_name,
         latency_ms=latency_ms,

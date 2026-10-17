@@ -1,4 +1,8 @@
-"""InboxItem model per CONTRACT v0.4.2 §5.1, §7.1, §12."""
+"""InboxItem SQLAlchemy model.
+
+Canonical model per CONTRACT v0.4.2 §5.1, §7.1.
+Tracks uploaded sources through dry-run concept detection and user review lifecycle.
+"""
 
 import uuid
 from datetime import UTC, datetime
@@ -12,17 +16,19 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.index_job import IndexJob
     from app.models.source import Source
     from app.models.workspace import Workspace
 
 
 class InboxItem(Base):
-    """Knowledge Inbox Staging Item model."""
+    """Inbox review item for an uploaded source per Contract v0.4.2 §7.1."""
 
     __tablename__ = "inbox_items"
     __table_args__ = (
         UniqueConstraint("source_id", name="uq_inbox_items_source_id"),
         Index("idx_inbox_items_workspace_status", "workspace_id", "status"),
+        Index("idx_inbox_items_source", "source_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -47,7 +53,7 @@ class InboxItem(Base):
     )
     detection_status: Mapped[str] = mapped_column(
         String(20),
-        default="queued",
+        default="pending",
         nullable=False,
     )
     detected_count: Mapped[int] = mapped_column(
@@ -55,9 +61,10 @@ class InboxItem(Base):
         default=0,
         nullable=False,
     )
-    detected_entities: Mapped[list[dict[str, Any]] | None] = mapped_column(
+    detected_entities: Mapped[list[Any]] = mapped_column(
         JSONB().with_variant(SQLITE_JSON(), "sqlite"),
-        nullable=True,
+        default=list,
+        nullable=False,
     )
     detection_truncated: Mapped[bool] = mapped_column(
         Boolean,
@@ -66,6 +73,7 @@ class InboxItem(Base):
     )
     extraction_job_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
+        ForeignKey("index_jobs.id", ondelete="SET NULL"),
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -81,3 +89,4 @@ class InboxItem(Base):
 
     workspace: Mapped["Workspace"] = relationship("Workspace")
     source: Mapped["Source"] = relationship("Source")
+    extraction_job: Mapped["IndexJob | None"] = relationship("IndexJob")

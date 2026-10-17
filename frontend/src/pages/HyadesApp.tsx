@@ -13,6 +13,8 @@ import { HyadesStella } from './HyadesStella';
 import { HyadesCollections } from './HyadesCollections';
 import { HyadesThreads } from './HyadesThreads';
 import { HyadesInbox } from './HyadesInbox';
+import { WorkspaceShell } from '@/components/navigation/WorkspaceShell';
+
 import { HyadesGlobalSearchModal } from '@/components/search/HyadesGlobalSearchModal';
 import { HyadesAccountModal } from '@/components/navigation/HyadesAccountModal';
 import { ObservatoryTarget, StellaContext } from '@/types/navigation';
@@ -28,7 +30,25 @@ export interface HyadesAppProps {
   onRefreshHealth?: () => void;
 }
 
-export type TabType = 'overview' | 'library' | 'observatory' | 'stella' | 'collections' | 'threads' | 'inbox';
+export type TabType = 'overview' | 'library' | 'observatory' | 'stella';
+
+const VALID_DESTINATIONS: HyadesDestination[] = [
+  'overview',
+  'library',
+  'observatory',
+  'stella',
+  'collections',
+  'threads',
+  'inbox',
+];
+
+const parseHashDestination = (): HyadesDestination => {
+  if (typeof window === 'undefined') return 'overview';
+  const raw = window.location.hash.replace(/^#\/?/, '').toLowerCase();
+  return VALID_DESTINATIONS.includes(raw as HyadesDestination)
+    ? (raw as HyadesDestination)
+    : 'overview';
+};
 
 export const HyadesApp: React.FC<HyadesAppProps> = ({
   workspaceId: initialWorkspaceId,
@@ -38,7 +58,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
   healthStatus: propHealthStatus,
   onRefreshHealth: propRefreshHealth,
 }) => {
-  const [currentDestination, setCurrentDestination] = useState<HyadesDestination>('overview');
+  const [currentDestination, setCurrentDestination] = useState<HyadesDestination>(parseHashDestination);
   const [observatoryTarget, setObservatoryTarget] = useState<ObservatoryTarget | null>(null);
   const [stellaContext, setStellaContext] = useState<StellaContext | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -47,11 +67,24 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
   const [activeNoteId, setActiveNoteId] = useState<string | undefined>(undefined);
   const [environmentIndex, setEnvironmentIndex] = useState(0);
 
-  const navigateTo = (dest: HyadesDestination) => {
+    const navigateTo = (dest: HyadesDestination) => {
     withViewTransition(() => {
       setCurrentDestination(dest);
+      if (typeof window !== 'undefined' && window.location.hash !== `#${dest}`) {
+        window.location.hash = `#${dest}`;
+      }
     });
   };
+
+  // Sync route on browser back and forward
+  useEffect(() => {
+    const handleHashChange = () => {
+      const newDest = parseHashDestination();
+      setCurrentDestination(newDest);
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   const handleNavigateToObservatory = (target?: ObservatoryTarget) => {
     setObservatoryTarget(target || null);
@@ -189,7 +222,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
       )}
 
       {/* Top Application Shell Header (Hidden during Observatory or focused fullscreen graph mode) */}
-      {!isFullscreenObservatory && currentDestination !== 'observatory' && (
+      {!isFullscreenObservatory && (
         <HyadesHeader
           currentDestination={currentDestination}
           onNavigate={navigateTo}
@@ -217,18 +250,6 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
             onNewNote={handleNewNote}
             environmentIndex={environmentIndex}
           />
-        )}
-
-        {(currentDestination as string) === 'collections' && (
-          <HyadesCollections workspaceId={effectiveWorkspaceId} />
-        )}
-
-        {(currentDestination as string) === 'threads' && (
-          <HyadesThreads workspaceId={effectiveWorkspaceId} />
-        )}
-
-        {(currentDestination as string) === 'inbox' && (
-          <HyadesInbox workspaceId={effectiveWorkspaceId} />
         )}
 
         {currentDestination === 'library' && (
@@ -266,28 +287,47 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
             environmentIndex={environmentIndex}
           />
         )}
+
+                {(currentDestination === 'collections' ||
+          currentDestination === 'threads' ||
+          currentDestination === 'inbox') && (
+          <WorkspaceShell
+            currentDestination={currentDestination}
+            onNavigate={navigateTo}
+            workspaceName={selectedWorkspace?.name ?? 'Default Workspace'}
+          >
+            {currentDestination === 'collections' && (
+              <HyadesCollections
+                workspaceId={effectiveWorkspaceId}
+                onNavigate={navigateTo}
+                workspaceName={selectedWorkspace?.name ?? 'Default Workspace'}
+                onNavigateToObservatory={handleNavigateToObservatory}
+                onNavigateToStella={handleNavigateToStella}
+              />
+            )}
+
+            {currentDestination === 'threads' && (
+              <HyadesThreads
+                workspaceId={effectiveWorkspaceId}
+                onNavigate={navigateTo}
+                workspaceName={selectedWorkspace?.name ?? 'Default Workspace'}
+                onNavigateToObservatory={handleNavigateToObservatory}
+                onNavigateToStella={handleNavigateToStella}
+              />
+            )}
+
+            {currentDestination === 'inbox' && (
+              <HyadesInbox
+                workspaceId={effectiveWorkspaceId}
+                onNavigate={navigateTo}
+                workspaceName={selectedWorkspace?.name ?? 'Default Workspace'}
+              />
+            )}
+          </WorkspaceShell>
+        )}
       </main>
 
-      {/* Bottom-Left Profile & Account Trigger */}
-      {!isFullscreenObservatory && (
-        <div className="fixed bottom-4 left-4 z-40 hidden md:block">
-          <button
-            type="button"
-            onClick={() => setIsAccountModalOpen(true)}
-            data-testid="profile-bottom-left-btn"
-            title="Account & Setup"
-            className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-[var(--bg-panel)]/95 hover:bg-white text-[var(--ink-primary)] border border-[var(--border-strong)] shadow-md transition-all active:scale-95 group backdrop-blur-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
-          >
-            <div className="w-6 h-6 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] flex items-center justify-center font-serif text-[11px] font-semibold shadow-2xs">
-              RS
-            </div>
-            <span className="serif text-xs font-semibold text-[var(--ink-primary)] max-w-[120px] truncate">
-              {selectedWorkspace?.name ?? 'Hyades Workspace'}
-            </span>
-            <i className="ph ph-gear text-xs text-[var(--ink-tertiary)] group-hover:text-[var(--accent-midnight)] transition-colors" />
-          </button>
-        </div>
-      )}
+      {/* Floating profile trigger relocated to HyadesHeader to avoid sidebar overlap */}
 
       {/* Global Search Palette Modal (Cmd+K) */}
       <HyadesGlobalSearchModal

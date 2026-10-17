@@ -4,7 +4,6 @@ Canonical service per CONTRACT v0.4.1 §4.3, §7.1-§7.4.
 Provides process_source, extract_text, chunk_source, embed_and_index_source, delete_source_chunks.
 """
 
-import io
 import logging
 import os
 import re
@@ -13,7 +12,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from pypdf import PdfReader
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -39,48 +37,44 @@ def _get_storage_dir(workspace_id: uuid.UUID) -> Path:
 
 
 def extract_text(file_bytes: bytes, filename: str, source_type: str) -> tuple[str, int | None]:
-    """Extract text content and page count (for PDFs) from file bytes per CONTRACT §7.1.
+    """Extract text content and page count from file bytes per CONTRACT v0.4.2 §11.
 
-    Supports PDF (via docling or pypdf), Markdown, and plain text.
+    Routes via unified get_extractor(source_type) supporting PDF, DOCX, HTML, EPUB, JSON, CSV, Image, Markdown, and plain text.
     """
-    if source_type == "pdf" or filename.lower().endswith(".pdf"):
-        # Try docling if available, else pypdf
-        try:
-            import docling  # type: ignore # noqa: F401
-            # If docling is installed and configured
-            # (fallback to pypdf for deterministic fast execution in test/prod)
-        except ImportError:
-            pass
+    from app.services.extractors import get_extractor
 
-        try:
-            reader = PdfReader(io.BytesIO(file_bytes))
-            page_count = len(reader.pages)
-            pages_text: list[str] = []
-            for page in reader.pages:
-                t = page.extract_text()
-                if t:
-                    pages_text.append(t)
-            extracted = "\n\n".join(pages_text)
-            return extracted, page_count
-        except Exception as e:
-            raise ValueError(f"PDF text extraction failed: {e}") from e
+    st = (source_type or "").lower()
+    if filename:
+        ext = os.path.splitext(filename)[1].lower()
+        if ext == ".pdf":
+            st = "pdf"
+        elif ext in (".md", ".markdown"):
+            st = "markdown"
+        elif ext in (".txt", ".text"):
+            st = "text"
+        elif ext == ".docx":
+            st = "docx"
+        elif ext in (".html", ".htm"):
+            st = "html"
+        elif ext == ".epub":
+            st = "epub"
+        elif ext == ".json":
+            st = "json"
+        elif ext == ".csv":
+            st = "csv"
+        elif ext in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
+            st = "image"
 
-    elif source_type in ("markdown", "obsidian_note") or filename.lower().endswith(
-        (".md", ".markdown")
-    ):
+    try:
+        extractor = get_extractor(st)
+        result = extractor.extract(file_bytes, filename)
+        page_count = result.metadata.get("page_count")
+        return result.text, page_count
+    except Exception as e:
         try:
-            text = file_bytes.decode("utf-8")
-        except UnicodeDecodeError:
-            text = file_bytes.decode("latin-1", errors="replace")
-        return text, None
-
-    else:
-        # Plain text
-        try:
-            text = file_bytes.decode("utf-8")
-        except UnicodeDecodeError:
-            text = file_bytes.decode("latin-1", errors="replace")
-        return text, None
+            return file_bytes.decode("utf-8"), None
+        except Exception:
+            raise ValueError(f"Text extraction failed: {e}") from e
 
 
 def normalize_text(text: str) -> str:
@@ -164,11 +158,13 @@ def embed_and_index_source(
 
 
 def process_source(db: Session, source_id: uuid.UUID) -> None:
-    """Execute the full 6-stage source processing pipeline per CONTRACT v0.4.1 §7.2.
+    """Execute the full 6-stage source processing pipeline per CONTRACT v0.4.1 § 7.2.
 
     Stages: upload -> extract -> normalize -> chunk -> embed -> index -> complete.
     On failure: processing_status=FAILED, error_stage=<stage>, error_message=<sanitized msg>.
     """
+    import time
+
     source = db.get(Source, source_id)
     if not source:
         logger.error("process_source called for non-existent source %s", source_id)
@@ -214,9 +210,12 @@ def process_source(db: Session, source_id: uuid.UUID) -> None:
         db.commit()
         return
 
+    t_start = time.perf_counter()
+
     # Stage 1: Extract
     source.processing_stage = "extract"
     db.commit()
+    t_stage = time.perf_counter()
     try:
         raw_text, page_count = extract_text(
             file_bytes=file_bytes,
@@ -225,7 +224,7 @@ def process_source(db: Session, source_id: uuid.UUID) -> None:
         )
         source.page_count = page_count
         if not raw_text or not raw_text.strip():
-            raise ValueError("Extracted text is empty.")
+            raise ValueError("Extracted text is empty. Scanned PDF or unsupported content.")
     except Exception as e:
         logger.exception("Extraction failed for source %s: %s", source_id, e)
         source.processing_status = "FAILED"
@@ -234,10 +233,12 @@ def process_source(db: Session, source_id: uuid.UUID) -> None:
         source.error_message = f"Extraction failed: {clean_err}"
         db.commit()
         return
+    extract_ms = max(1, int((time.perf_counter() - t_stage) * 1000))
 
     # Stage 2: Normalize
     source.processing_stage = "normalize"
     db.commit()
+    t_stage = time.perf_counter()
     try:
         normalized_text = normalize_text(raw_text)
         if not normalized_text:
@@ -250,10 +251,35 @@ def process_source(db: Session, source_id: uuid.UUID) -> None:
         source.error_message = f"Normalization failed: {clean_err}"
         db.commit()
         return
+    normalize_ms = max(1, int((time.perf_counter() - t_stage) * 1000))
+
+    # Derive real title, clean filename, genuine excerpt, and extracted text preview
+    filename = os.path.basename(source.original_path or "")
+    clean_name = os.path.splitext(filename)[0].replace("-", " ").replace("_", " ").strip()
+    derived_title = clean_name.title() if clean_name else "Source Document"
+    for line in normalized_text.splitlines()[:10]:
+        line_clean = line.strip().lstrip("#").strip()
+        if line_clean and 2 < len(line_clean) < 120:
+            derived_title = line_clean
+            break
+
+    excerpt_lines = [
+        line_str.strip()
+        for line_str in normalized_text.splitlines()
+        if line_str.strip() and not line_str.strip().startswith("#")
+    ]
+    excerpt = " ".join(excerpt_lines)[:300] if excerpt_lines else normalized_text[:300]
+
+    meta = dict(source.raw_metadata or {})
+    meta["title"] = derived_title
+    meta["file_name"] = filename
+    meta["excerpt"] = excerpt
+    meta["extracted_text"] = normalized_text[:15000]
 
     # Stage 3: Chunk
     source.processing_stage = "chunk"
     db.commit()
+    t_stage = time.perf_counter()
     try:
         chunks_data = chunk_source(normalized_text, source.original_path)
         if not chunks_data:
@@ -266,6 +292,7 @@ def process_source(db: Session, source_id: uuid.UUID) -> None:
         source.error_message = f"Chunking failed: {clean_err}"
         db.commit()
         return
+    chunk_ms = max(1, int((time.perf_counter() - t_stage) * 1000))
 
     # Clean prior chunks/vectors if any (idempotency)
     try:
@@ -278,6 +305,7 @@ def process_source(db: Session, source_id: uuid.UUID) -> None:
     # Stage 4 & 5: Embed and Index
     source.processing_stage = "embed"
     db.commit()
+    t_stage = time.perf_counter()
     try:
         source.processing_stage = "index"
         created_chunks = embed_and_index_source(db, source, chunks_data)
@@ -290,6 +318,17 @@ def process_source(db: Session, source_id: uuid.UUID) -> None:
         source.error_message = f"Indexing failed: {clean_err}"
         db.commit()
         return
+    embed_and_index_ms = max(1, int((time.perf_counter() - t_stage) * 1000))
+
+    total_processing_ms = max(1, int((time.perf_counter() - t_start) * 1000))
+    meta["stage_timings"] = {
+        "extract_ms": extract_ms,
+        "normalize_ms": normalize_ms,
+        "chunk_ms": chunk_ms,
+        "embed_and_index_ms": embed_and_index_ms,
+        "total_processing_ms": total_processing_ms,
+    }
+    source.raw_metadata = meta
 
     # Stage 6: Complete
     source.processing_stage = "complete"
@@ -300,8 +339,13 @@ def process_source(db: Session, source_id: uuid.UUID) -> None:
     db.commit()
     db.refresh(source)
     logger.info(
-        "Successfully processed source %s (%s): %d chunks indexed",
+        "Successfully processed source %s (%s): %d chunks indexed in %dms (extract=%dms, norm=%dms, chunk=%dms, index=%dms)",
         source.id,
         source.original_path,
         source.chunk_count or 0,
+        total_processing_ms,
+        extract_ms,
+        normalize_ms,
+        chunk_ms,
+        embed_and_index_ms,
     )

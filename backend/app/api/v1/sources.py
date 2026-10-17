@@ -6,17 +6,20 @@ Canonical endpoints per contract §7 (v0.2.2) and CONTRACT v0.4.1 §10.1.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.source import Source
 from app.schemas.source import (
+    SourceDocumentPreviewResponse,
     SourceImportResponse,
     SourceLinkRequest,
     SourceListResponse,
     SourceNoteLink,
     SourcePreviewResponse,
     SourceResponse,
+    SourceUpdate,
 )
 from app.services import source_service
 
@@ -32,6 +35,7 @@ async def upload_source(
     workspace_id: uuid.UUID,
     file: Annotated[UploadFile, File(...)],
     db: Annotated[Session, Depends(get_db)],
+    review_mode: Annotated[str | None, Query()] = None,
 ) -> SourceResponse:
     """Upload single file and trigger background processing pipeline per CONTRACT v0.4.1 §10.1."""
     content = await file.read()
@@ -41,6 +45,7 @@ async def upload_source(
         file_content=content,
         filename=file.filename or "uploaded_source",
         content_type=file.content_type,
+        review_mode=review_mode,
     )
     return SourceResponse.model_validate(source)
 
@@ -115,6 +120,29 @@ def get_source(
     return SourceResponse.model_validate(source)
 
 
+@router.get(
+    "/sources/{source_id}/preview",
+    response_model=SourceDocumentPreviewResponse,
+    status_code=status.HTTP_200_OK,
+)
+def get_source_document_preview(
+    source_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> SourceDocumentPreviewResponse:
+    """Get clean sanitized Markdown document preview representation per CONTRACT v0.4.2."""
+    source = source_service.get_source(db, source_id)
+    from app.services.document_preview_service import generate_source_preview
+
+    res = generate_source_preview(
+        source_id=source.id,
+        original_path=source.original_path,
+        source_type=source.source_type,
+        file_bytes=None,
+        raw_metadata=source.raw_metadata,
+    )
+    return SourceDocumentPreviewResponse.model_validate(res)
+
+
 @router.delete(
     "/sources/{source_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -167,3 +195,52 @@ def unlink_source_from_note(
 ) -> None:
     """Remove an association between a source and a note per CONTRACT v0.4.1 §6.6, §10.1."""
     source_service.unlink_source_from_note(db, source_id, note_id)
+
+
+@router.post(
+    "/sources/upload",
+    response_model=SourceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_source_root(
+    file: Annotated[UploadFile, File(...)],
+    db: Annotated[Session, Depends(get_db)],
+    workspace_id: Annotated[uuid.UUID, Query(..., description="Workspace ID")],
+    review_mode: Annotated[str | None, Query()] = None,
+) -> SourceResponse:
+    """Upload single source file with review_mode support per CONTRACT v0.4.2 §8.4."""
+    content = await file.read()
+    source = source_service.upload_source(
+        db=db,
+        workspace_id=workspace_id,
+        file_content=content,
+        filename=file.filename or "uploaded_source",
+        content_type=file.content_type,
+        review_mode=review_mode,
+    )
+    return SourceResponse.model_validate(source)
+
+
+@router.patch("/sources/{source_id}", response_model=SourceResponse)
+def update_source(
+    source_id: uuid.UUID,
+    payload: SourceUpdate,
+    db: Annotated[Session, Depends(get_db)],
+) -> SourceResponse:
+    """Update editable source fields (title, extract_knowledge setting)."""
+    source = db.query(Source).filter(Source.id == source_id).first()
+    if not source:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        if field == "extract_knowledge":
+            source.extract_knowledge = value
+        elif field == "title":
+            meta = dict(source.raw_metadata or {})
+            meta["title"] = value
+            source.raw_metadata = meta
+
+    db.commit()
+    db.refresh(source)
+    return SourceResponse.model_validate(source)

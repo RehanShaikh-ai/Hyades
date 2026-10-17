@@ -55,7 +55,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         {/* Author header / meta */}
         <div className="flex items-center justify-between gap-3 text-[10px] opacity-75 pb-1 border-b border-white/[0.08]">
           <span className="font-semibold uppercase tracking-wider">
-            {isUser ? 'You' : 'Atlas Assistant'}
+            {isUser ? 'You' : 'Stella'}
           </span>
           <div className="flex items-center gap-2 font-mono">
             {message.provider && (

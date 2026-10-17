@@ -451,3 +451,21 @@ def test_rag_source_relevance_threshold_relevant_query(db_session: Session, test
         assert len(response.citations) > 0
         assert response.citations[0].title == "Culinary Fermentation"
         assert "Sourdough fermentation" in response.answer
+
+
+def test_extraction_authentication_error_fails_fast_without_retries(test_env: dict):
+    provider_mock = MagicMock()
+    provider_mock.supports_json_schema = False
+    provider_mock.supports_json_object = False
+    provider_mock.model = "test-model"
+    provider_mock.generate.side_effect = LLMProviderUnavailableError(
+        "FreeLLMAPI authentication failed (401 Unauthorized)"
+    )
+    with patch(
+        "app.services.entity_extraction_service.llm_service.get_llm_provider",
+        return_value=provider_mock,
+    ):
+        with pytest.raises(ExtractionFailedError) as exc_info:
+            entity_extraction_service.extract_entities("Some text")
+        assert "401" in str(exc_info.value)
+        assert provider_mock.generate.call_count == 1

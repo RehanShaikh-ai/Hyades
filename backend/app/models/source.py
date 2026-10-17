@@ -157,7 +157,7 @@ class Source(Base):
         nullable=True,
     )
 
-    # v0.4.2 extensions (§7.2)
+    # v0.4.2 extensions (Contract v0.4.2 §7.2)
     extract_knowledge: Mapped[bool] = mapped_column(
         Boolean,
         default=True,

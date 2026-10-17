@@ -1,27 +1,58 @@
-import { SavedView, SavedViewCreate } from '../types/v0_4_2';
+import { apiClient } from './client';
+import {
+  SavedView,
+  SavedViewListResponse,
+  SavedViewState,
+  SavedViewRestoreResult,
+} from '@/types/saved_views';
 
-const API_BASE = '/api/v1';
-
-export async function listSavedViews(workspaceId: string): Promise<SavedView[]> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/saved-views`);
-  if (!res.ok) throw new Error('Failed to list saved views');
-  const data = await res.json();
-  return data.items;
+export async function listSavedViews(
+  workspaceId: string,
+  page = 1,
+  pageSize = 20
+): Promise<SavedViewListResponse> {
+  return apiClient.request<SavedViewListResponse>(
+    `/saved-views?workspace_id=${workspaceId}&page=${page}&page_size=${pageSize}`
+  );
 }
 
-export async function createSavedView(workspaceId: string, data: SavedViewCreate): Promise<SavedView> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/saved-views`, {
+export async function getSavedView(id: string): Promise<SavedView> {
+  return apiClient.request<SavedView>(`/saved-views/${id}`);
+}
+
+export async function createSavedView(data: {
+  workspace_id: string;
+  name: string;
+  state: SavedViewState;
+  created_by?: string | null;
+}): Promise<SavedView> {
+  return apiClient.request<SavedView>('/saved-views', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error('Failed to save view');
-  return res.json();
 }
 
-export async function deleteSavedView(workspaceId: string, savedViewId: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/saved-views/${savedViewId}`, {
+export async function updateSavedView(
+  id: string,
+  data: {
+    name?: string;
+    state?: SavedViewState;
+  }
+): Promise<SavedView> {
+  return apiClient.request<SavedView>(`/saved-views/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteSavedView(id: string): Promise<void> {
+  return apiClient.request<void>(`/saved-views/${id}`, {
     method: 'DELETE',
   });
-  if (!res.ok) throw new Error('Failed to delete saved view');
+}
+
+export async function restoreSavedView(id: string): Promise<SavedViewRestoreResult> {
+  return apiClient.request<SavedViewRestoreResult>(`/saved-views/${id}/restore`, {
+    method: 'POST',
+  });
 }

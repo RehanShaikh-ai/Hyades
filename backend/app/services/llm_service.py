@@ -43,6 +43,21 @@ def is_transient_error(exc: Exception) -> bool:
     """Classify whether an exception is a transient error eligible for retry."""
     from app.core.exceptions import LLMProviderUnavailableError, LLMTimeoutError
 
+    # Authentication and permission errors must fail fast without retry
+    msg = str(exc).lower()
+    if any(
+        auth_term in msg
+        for auth_term in (
+            "401",
+            "403",
+            "unauthorized",
+            "forbidden",
+            "invalid api key",
+            "authentication failed",
+        )
+    ):
+        return False
+
     if isinstance(exc, LLMTimeoutError):
         return True
     if isinstance(exc, (httpx.TimeoutException, httpx.ConnectError, httpx.ReadTimeout)):
@@ -50,10 +65,25 @@ def is_transient_error(exc: Exception) -> bool:
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code in (408, 429, 500, 502, 503, 504)
     if isinstance(exc, LLMProviderUnavailableError):
-        msg = str(exc).lower()
-        if any(code in msg for code in ("500", "502", "503", "504", "429", "timed out", "timeout")):
+        if any(
+            code in msg
+            for code in (
+                "502",
+                "503",
+                "504",
+                "429",
+                "timed out",
+                "timeout",
+                "temporarily unavailable",
+            )
+        ):
             return True
-    msg = str(exc).lower()
+        if (
+            "500 internal server error" in msg
+            or "status code 500" in msg
+            or "http status 500" in msg
+        ):
+            return True
     return any(
         term in msg for term in ("timed out", "timeout", "connection reset", "502", "503", "504")
     )
@@ -272,9 +302,12 @@ def _auto_discover_freellmapi_key() -> str | None:
         from pathlib import Path
 
         possible_paths = [
-            Path("/home/rehan/freellmapi/server/data/freeapi.db"),
             Path("/app/freellmapi/server/data/freeapi.db"),
+            Path("/data/freellmapi/server/data/freeapi.db"),
             Path.home() / "freellmapi/server/data/freeapi.db",
+            Path("/home/rehan/freellmapi/server/data/freeapi.db"),
+            Path(r"C:\Users\rehan\OneDrive\Desktop\Personal\freellmapi\server\data\freeapi.db"),
+            Path(r"..\freellmapi\server\data\freeapi.db"),
         ]
         for p in possible_paths:
             if p.exists():
@@ -297,6 +330,12 @@ RECOMMENDED_MODELS: list[dict[str, Any]] = [
         "id": "auto",
         "name": "Auto-Route (Recommended)",
         "description": "Dynamic failover across fastest available upstream routes",
+        "context_window": 131072,
+    },
+    {
+        "id": "gemini-flash-lite",
+        "name": "Gemini Flash Lite",
+        "description": "Fast low-latency Google Flash model for rapid synthesis",
         "context_window": 131072,
     },
     {
@@ -327,6 +366,7 @@ RECOMMENDED_MODELS: list[dict[str, Any]] = [
 
 
 class FreeLLMAPILMProvider(BaseLLMProvider):
+    supports_json_object: bool = False
     """FreeLLMAPI provider with real token streaming and health checking."""
 
     def __init__(
@@ -357,9 +397,11 @@ class FreeLLMAPILMProvider(BaseLLMProvider):
     def generate(self, messages: list[dict[str, Any]], **kwargs) -> str:
         if not self.base_url:
             raise LLMProviderUnavailableError("FreeLLMAPI base URL is not configured.")
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        if not self.api_key:
+            raise LLMProviderUnavailableError(
+                "FreeLLMAPI unified API key is not configured. Set FREELLMAPI_API_KEY in the environment or ensure FreeLLMAPI is initialized locally."
+            )
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
         payload: dict[str, Any] = {"model": self._model, "messages": messages}
         if "response_format" in kwargs and kwargs["response_format"]:
             payload["response_format"] = kwargs["response_format"]
@@ -370,7 +412,15 @@ class FreeLLMAPILMProvider(BaseLLMProvider):
                     headers=headers,
                     json=payload,
                 )
-                if res.status_code != 200:
+                if res.status_code == 401:
+                    raise LLMProviderUnavailableError(
+                        "FreeLLMAPI authentication failed (401 Unauthorized): invalid or missing unified API key."
+                    )
+                elif res.status_code == 404:
+                    raise LLMProviderUnavailableError(
+                        f"FreeLLMAPI model '{self._model}' not found (404). Please select an active model."
+                    )
+                elif res.status_code != 200:
                     err_detail = res.text[:200]
                     raise LLMProviderUnavailableError(
                         f"FreeLLMAPI request failed with status {res.status_code}: {err_detail}"
@@ -387,9 +437,11 @@ class FreeLLMAPILMProvider(BaseLLMProvider):
         """Real token streaming directly from FreeLLMAPI via SSE."""
         if not self.base_url:
             raise LLMProviderUnavailableError("FreeLLMAPI base URL is not configured.")
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        if not self.api_key:
+            raise LLMProviderUnavailableError(
+                "FreeLLMAPI unified API key is not configured. Set FREELLMAPI_API_KEY in the environment or ensure FreeLLMAPI is initialized locally."
+            )
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
         try:
             with httpx.Client(timeout=settings.PROVIDER_TIMEOUT_SECONDS) as client:
                 with client.stream(
@@ -398,7 +450,15 @@ class FreeLLMAPILMProvider(BaseLLMProvider):
                     headers=headers,
                     json={"model": self._model, "messages": messages, "stream": True},
                 ) as response:
-                    if response.status_code != 200:
+                    if response.status_code == 401:
+                        raise LLMProviderUnavailableError(
+                            "FreeLLMAPI authentication failed (401 Unauthorized): invalid or missing unified API key."
+                        )
+                    elif response.status_code == 404:
+                        raise LLMProviderUnavailableError(
+                            f"FreeLLMAPI model '{self._model}' not found (404). Please select an active model."
+                        )
+                    elif response.status_code != 200:
                         raise LLMProviderUnavailableError(
                             f"FreeLLMAPI streaming failed with status {response.status_code}."
                         )
@@ -430,14 +490,11 @@ class FreeLLMAPILMProvider(BaseLLMProvider):
         try:
             with httpx.Client(timeout=3.0) as client:
                 headers = {}
-                if self.api_key:
-                    headers["Authorization"] = f"Bearer {self.api_key}"
-                    res = client.get(self._endpoint("models"), headers=headers)
-                    if res.status_code == 200:
-                        return True
-                # Fallback to server ping
-                res = client.get(f"{self.base_url}/api/auth/status")
-                return res.status_code in (200, 404)
+                if not self.api_key:
+                    return False
+                headers["Authorization"] = f"Bearer {self.api_key}"
+                res = client.get(self._endpoint("models"), headers=headers)
+                return res.status_code == 200
         except Exception:
             return False
 

@@ -6,7 +6,7 @@ Canonical model per contract §6.1.
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,7 +28,10 @@ class Tag(Base):
     """
 
     __tablename__ = "tags"
-    __table_args__ = (UniqueConstraint("workspace_id", "name", name="uq_tags_workspace_name"),)
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name", name="uq_tags_workspace_name"),
+        Index("idx_tags_workspace_name", "workspace_id", "name", unique=True),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

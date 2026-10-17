@@ -22,9 +22,9 @@ logging.basicConfig(
 logger = logging.getLogger("app")
 
 app = FastAPI(
-    title="Collaborative Second Brain",
+    title="Hyades API",
     version="0.1.1",
-    description="Backend API for Collaborative Second Brain",
+    description="Backend API for Hyades Celestial Knowledge System",
 )
 
 # Register global exception handlers (contract §4.4, §12)
@@ -33,8 +33,16 @@ register_exception_handlers(app)
 # CORS middleware (contract §23)
 # Uses FRONTEND_URL from settings; wildcard origins must not be used as default.
 cors_origins = [settings.FRONTEND_URL]
-if "http://localhost:3000" not in cors_origins:
-    cors_origins.append("http://localhost:3000")
+for extra in [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+]:
+    if extra not in cors_origins:
+        cors_origins.append(extra)
 
 app.add_middleware(
     CORSMiddleware,
@@ -48,4 +56,4 @@ app.add_middleware(
 # main.py must not mount individual sub-routers directly.
 app.include_router(api_router, prefix="/api/v1")
 
-logger.info("Collaborative Second Brain backend initialized (APP_ENV=%s)", settings.APP_ENV)
+logger.info("Hyades backend initialized (APP_ENV=%s)", settings.APP_ENV)

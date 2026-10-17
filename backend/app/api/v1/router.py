@@ -22,6 +22,7 @@ from app.api.v1 import (
     notes,
     rag,
     relationships,
+    runtime,
     saved_searches,
     saved_views,
     search,
@@ -36,10 +37,6 @@ from app.api.v1 import (
 
 api_router = APIRouter()
 api_router.include_router(health.router)
-api_router.include_router(collections.router)
-api_router.include_router(threads.router)
-api_router.include_router(saved_views.router)
-api_router.include_router(inbox.router)
 api_router.include_router(users.router)
 api_router.include_router(workspaces.router)
 api_router.include_router(notes.router)
@@ -59,3 +56,9 @@ api_router.include_router(jobs.router)
 api_router.include_router(versions.router)
 api_router.include_router(activity.router)
 api_router.include_router(saved_searches.router)
+api_router.include_router(collections.router)
+api_router.include_router(threads.router)
+api_router.include_router(saved_views.router)
+api_router.include_router(inbox.router)
+
+api_router.include_router(runtime.router)

@@ -1,15 +1,14 @@
-"""Thread service per CONTRACT v0.4.2 §5.3, §8.2."""
+"""Thread service managing research threads, questions, discoveries, and activity timelines.
 
-from uuid import UUID
+Canonical module per CONTRACT v0.4.2 §5.3, §8.2.
+"""
 
-from sqlalchemy import func, select
+import uuid
+from datetime import UTC, datetime
+
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import NotFoundError
-from app.models.conversation import Conversation
-from app.models.graph_entity import GraphEntity
-from app.models.note import Note
-from app.models.source import Source
 from app.models.thread import (
     Thread,
     ThreadConversation,
@@ -19,266 +18,309 @@ from app.models.thread import (
     ThreadQuestion,
     ThreadSource,
 )
+from app.models.workspace import Workspace
 from app.schemas.thread import (
+    ThreadActivityItem,
+    ThreadActivityResponse,
     ThreadCreate,
     ThreadDiscoveryCreate,
+    ThreadDiscoveryResponse,
     ThreadQuestionCreate,
+    ThreadQuestionResponse,
     ThreadQuestionUpdate,
+    ThreadResponse,
     ThreadUpdate,
 )
 
 
+def _populate_thread_counts(db: Session, thread: Thread) -> ThreadResponse:
+    q_count = db.query(ThreadQuestion).filter_by(thread_id=thread.id).count()
+    d_count = db.query(ThreadDiscovery).filter_by(thread_id=thread.id).count()
+    n_count = db.query(ThreadNote).filter_by(thread_id=thread.id).count()
+    s_count = db.query(ThreadSource).filter_by(thread_id=thread.id).count()
+    e_count = db.query(ThreadEntity).filter_by(thread_id=thread.id).count()
+    c_count = db.query(ThreadConversation).filter_by(thread_id=thread.id).count()
+
+    resp = ThreadResponse.model_validate(thread)
+    resp.question_count = q_count
+    resp.discovery_count = d_count
+    resp.item_count = n_count + s_count + e_count + c_count
+    return resp
+
+
 def create_thread(
-    session: Session,
-    workspace_id: UUID,
-    created_by: UUID,
-    data: ThreadCreate,
-) -> Thread:
+    db: Session, workspace_id: uuid.UUID, data: ThreadCreate, user_id: uuid.UUID | None = None
+) -> ThreadResponse:
+    """Create a new research thread."""
+    ws = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    if not ws:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+
+    creator_id = user_id or data.created_by or ws.owner_id
+    now = datetime.now(UTC)
+
     thread = Thread(
         workspace_id=workspace_id,
-        created_by=created_by,
-        title=data.title,
+        title=data.title.strip(),
         question=data.question,
-        status="active",
+        status=data.status,
+        created_by=creator_id,
+        created_at=now,
+        updated_at=now,
     )
-    session.add(thread)
-    session.commit()
-    session.refresh(thread)
-    return thread
+    db.add(thread)
+    db.commit()
+    db.refresh(thread)
+
+    return _populate_thread_counts(db, thread)
 
 
-def get_thread(session: Session, thread_id: UUID) -> Thread:
-    thread = session.get(Thread, thread_id)
+def get_thread(db: Session, thread_id: uuid.UUID) -> Thread:
+    """Get thread or raise 404."""
+    thread = db.query(Thread).filter(Thread.id == thread_id).first()
     if not thread:
-        raise NotFoundError(f"Thread '{thread_id}' not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found")
     return thread
 
 
 def list_threads(
-    session: Session,
-    workspace_id: UUID,
+    db: Session,
+    workspace_id: uuid.UUID,
+    status_filter: str | None = None,
     page: int = 1,
     page_size: int = 20,
-    status: str | None = None,
-) -> tuple[list[Thread], int]:
-    stmt = select(Thread).where(Thread.workspace_id == workspace_id)
-    count_stmt = select(func.count(Thread.id)).where(Thread.workspace_id == workspace_id)
+) -> tuple[list[ThreadResponse], int]:
+    """List threads in workspace ordered by updated_at descending."""
+    q = db.query(Thread).filter(Thread.workspace_id == workspace_id)
+    if status_filter:
+        q = q.filter(Thread.status == status_filter)
 
-    if status:
-        stmt = stmt.where(Thread.status == status)
-        count_stmt = count_stmt.where(Thread.status == status)
+    total = q.count()
+    threads = (
+        q.order_by(Thread.updated_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    )
 
-    stmt = stmt.order_by(Thread.updated_at.desc())
-
-    total = session.scalar(count_stmt) or 0
-    items = session.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).all()
-
-    return list(items), total
+    items = [_populate_thread_counts(db, t) for t in threads]
+    return items, total
 
 
-def update_thread(
-    session: Session,
-    thread_id: UUID,
-    data: ThreadUpdate,
-) -> Thread:
-    thread = get_thread(session, thread_id)
+def update_thread(db: Session, thread_id: uuid.UUID, data: ThreadUpdate) -> ThreadResponse:
+    """Update thread title, question, or status."""
+    thread = get_thread(db, thread_id)
+
     if data.title is not None:
-        thread.title = data.title
+        thread.title = data.title.strip()
     if data.question is not None:
         thread.question = data.question
     if data.status is not None:
         thread.status = data.status
 
-    session.commit()
-    session.refresh(thread)
-    return thread
+    thread.updated_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(thread)
+
+    return _populate_thread_counts(db, thread)
 
 
-def delete_thread(session: Session, thread_id: UUID) -> None:
-    thread = get_thread(session, thread_id)
-    session.delete(thread)
-    session.commit()
+def delete_thread(db: Session, thread_id: uuid.UUID) -> None:
+    """Delete thread. Cascades questions, discoveries, and memberships."""
+    thread = get_thread(db, thread_id)
+    db.delete(thread)
+    db.commit()
 
 
-def get_thread_items(session: Session, thread_id: UUID) -> list[dict]:
-    thread = get_thread(session, thread_id)
-    items = []
-
-    notes_res = session.execute(
-        select(ThreadNote, Note)
-        .join(Note, ThreadNote.note_id == Note.id)
-        .where(ThreadNote.thread_id == thread.id)
-    )
-    for tn, note in notes_res.all():
-        items.append(
-            {
-                "item_type": "note",
-                "item_id": note.id,
-                "title": note.title,
-                "added_at": tn.added_at,
-            }
-        )
-
-    sources_res = session.execute(
-        select(ThreadSource, Source)
-        .join(Source, ThreadSource.source_id == Source.id)
-        .where(ThreadSource.thread_id == thread.id)
-    )
-    for ts, src in sources_res.all():
-        items.append(
-            {
-                "item_type": "source",
-                "item_id": src.id,
-                "title": src.original_path.split("/")[-1],
-                "added_at": ts.added_at,
-            }
-        )
-
-    entities_res = session.execute(
-        select(ThreadEntity, GraphEntity)
-        .join(GraphEntity, ThreadEntity.entity_id == GraphEntity.id)
-        .where(ThreadEntity.thread_id == thread.id)
-    )
-    for te, ent in entities_res.all():
-        items.append(
-            {
-                "item_type": "entity",
-                "item_id": ent.id,
-                "title": ent.name,
-                "added_at": te.added_at,
-            }
-        )
-
-    convs_res = session.execute(
-        select(ThreadConversation, Conversation)
-        .join(Conversation, ThreadConversation.conversation_id == Conversation.id)
-        .where(ThreadConversation.thread_id == thread.id)
-    )
-    for tc, conv in convs_res.all():
-        items.append(
-            {
-                "item_type": "conversation",
-                "item_id": conv.id,
-                "title": conv.title,
-                "added_at": tc.added_at,
-            }
-        )
-
-    return items
+# -- Questions (§8.2) --
 
 
-# Thread Questions
-def create_thread_question(
-    session: Session,
-    thread_id: UUID,
-    data: ThreadQuestionCreate,
-) -> ThreadQuestion:
-    get_thread(session, thread_id)
-    q = ThreadQuestion(thread_id=thread_id, text=data.text)
-    session.add(q)
-    session.commit()
-    session.refresh(q)
-    return q
-
-
-def list_thread_questions(session: Session, thread_id: UUID) -> list[ThreadQuestion]:
-    get_thread(session, thread_id)
-    stmt = (
-        select(ThreadQuestion)
-        .where(ThreadQuestion.thread_id == thread_id)
+def list_thread_questions(db: Session, thread_id: uuid.UUID) -> list[ThreadQuestionResponse]:
+    get_thread(db, thread_id)
+    questions = (
+        db.query(ThreadQuestion)
+        .filter_by(thread_id=thread_id)
         .order_by(ThreadQuestion.created_at.asc())
+        .all()
     )
-    return list(session.scalars(stmt).all())
+    return [ThreadQuestionResponse.model_validate(q) for q in questions]
+
+
+def create_thread_question(
+    db: Session, thread_id: uuid.UUID, data: ThreadQuestionCreate
+) -> ThreadQuestionResponse:
+    thread = get_thread(db, thread_id)
+    now = datetime.now(UTC)
+
+    q = ThreadQuestion(
+        thread_id=thread.id,
+        text=data.text.strip(),
+        is_resolved=False,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(q)
+    thread.updated_at = now
+    db.commit()
+    db.refresh(q)
+    return ThreadQuestionResponse.model_validate(q)
 
 
 def update_thread_question(
-    session: Session,
-    thread_id: UUID,
-    question_id: UUID,
-    data: ThreadQuestionUpdate,
-) -> ThreadQuestion:
-    get_thread(session, thread_id)
-    q = session.get(ThreadQuestion, question_id)
-    if not q or q.thread_id != thread_id:
-        raise NotFoundError(f"Question '{question_id}' not found in thread")
+    db: Session, thread_id: uuid.UUID, question_id: uuid.UUID, data: ThreadQuestionUpdate
+) -> ThreadQuestionResponse:
+    q = db.query(ThreadQuestion).filter_by(id=question_id, thread_id=thread_id).first()
+    if not q:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Question not found")
 
     if data.text is not None:
-        q.text = data.text
+        q.text = data.text.strip()
     if data.is_resolved is not None:
         q.is_resolved = data.is_resolved
 
-    session.commit()
-    session.refresh(q)
-    return q
+    now = datetime.now(UTC)
+    q.updated_at = now
+    db.query(Thread).filter_by(id=thread_id).update({"updated_at": now})
+    db.commit()
+    db.refresh(q)
+    return ThreadQuestionResponse.model_validate(q)
 
 
-def delete_thread_question(session: Session, thread_id: UUID, question_id: UUID) -> None:
-    get_thread(session, thread_id)
-    q = session.get(ThreadQuestion, question_id)
-    if not q or q.thread_id != thread_id:
-        raise NotFoundError(f"Question '{question_id}' not found in thread")
-    session.delete(q)
-    session.commit()
+def delete_thread_question(db: Session, thread_id: uuid.UUID, question_id: uuid.UUID) -> None:
+    q = db.query(ThreadQuestion).filter_by(id=question_id, thread_id=thread_id).first()
+    if not q:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Question not found")
+    db.delete(q)
+    db.commit()
 
 
-# Thread Discoveries
-def create_thread_discovery(
-    session: Session,
-    thread_id: UUID,
-    data: ThreadDiscoveryCreate,
-) -> ThreadDiscovery:
-    get_thread(session, thread_id)
-    d = ThreadDiscovery(thread_id=thread_id, content=data.content)
-    session.add(d)
-    session.commit()
-    session.refresh(d)
-    return d
+# -- Discoveries (§8.2) --
 
 
-def list_thread_discoveries(session: Session, thread_id: UUID) -> list[ThreadDiscovery]:
-    get_thread(session, thread_id)
-    stmt = (
-        select(ThreadDiscovery)
-        .where(ThreadDiscovery.thread_id == thread_id)
-        .order_by(ThreadDiscovery.created_at.desc())
+def list_thread_discoveries(db: Session, thread_id: uuid.UUID) -> list[ThreadDiscoveryResponse]:
+    get_thread(db, thread_id)
+    discoveries = (
+        db.query(ThreadDiscovery)
+        .filter_by(thread_id=thread_id)
+        .order_by(ThreadDiscovery.created_at.asc())
+        .all()
     )
-    return list(session.scalars(stmt).all())
+    return [ThreadDiscoveryResponse.model_validate(d) for d in discoveries]
 
 
-def delete_thread_discovery(session: Session, thread_id: UUID, discovery_id: UUID) -> None:
-    get_thread(session, thread_id)
-    d = session.get(ThreadDiscovery, discovery_id)
-    if not d or d.thread_id != thread_id:
-        raise NotFoundError(f"Discovery '{discovery_id}' not found in thread")
-    session.delete(d)
-    session.commit()
+def create_thread_discovery(
+    db: Session, thread_id: uuid.UUID, data: ThreadDiscoveryCreate
+) -> ThreadDiscoveryResponse:
+    thread = get_thread(db, thread_id)
+    now = datetime.now(UTC)
+
+    d = ThreadDiscovery(
+        thread_id=thread.id,
+        content=data.content.strip(),
+        created_at=now,
+    )
+    db.add(d)
+    thread.updated_at = now
+    db.commit()
+    db.refresh(d)
+    return ThreadDiscoveryResponse.model_validate(d)
 
 
-def get_thread_activity(session: Session, thread_id: UUID) -> list[dict]:
-    get_thread(session, thread_id)
-    activities = []
+def delete_thread_discovery(db: Session, thread_id: uuid.UUID, discovery_id: uuid.UUID) -> None:
+    d = db.query(ThreadDiscovery).filter_by(id=discovery_id, thread_id=thread_id).first()
+    if not d:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Discovery not found")
+    db.delete(d)
+    db.commit()
 
-    questions = list_thread_questions(session, thread_id)
-    for q in questions:
-        activities.append(
-            {
-                "id": q.id,
-                "activity_type": "question_created",
-                "description": f"Added question: {q.text[:50]}...",
-                "timestamp": q.created_at,
-            }
+
+# -- Activity Timeline (§8.2) --
+
+
+def get_thread_activity(db: Session, thread: Thread) -> ThreadActivityResponse:
+    """Aggregate activity items in reverse chronological order."""
+    activity: list[ThreadActivityItem] = []
+
+    # 1. Thread creation
+    activity.append(
+        ThreadActivityItem(
+            activity_type="thread_created",
+            timestamp=thread.created_at,
+            summary=f"Created thread: {thread.title}",
+            metadata={"title": thread.title, "question": thread.question},
+        )
+    )
+
+    # 2. Questions
+    for q in db.query(ThreadQuestion).filter_by(thread_id=thread.id).all():
+        activity.append(
+            ThreadActivityItem(
+                activity_type="question_added",
+                timestamp=q.created_at,
+                summary=f"Question: {q.text}",
+                metadata={"question_id": str(q.id), "is_resolved": q.is_resolved},
+            )
+        )
+        if q.is_resolved:
+            activity.append(
+                ThreadActivityItem(
+                    activity_type="question_resolved",
+                    timestamp=q.updated_at,
+                    summary=f"Resolved question: {q.text}",
+                    metadata={"question_id": str(q.id)},
+                )
+            )
+
+    # 3. Discoveries
+    for d in db.query(ThreadDiscovery).filter_by(thread_id=thread.id).all():
+        activity.append(
+            ThreadActivityItem(
+                activity_type="discovery_logged",
+                timestamp=d.created_at,
+                summary=f"Discovery: {d.content[:100]}...",
+                metadata={"discovery_id": str(d.id), "full_content": d.content},
+            )
         )
 
-    discoveries = list_thread_discoveries(session, thread_id)
-    for d in discoveries:
-        activities.append(
-            {
-                "id": d.id,
-                "activity_type": "discovery_logged",
-                "description": f"Logged discovery: {d.content[:50]}...",
-                "timestamp": d.created_at,
-            }
+    # 4. Item memberships
+    for tn in db.query(ThreadNote).filter_by(thread_id=thread.id).all():
+        activity.append(
+            ThreadActivityItem(
+                activity_type="item_added",
+                timestamp=tn.added_at,
+                summary="Added note to thread",
+                metadata={"item_type": "note", "item_id": str(tn.note_id)},
+            )
+        )
+    for ts in db.query(ThreadSource).filter_by(thread_id=thread.id).all():
+        activity.append(
+            ThreadActivityItem(
+                activity_type="item_added",
+                timestamp=ts.added_at,
+                summary="Added source to thread",
+                metadata={"item_type": "source", "item_id": str(ts.source_id)},
+            )
+        )
+    for te in db.query(ThreadEntity).filter_by(thread_id=thread.id).all():
+        activity.append(
+            ThreadActivityItem(
+                activity_type="item_added",
+                timestamp=te.added_at,
+                summary="Added entity to thread",
+                metadata={"item_type": "entity", "item_id": str(te.entity_id)},
+            )
+        )
+    for tc in db.query(ThreadConversation).filter_by(thread_id=thread.id).all():
+        activity.append(
+            ThreadActivityItem(
+                activity_type="item_added",
+                timestamp=tc.added_at,
+                summary="Added conversation to thread",
+                metadata={"item_type": "conversation", "item_id": str(tc.conversation_id)},
+            )
         )
 
-    activities.sort(key=lambda x: x["timestamp"], reverse=True)
-    return activities
+    activity.sort(key=lambda x: x.timestamp, reverse=True)
+
+    return ThreadActivityResponse(
+        thread_id=thread.id,
+        items=activity,
+        total=len(activity),
+    )

@@ -22,6 +22,8 @@ export interface Source {
   workspace_id: string;
   title?: string;
   file_name?: string;
+  excerpt?: string | null;
+  stage_timings?: Record<string, number> | null;
   note_id?: string | null;
   source_type?: SourceType;
   original_path?: string;
@@ -36,6 +38,7 @@ export interface Source {
   chunk_count?: number | null;
   error_stage?: string | null;
   error_message?: string | null;
+  extract_knowledge?: boolean;
   raw_metadata?: Record<string, unknown> | null;
   extracted_text?: string | null;
   linked_notes?: LinkedNote[];
