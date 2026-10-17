@@ -299,6 +299,8 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
             {currentDestination === 'collections' && (
               <HyadesCollections
                 workspaceId={effectiveWorkspaceId}
+                onNavigate={navigateTo}
+                workspaceName={selectedWorkspace?.name ?? 'Default Workspace'}
                 onNavigateToObservatory={handleNavigateToObservatory}
                 onNavigateToStella={handleNavigateToStella}
               />
@@ -307,6 +309,8 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
             {currentDestination === 'threads' && (
               <HyadesThreads
                 workspaceId={effectiveWorkspaceId}
+                onNavigate={navigateTo}
+                workspaceName={selectedWorkspace?.name ?? 'Default Workspace'}
                 onNavigateToObservatory={handleNavigateToObservatory}
                 onNavigateToStella={handleNavigateToStella}
               />
@@ -315,6 +319,8 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
             {currentDestination === 'inbox' && (
               <HyadesInbox
                 workspaceId={effectiveWorkspaceId}
+                onNavigate={navigateTo}
+                workspaceName={selectedWorkspace?.name ?? 'Default Workspace'}
               />
             )}
           </WorkspaceShell>

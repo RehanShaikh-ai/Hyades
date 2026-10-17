@@ -23,18 +23,41 @@ import {
   addThreadItem,
   removeThreadItem,
 } from '@/api/threads';
+import { WorkspaceSidebarHeader } from '@/components/workspace/WorkspaceSidebarHeader';
+import { KnowledgeAttachPicker } from '@/components/workspace/KnowledgeAttachPicker';
 
 interface HyadesThreadsProps {
   workspaceId: string;
+  onNavigate?: (dest: any) => void;
+  workspaceName?: string;
   onNavigateToObservatory?: () => void;
   onNavigateToStella?: () => void;
 }
 
 export const HyadesThreads: React.FC<HyadesThreadsProps> = ({
   workspaceId,
+  onNavigate,
+  workspaceName = 'Active Workspace',
   onNavigateToObservatory: _onNavigateToObservatory,
   onNavigateToStella: _onNavigateToStella,
 }) => {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('hyades_workspace_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('hyades_workspace_sidebar_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  };
   const [threads, setThreads] = useState<Thread[]>([]);
   const [selectedThread, setSelectedThread] = useState<Thread | null>(null);
   const [questions, setQuestions] = useState<ThreadQuestion[]>([]);
@@ -336,9 +359,24 @@ export const HyadesThreads: React.FC<HyadesThreadsProps> = ({
         <div className="ambient-sunlight" />
       </div>
 
-      {/* Left Sidebar: Threads Inquiries Shelf */}
-      <aside className="w-full md:w-80 lg:w-88 flex-shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-[var(--border-parchment)] bg-[var(--bg-panel)]/95 backdrop-blur-sm z-10">
-        <div className="p-4 border-b border-[var(--border-parchment)] flex items-center justify-between">
+      {/* Left Sidebar: Threads Inquiries Shelf (Positioned on far left) */}
+      <aside
+        data-testid="workspace-sidebar"
+        className={`flex-shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-[var(--border-parchment)] bg-[var(--bg-panel)]/95 backdrop-blur-sm z-10 transition-all duration-200 select-none ${
+          isSidebarCollapsed ? 'w-14' : 'w-full md:w-80 lg:w-88'
+        }`}
+      >
+        <WorkspaceSidebarHeader
+          currentDestination="threads"
+          onNavigate={onNavigate}
+          workspaceName={workspaceName}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={toggleSidebar}
+        />
+
+        {!isSidebarCollapsed && (
+          <>
+            <div className="p-4 border-b border-[var(--border-parchment)] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <svg
               className="w-4 h-4 text-[var(--accent-terracotta)]"
@@ -494,6 +532,8 @@ export const HyadesThreads: React.FC<HyadesThreadsProps> = ({
             })
           )}
         </div>
+          </>
+        )}
       </aside>
       {/* Main Dossier */}
       <main className="flex-1 flex flex-col overflow-y-auto p-4 md:p-6 z-10 space-y-5">
@@ -768,35 +808,19 @@ export const HyadesThreads: React.FC<HyadesThreadsProps> = ({
                   </div>
                 </div>
 
-                <form
-                  onSubmit={handleAddItem}
-                  className="p-3 bg-[var(--bg-panel)] rounded-xl border border-[var(--border-parchment)] flex flex-wrap items-center gap-2.5"
-                >
-                  <select
-                    value={newItemType}
-                    onChange={(e) => setNewItemType(e.target.value as any)}
-                    className="px-2.5 py-1.5 text-xs bg-white border border-[var(--border-parchment)] rounded-lg text-[var(--ink-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-midnight)] cursor-pointer"
-                  >
-                    <option value="note">Note</option>
-                    <option value="source">Source</option>
-                    <option value="entity">Entity</option>
-                  </select>
-                  <input
-                    type="text"
-                    placeholder="Item UUID or identifier..."
-                    value={newItemId}
-                    onChange={(e) => setNewItemId(e.target.value)}
-                    disabled={isAddingItem}
-                    className="flex-1 min-w-[140px] px-3 py-1.5 text-xs bg-white border border-[var(--border-parchment)] rounded-lg text-[var(--ink-primary)] placeholder-[var(--ink-tertiary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-midnight)]"
-                  />
-                  <button
-                    type="submit"
-                    disabled={isAddingItem || !newItemId.trim()}
-                    className="px-3 py-1.5 text-xs font-medium bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight)]/90 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-sm transition-all cursor-pointer"
-                  >
-                    {isAddingItem ? 'Attaching...' : '+ Attach'}
-                  </button>
-                </form>
+                {/* Knowledge Attachment Interface */}
+                <KnowledgeAttachPicker
+                  workspaceId={workspaceId}
+                  attachedItemIds={selectedThread.items?.map((it) => it.item_id) || []}
+                  onAttach={async (type, id, title) => {
+                    await addThreadItem(selectedThread.id, {
+                      item_type: type,
+                      item_id: id,
+                    });
+                    setSuccessMessage(`Attached ${type} "${title || id}" to thread.`);
+                    await loadThreadDetails(selectedThread.id);
+                  }}
+                />
 
                 <div className="space-y-2">
                   {items.length === 0 ? (

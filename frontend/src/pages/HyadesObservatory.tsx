@@ -2691,151 +2691,161 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       )}
 
       {/* ================= OBSERVATORY CONTEXTUAL ACTION TOOLBAR ================= */}
-      <div className={`absolute ${isFullscreen ? "top-4" : "top-14 sm:top-16"} left-4 sm:left-6 right-4 sm:right-6 z-30 flex items-center justify-between pointer-events-none select-none transition-all`}>
-        {/* SEGMENT 1 (LEFT): Real Graph Actions */}
-        <div className="flex items-center gap-2 bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-3 py-1.5 pointer-events-auto">
-          {/* Action: + Entity */}
+      {/* SEGMENT 1 (LEFT): Real Graph Actions — positioned to never overlap left sidebar or edge tab */}
+      <div
+        className={`absolute ${isFullscreen ? "top-4" : "top-18"} transition-all duration-300 z-30 pointer-events-auto flex items-center gap-2 bg-[#FAF8F2]/95 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-3 py-1.5 select-none ${
+          isLeftSidebarOpen ? 'left-[310px]' : 'left-36'
+        }`}
+      >
+        {/* Action: + Entity */}
+        <button
+          type="button"
+          onClick={() => setIsEntityEditorOpen(true)}
+          className="px-2.5 py-1 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer"
+          title="Add Entity to Knowledge Sky (A)"
+        >
+          <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
+          <span>+ Entity</span>
+        </button>
+
+        {/* Action: Connect */}
+        <button
+          type="button"
+          onClick={() => setIsRelationshipEditorOpen(true)}
+          className="px-2.5 py-1 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer"
+          title="Connect Two Entities (C)"
+        >
+          <i className="ph ph-arrows-split text-xs text-[var(--accent-terracotta)]" />
+          <span>Connect</span>
+        </button>
+
+        {/* Compact More Menu */}
+        <div className="relative">
           <button
             type="button"
-            onClick={() => setIsEntityEditorOpen(true)}
-            className="px-2.5 py-1 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer"
-            title="Add Entity to Knowledge Sky (A)"
+            onClick={() => setIsMoreMenuOpen((prev) => !prev)}
+            className="w-6 h-6 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+            title="More Graph Actions"
           >
-            <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
-            <span>+ Entity</span>
+            <i className="ph-bold ph-dots-three-vertical text-xs" />
           </button>
 
-          {/* Action: Connect */}
-          <button
-            type="button"
-            onClick={() => setIsRelationshipEditorOpen(true)}
-            className="px-2.5 py-1 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer"
-            title="Connect Two Entities (C)"
-          >
-            <i className="ph ph-arrows-split text-xs text-[var(--accent-terracotta)]" />
-            <span>Connect</span>
-          </button>
+          {isMoreMenuOpen && (
+            <div className="absolute left-0 mt-2 w-48 bg-white border border-[var(--border-strong)] rounded-xl shadow-lg py-1.5 z-50 text-xs animate-fade-in select-none">
+              <button
+                type="button"
+                onClick={() => {
+                  handleUntangle();
+                  setIsMoreMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
+              >
+                <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
+                <span>Untangle / Organize (U)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSuggestionsOpen(true);
+                  setIsMoreMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
+              >
+                <i className="ph ph-sparkle text-xs text-[var(--accent-terracotta)]" />
+                <span>Link Suggestions</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAtlasPlate((p) => !p);
+                  setIsMoreMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
+              >
+                <i className="ph ph-newspaper text-xs text-[var(--accent-midnight)]" />
+                <span>{showAtlasPlate ? "Hide Atlas Plate" : "Show Atlas Plate"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGraticule((p) => !p);
+                  setIsMoreMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
+              >
+                <i className="ph ph-grid-four text-xs text-[var(--accent-brass)]" />
+                <span>{showGraticule ? "Hide Coordinates" : "Show Coordinates"}</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
 
-          {/* Compact More Menu */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setIsMoreMenuOpen((prev) => !prev)}
-              className="w-6 h-6 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
-              title="More Graph Actions"
-            >
-              <i className="ph-bold ph-dots-three-vertical text-xs" />
-            </button>
-
-            {isMoreMenuOpen && (
-              <div className="absolute left-0 mt-2 w-48 bg-white border border-[var(--border-strong)] rounded-xl shadow-lg py-1.5 z-50 text-xs animate-fade-in select-none">
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleUntangle();
-                    setIsMoreMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-                >
-                  <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
-                  <span>Untangle / Organize (U)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSuggestionsOpen(true);
-                    setIsMoreMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-                >
-                  <i className="ph ph-sparkle text-xs text-[var(--accent-terracotta)]" />
-                  <span>Link Suggestions</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAtlasPlate((p) => !p);
-                    setIsMoreMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-                >
-                  <i className="ph ph-newspaper text-xs text-[var(--accent-midnight)]" />
-                  <span>{showAtlasPlate ? "Hide Atlas Plate" : "Show Atlas Plate"}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowGraticule((p) => !p);
-                    setIsMoreMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-                >
-                  <i className="ph ph-grid-four text-xs text-[var(--accent-brass)]" />
-                  <span>{showGraticule ? "Hide Coordinates" : "Show Coordinates"}</span>
-                </button>
-              </div>
-            )}
+      {/* SEGMENT 2 (CENTER): Compact Focused Coordinate HUD Capsule — centered */}
+      <div className={`absolute ${isFullscreen ? "top-4" : "top-18"} left-1/2 -translate-x-1/2 z-30 hidden lg:flex items-center pointer-events-auto select-none transition-all duration-300`}>
+        {selectedNode ? (
+          <div className="bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-3.5 py-1.5 flex items-center gap-2.5">
+            <div
+              className={`w-2 h-2 rounded-full ${
+                selectedNode.hierarchy === "core"
+                  ? "bg-[var(--accent-terracotta)] animate-pulse"
+                  : selectedNode.hierarchy === "subtopic"
+                  ? "bg-[var(--accent-brass)]"
+                  : "bg-[var(--accent-midnight)]"
+              }`}
+            />
+            <span className="serif text-xs font-semibold text-[var(--ink-primary)] leading-none max-w-[170px] truncate">
+              {selectedNode.label}
+            </span>
+            <span className="w-px h-2.5 bg-[var(--border-parchment)]" />
+            <span className="mono text-[10px] text-[var(--ink-tertiary)]">
+              {selectedNode.coords}
+            </span>
+            <span className="mono text-[9px] text-[var(--accent-midnight)] bg-white px-1.5 py-0.5 rounded-full border border-[var(--border-parchment)] font-medium">
+              {selectedNode.catalog}
+            </span>
           </div>
-        </div>
+        ) : (
+          <div className="bg-[#FAF8F2]/80 backdrop-blur-md border border-[var(--border-parchment)] rounded-full px-3 py-1 text-xs text-[var(--ink-tertiary)] mono">
+            Click a star to focus coordinates
+          </div>
+        )}
+      </div>
 
-        {/* SEGMENT 2 (CENTER): Compact Focused Coordinate HUD Capsule */}
-        <div className="hidden lg:flex items-center pointer-events-auto">
-          {selectedNode ? (
-            <div className="bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-3.5 py-1.5 flex items-center gap-2.5">
-              <div
-                className={`w-2 h-2 rounded-full ${
-                  selectedNode.hierarchy === "core"
-                    ? "bg-[var(--accent-terracotta)] animate-pulse"
-                    : selectedNode.hierarchy === "subtopic"
-                    ? "bg-[var(--accent-brass)]"
-                    : "bg-[var(--accent-midnight)]"
-                }`}
-              />
-              <span className="serif text-xs font-semibold text-[var(--ink-primary)] leading-none max-w-[170px] truncate">
-                {selectedNode.label}
-              </span>
-              <span className="w-px h-2.5 bg-[var(--border-parchment)]" />
-              <span className="mono text-[10px] text-[var(--ink-tertiary)]">
-                {selectedNode.coords}
-              </span>
-              <span className="mono text-[9px] text-[var(--accent-midnight)] bg-white px-1.5 py-0.5 rounded-full border border-[var(--border-parchment)] font-medium">
-                {selectedNode.catalog}
-              </span>
-            </div>
-          ) : (
-            <div className="bg-[#FAF8F2]/80 backdrop-blur-md border border-[var(--border-parchment)] rounded-full px-3 py-1 text-xs text-[var(--ink-tertiary)] mono">
-              Click a star to focus coordinates
-            </div>
-          )}
-        </div>
+      {/* SEGMENT 3 (RIGHT): Saved Views & Fullscreen Controls — positioned to never overlap right detail panel */}
+      <div
+        className={`absolute ${isFullscreen ? "top-4" : "top-18"} transition-all duration-300 z-30 pointer-events-auto flex items-center gap-2 bg-[#FAF8F2]/95 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-2.5 py-1.5 select-none ${
+          isRightSidebarOpen && selectedNode
+            ? 'right-[420px]'
+            : selectedNode
+            ? 'right-[120px]'
+            : 'right-6'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => setIsSavedViewsModalOpen(true)}
+          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full hover:bg-white text-xs font-medium text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer mr-1"
+          title="Saved Observatory Views"
+        >
+          <i className="ph ph-bookmarks text-xs text-[var(--accent-terracotta)]" />
+          <span>Saved Views</span>
+        </button>
 
-        {/* SEGMENT 3 (RIGHT): Saved Views & Fullscreen Controls */}
-        <div className="flex items-center gap-2 bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-2.5 py-1.5 pointer-events-auto">
+        {onToggleFullscreen && (
           <button
             type="button"
-            onClick={() => setIsSavedViewsModalOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full hover:bg-white text-xs font-medium text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer mr-1"
-            title="Saved Observatory Views"
+            onClick={onToggleFullscreen}
+            className="w-6 h-6 rounded-full hover:bg-white text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors cursor-pointer"
+            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen / Focused View"}
           >
-            <i className="ph ph-bookmarks text-xs text-[var(--accent-terracotta)]" />
-            <span>Saved Views</span>
+            <i
+              className={`ph-bold ${
+                isFullscreen ? "ph-corners-in" : "ph-corners-out"
+              } text-xs text-[var(--accent-terracotta)]`}
+            />
           </button>
-
-          {onToggleFullscreen && (
-            <button
-              type="button"
-              onClick={onToggleFullscreen}
-              className="w-6 h-6 rounded-full hover:bg-white text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors cursor-pointer"
-              title={isFullscreen ? "Exit Fullscreen" : "Fullscreen / Focused View"}
-            >
-              <i
-                className={`ph-bold ${
-                  isFullscreen ? "ph-corners-in" : "ph-corners-out"
-                } text-xs text-[var(--accent-terracotta)]`}
-              />
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Honest Empty State when Workspace Graph is Empty */}
@@ -3163,23 +3173,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           <i className="ph-bold ph-grid-four text-xs" />
         </button>
 
-        {onToggleFullscreen && (
-          <>
-            <div className="w-4 h-px bg-[var(--border-parchment)] mx-auto my-0.5" />
-            <button
-              type="button"
-              onClick={onToggleFullscreen}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
-              title={isFullscreen ? 'Exit Focus View' : 'Focus / Fullscreen View'}
-            >
-              <i
-                className={`ph-bold ${
-                  isFullscreen ? 'ph-corners-in' : 'ph-corners-out'
-                } text-xs text-[var(--accent-terracotta)]`}
-              />
-            </button>
-          </>
-        )}
+
       </div>
 
       {/* ================= RIGHT KNOWLEDGE DOSSIER PANEL (EXTENDS UPWARD) ================= */}

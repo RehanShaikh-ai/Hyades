@@ -9,12 +9,36 @@ import {
   redetectInboxItem,
   uploadToInbox,
 } from '@/api/inbox';
+import { WorkspaceSidebarHeader } from '@/components/workspace/WorkspaceSidebarHeader';
 
 interface HyadesInboxProps {
   workspaceId: string;
+  onNavigate?: (dest: any) => void;
+  workspaceName?: string;
 }
 
-export const HyadesInbox: React.FC<HyadesInboxProps> = ({ workspaceId }) => {
+export const HyadesInbox: React.FC<HyadesInboxProps> = ({
+  workspaceId,
+  onNavigate,
+  workspaceName = 'Active Workspace',
+}) => {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('hyades_workspace_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('hyades_workspace_sidebar_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  };
   const [items, setItems] = useState<InboxItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<InboxItem | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('pending');
@@ -185,10 +209,25 @@ export const HyadesInbox: React.FC<HyadesInboxProps> = ({ workspaceId }) => {
         <div className="ambient-sunlight" />
       </div>
 
-      {/* Left Sidebar: Inbox List */}
-      <aside className="w-full md:w-80 lg:w-88 flex-shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-[var(--border-parchment)] bg-[var(--bg-panel)]/95 backdrop-blur-sm z-10">
-        {/* Header */}
-        <div className="p-4 border-b border-[var(--border-parchment)] flex items-center justify-between">
+      {/* Left Sidebar: Inbox List (Positioned on far left) */}
+      <aside
+        data-testid="workspace-sidebar"
+        className={`flex-shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-[var(--border-parchment)] bg-[var(--bg-panel)]/95 backdrop-blur-sm z-10 transition-all duration-200 select-none ${
+          isSidebarCollapsed ? 'w-14' : 'w-full md:w-80 lg:w-88'
+        }`}
+      >
+        <WorkspaceSidebarHeader
+          currentDestination="inbox"
+          onNavigate={onNavigate}
+          workspaceName={workspaceName}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={toggleSidebar}
+        />
+
+        {!isSidebarCollapsed && (
+          <>
+            {/* Header */}
+            <div className="p-4 border-b border-[var(--border-parchment)] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <svg
               className="w-4 h-4 text-[var(--accent-terracotta)]"
@@ -300,6 +339,8 @@ export const HyadesInbox: React.FC<HyadesInboxProps> = ({ workspaceId }) => {
             })
           )}
         </div>
+          </>
+        )}
       </aside>
       {/* Main Review Dossier */}
       <main className="flex-1 flex flex-col overflow-y-auto p-4 md:p-6 z-10 space-y-5">
