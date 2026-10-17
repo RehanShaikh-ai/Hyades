@@ -190,3 +190,12 @@ class SourceDocumentPreviewResponse(BaseModel):
     file_size_bytes: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SourceUpdate(BaseModel):
+    """Schema for updating source metadata and extraction settings."""
+
+    title: str | None = None
+    extract_knowledge: bool | None = None
+
+    model_config = ConfigDict(extra="forbid")

@@ -52,6 +52,7 @@ class NoteUpdate(BaseModel):
     content: str | None = None
     is_pinned: bool | None = None
     is_archived: bool | None = None
+    extract_knowledge: bool | None = None
 
     @field_validator("title")
     @classmethod
@@ -85,6 +86,7 @@ class NoteResponse(BaseModel):
     content: str
     is_pinned: bool
     is_archived: bool
+    extract_knowledge: bool = True
     tags: list[TagResponse]
     created_at: datetime
     updated_at: datetime

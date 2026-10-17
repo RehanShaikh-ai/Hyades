@@ -4,7 +4,8 @@ import { listSources, uploadSource, getSourcePreview, SourceDocumentPreview } fr
 import { DocumentPreviewModal } from '@/components/library/DocumentPreviewModal';
 import { listClusters } from '@/api/clusters';
 import { getWorkspaceGraph } from '@/api/graph';
-import { triggerExtraction, triggerReindex } from '@/api/graph_index';
+import { triggerExtraction, triggerReindex, getExtractionStatus, ExtractionStatusResponse } from '@/api/graph_index';
+import { updateSource } from '@/api/sources';
 import { getJobStatus } from '@/api/jobs';
 import { getUsers } from '@/api/users';
 import { Note } from '@/types/note';
@@ -46,6 +47,9 @@ interface UnifiedItem {
   dateStr: string;
   rawNote?: Note;
   rawSource?: Source;
+  extract_knowledge?: boolean;
+  extraction_status?: 'extracted' | 'pending' | 'failed' | 'ineligible';
+  extraction_error?: string | null;
 }
 
 const LIBRARY_PLATES = [libraryScriptorium, libraryCatalogFolio];
@@ -113,6 +117,9 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
     }
   };
   const [isRightDossierOpen, setIsRightDossierOpen] = useState(true);
+  const [extractionStatus, setExtractionStatus] = useState<ExtractionStatusResponse | null>(null);
+  const [isExtractionDetailsOpen, setIsExtractionDetailsOpen] = useState(false);
+  const [isUpdatingExtractSetting, setIsUpdatingExtractSetting] = useState(false);
 
   // Selection & Actions
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -165,11 +172,16 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
     if (!workspaceId) return;
     setIsLoading(true);
     try {
-      const [notesRes, sourcesRes, clustersRes] = await Promise.allSettled([
+      const [notesRes, sourcesRes, clustersRes, extractionRes] = await Promise.allSettled([
         listNotes(workspaceId, { page_size: 100, is_archived: false, sort: 'updated_at_desc' }),
         listSources(workspaceId, { page_size: 100 }),
         listClusters(workspaceId),
+        getExtractionStatus(workspaceId),
       ]);
+
+      if (extractionRes.status === 'fulfilled') {
+        setExtractionStatus(extractionRes.value);
+      }
 
       setNotes(notesRes.status === 'fulfilled' ? notesRes.value.items || [] : []);
       setSources(sourcesRes.status === 'fulfilled' ? sourcesRes.value.items || [] : []);
@@ -265,6 +277,12 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   // Transform into unified library items from real workspace data
   const unifiedItems: UnifiedItem[] = useMemo(() => {
     const list: UnifiedItem[] = [];
+    const statusMap = new Map<string, { status: 'extracted' | 'pending' | 'failed' | 'ineligible'; error?: string | null }>();
+    if (extractionStatus?.items) {
+      extractionStatus.items.forEach((it) => {
+        statusMap.set(it.id, { status: it.status, error: it.error_message });
+      });
+    }
 
     // Sources mapping
     sources.forEach((s, idx) => {
@@ -287,6 +305,9 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
         linkCount: 0,
         dateStr: s.created_at ? new Date(s.created_at).toLocaleDateString() : 'Recent',
         rawSource: s,
+        extract_knowledge: s.extract_knowledge !== false,
+        extraction_status: statusMap.get(s.id)?.status || (s.processing_status === 'COMPLETED' ? 'extracted' : s.processing_status === 'FAILED' ? 'failed' : s.extract_knowledge !== false ? 'pending' : 'ineligible'),
+        extraction_error: statusMap.get(s.id)?.error || s.error_message,
       });
     });
 
@@ -317,11 +338,14 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
         linkCount: 0,
         dateStr: n.updated_at ? new Date(n.updated_at).toLocaleDateString() : 'Recent',
         rawNote: n,
+        extract_knowledge: n.extract_knowledge !== false,
+        extraction_status: statusMap.get(n.id)?.status || (n.extract_knowledge !== false ? 'pending' : 'ineligible'),
+        extraction_error: statusMap.get(n.id)?.error,
       });
     });
 
     return list;
-  }, [sources, notes, noteClusterMap]);
+  }, [sources, notes, noteClusterMap, extractionStatus]);
 
   // Active topic label lookup
   const activeTopicLabel = useMemo(() => {
@@ -500,6 +524,35 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
       const msg = err instanceof Error ? err.message : 'Could not reach backend';
       setActionFeedback(`Extraction failed: ${msg}`);
       setIsExtracting(false);
+    }
+  };
+
+  
+  const handleToggleExtractKnowledge = async () => {
+    if (!selectedItem || isUpdatingExtractSetting) return;
+    const currentVal = selectedItem.extract_knowledge !== false;
+    const nextVal = !currentVal;
+    setIsUpdatingExtractSetting(true);
+    try {
+      if (selectedItem.type === 'note') {
+        await updateNote(selectedItem.id, { extract_knowledge: nextVal });
+        setNotes((prev) =>
+          prev.map((n) => (n.id === selectedItem.id ? { ...n, extract_knowledge: nextVal } : n))
+        );
+      } else {
+        await updateSource(selectedItem.id, { extract_knowledge: nextVal });
+        setSources((prev) =>
+          prev.map((s) => (s.id === selectedItem.id ? { ...s, extract_knowledge: nextVal } : s))
+        );
+      }
+      if (workspaceId) {
+        const updatedStatus = await getExtractionStatus(workspaceId);
+        setExtractionStatus(updatedStatus);
+      }
+    } catch (err: unknown) {
+      console.error('Failed toggling extract_knowledge setting:', err);
+    } finally {
+      setIsUpdatingExtractSetting(false);
     }
   };
 
@@ -1177,7 +1230,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
             } flex flex-col h-full min-h-0 gap-3 transition-all duration-300`}
           >
             {/* Filter & Search Toolbar */}
-            <div className="shrink-0 instrument-panel p-3 flex flex-col gap-2">
+            <div className="shrink-0 instrument-panel p-3 flex flex-col gap-2 relative z-20">
               <div className="flex items-center justify-between gap-3">
                 {/* Search Input */}
                 <div className="relative flex-1 max-w-md">
@@ -1192,6 +1245,92 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {/* Concept Extraction Telemetry Badge & Breakdown */}
+                  {extractionStatus && (
+                    <div className="relative z-30">
+                      <button
+                        type="button"
+                        data-testid="extraction-status-badge"
+                        onClick={() => setIsExtractionDetailsOpen((prev) => !prev)}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-[var(--border-parchment)] hover:border-[var(--border-strong)] shadow-2xs text-xs transition-all cursor-pointer"
+                        title="Click to view extraction status breakdown"
+                      >
+                        <span className="w-2 h-2 rounded-full bg-[var(--accent-terracotta)] animate-pulse shrink-0" />
+                        <span className="font-semibold mono text-[var(--ink-primary)]">
+                          {extractionStatus.summary}
+                        </span>
+                        <i className="ph ph-info text-xs text-[var(--ink-secondary)]" />
+                      </button>
+
+                      {isExtractionDetailsOpen && (
+                        <div className="absolute right-0 top-full mt-2 w-72 p-3.5 bg-white rounded-xl shadow-lg border border-[var(--border-parchment)] z-50 text-xs text-[var(--ink-primary)]">
+                          <div className="flex items-center justify-between pb-2 border-b border-[var(--border-parchment)] mb-2.5">
+                            <span className="font-semibold text-xs text-[var(--ink-primary)]">
+                              Extraction Status Telemetry
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setIsExtractionDetailsOpen(false)}
+                              className="text-[var(--ink-tertiary)] hover:text-[var(--ink-primary)] font-bold text-xs cursor-pointer"
+                            >
+                              ×
+                            </button>
+                          </div>
+
+                          <div className="mb-3">
+                            <div className="flex justify-between text-[11px] text-[var(--ink-secondary)] mb-1">
+                              <span>Overall Progress</span>
+                              <span className="mono font-semibold text-[var(--accent-terracotta)]">{extractionStatus.summary}</span>
+                            </div>
+                            <div className="w-full h-2 bg-black/5 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-[var(--accent-terracotta)] transition-all duration-300"
+                                style={{
+                                  width: `${Math.min(100, Math.round((extractionStatus.extracted_count / (extractionStatus.eligible_count || 1)) * 100))}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5 text-[11px]">
+                            <div className="flex justify-between py-1 border-b border-black/5">
+                              <span className="text-[var(--ink-secondary)]">Extracted (Eligible):</span>
+                              <span className="mono font-semibold text-emerald-700">{extractionStatus.extracted_count} items</span>
+                            </div>
+                            <div className="flex justify-between py-1 border-b border-black/5">
+                              <span className="text-[var(--ink-secondary)]">Pending Extraction:</span>
+                              <span className="mono font-semibold text-amber-700">{extractionStatus.pending_count} items</span>
+                            </div>
+                            <div className="flex justify-between py-1 border-b border-black/5">
+                              <span className="text-[var(--ink-secondary)]">Extraction Failed:</span>
+                              <span className="mono font-semibold text-red-700">{extractionStatus.failed_count} items</span>
+                            </div>
+                            <div className="flex justify-between py-1">
+                              <span className="text-[var(--ink-secondary)]">Ineligible (Disabled):</span>
+                              <span className="mono font-semibold text-gray-500">{extractionStatus.ineligible_count} items</span>
+                            </div>
+                          </div>
+
+                          {extractionStatus.failed_count > 0 && (
+                            <div className="mt-2.5 pt-2 border-t border-[var(--border-parchment)]">
+                              <span className="text-[10px] font-semibold uppercase mono text-red-700 block mb-1">
+                                Failed Items & Explanations:
+                              </span>
+                              <div className="max-h-24 overflow-y-auto space-y-1 hyades-scroll">
+                                {extractionStatus.items.filter((it) => it.status === 'failed').map((it) => (
+                                  <div key={it.id} className="p-1.5 bg-red-50/80 rounded border border-red-200 text-[10px]">
+                                    <span className="font-semibold block truncate text-red-900">{it.title}</span>
+                                    <span className="text-red-700 block text-[9px] leading-tight">{it.error_message || 'Extraction parsing error'}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <span className="mono text-[11px] text-[var(--ink-tertiary)]">
                     {filteredItems.length} {filteredItems.length === 1 ? 'item' : 'items'}
                   </span>
@@ -1566,6 +1705,73 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                   ) : (
                     <div className="text-xs text-[var(--ink-tertiary)] italic py-1">
                       No connected concepts recorded in the graph for this item.
+                    </div>
+                  )}
+                </div>
+
+                {/* Extract Knowledge Toggle & Status Card */}
+                <div className="mb-5 p-3.5 rounded-xl bg-white border border-[var(--border-parchment)] shadow-2xs">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <i className="ph-bold ph-brain text-xs text-[var(--accent-terracotta)]" />
+                        <span className="text-xs font-semibold text-[var(--ink-primary)]">
+                          Extract Knowledge
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--ink-secondary)] mt-0.5 leading-snug">
+                        Enable concept and relation extraction for this item during graph indexing.
+                      </p>
+                    </div>
+
+                    {/* Toggle Switch */}
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={selectedItem.extract_knowledge !== false}
+                      data-testid="extract-knowledge-toggle"
+                      disabled={isUpdatingExtractSetting}
+                      onClick={handleToggleExtractKnowledge}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] ${
+                        selectedItem.extract_knowledge !== false
+                          ? 'bg-[var(--accent-terracotta)]'
+                          : 'bg-black/20'
+                      } ${isUpdatingExtractSetting ? 'opacity-50 cursor-wait' : ''}`}
+                      title={selectedItem.extract_knowledge !== false ? 'Disable Knowledge Extraction' : 'Enable Knowledge Extraction'}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                          selectedItem.extract_knowledge !== false ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Current Concept Extraction Status */}
+                  <div className="mt-3 pt-2.5 border-t border-[var(--border-parchment)] flex items-center justify-between text-[11px]">
+                    <span className="text-[var(--ink-tertiary)] mono uppercase text-[9px] tracking-wider font-semibold">
+                      Extraction Status
+                    </span>
+                    <span
+                      data-testid="item-extraction-status"
+                      className={`px-2 py-0.5 rounded font-mono text-[10px] uppercase font-semibold border ${
+                        selectedItem.extraction_status === 'extracted'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : selectedItem.extraction_status === 'failed'
+                          ? 'bg-red-50 text-red-800 border-red-200'
+                          : selectedItem.extraction_status === 'ineligible'
+                          ? 'bg-gray-100 text-gray-700 border-gray-300'
+                          : 'bg-amber-50 text-amber-800 border-amber-200'
+                      }`}
+                    >
+                      {selectedItem.extraction_status || 'Pending'}
+                    </span>
+                  </div>
+
+                  {selectedItem.extraction_status === 'failed' && selectedItem.extraction_error && (
+                    <div className="mt-2 p-2 rounded bg-red-50/80 border border-red-200 text-red-700 text-[11px] leading-tight flex items-start gap-1.5">
+                      <i className="ph-bold ph-warning-circle text-xs shrink-0 mt-0.5" />
+                      <span>{selectedItem.extraction_error}</span>
                     </div>
                   )}
                 </div>

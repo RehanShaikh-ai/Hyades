@@ -154,3 +154,34 @@ class NoteGraphResponse(BaseModel):
     nodes: list[GraphNode] = Field(default_factory=list)
     edges: list[GraphEdge] = Field(default_factory=list)
     stats: GraphStats
+
+
+class ExtractionStatusItem(BaseModel):
+    id: uuid.UUID
+    type: str
+    title: str
+    extract_knowledge: bool
+    status: str
+    error_message: str | None = None
+
+
+class ExtractionCategorySummary(BaseModel):
+    total: int
+    eligible: int
+    extracted: int
+    pending: int
+    failed: int
+    ineligible: int
+
+
+class ExtractionStatusResponse(BaseModel):
+    total_items: int
+    eligible_count: int
+    extracted_count: int
+    pending_count: int
+    failed_count: int
+    ineligible_count: int
+    summary: str
+    notes: ExtractionCategorySummary
+    sources: ExtractionCategorySummary
+    items: list[ExtractionStatusItem]

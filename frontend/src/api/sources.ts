@@ -113,3 +113,11 @@ export interface SourceDocumentPreview {
 export async function getSourcePreview(sourceId: string): Promise<SourceDocumentPreview> {
   return apiClient.get<SourceDocumentPreview>(`/sources/${sourceId}/preview`);
 }
+
+
+export async function updateSource(
+  sourceId: string,
+  updates: { title?: string; extract_knowledge?: boolean }
+): Promise<Source> {
+  return apiClient.patch<Source>(`/sources/${sourceId}`, updates);
+}

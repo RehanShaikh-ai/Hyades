@@ -6,7 +6,7 @@ Canonical endpoints per contract §7 (v0.2.2) and CONTRACT v0.4.1 §10.1.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, HTTPException, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -16,9 +16,11 @@ from app.schemas.source import (
     SourceListResponse,
     SourceNoteLink,
     SourcePreviewResponse,
+    SourceUpdate,
     SourceResponse,
     SourceDocumentPreviewResponse,
 )
+from app.models.source import Source
 from app.services import source_service
 
 router = APIRouter(tags=["sources"])
@@ -216,4 +218,29 @@ async def upload_source_root(
         content_type=file.content_type,
         review_mode=review_mode,
     )
+    return SourceResponse.model_validate(source)
+
+
+@router.patch("/sources/{source_id}", response_model=SourceResponse)
+def update_source(
+    source_id: uuid.UUID,
+    payload: SourceUpdate,
+    db: Annotated[Session, Depends(get_db)],
+) -> SourceResponse:
+    """Update editable source fields (title, extract_knowledge setting)."""
+    source = db.query(Source).filter(Source.id == source_id).first()
+    if not source:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        if field == "extract_knowledge":
+            source.extract_knowledge = value
+        elif field == "title":
+            meta = dict(source.raw_metadata or {})
+            meta["title"] = value
+            source.raw_metadata = meta
+
+    db.commit()
+    db.refresh(source)
     return SourceResponse.model_validate(source)

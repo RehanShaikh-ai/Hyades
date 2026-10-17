@@ -38,6 +38,7 @@ export interface Source {
   chunk_count?: number | null;
   error_stage?: string | null;
   error_message?: string | null;
+  extract_knowledge?: boolean;
   raw_metadata?: Record<string, unknown> | null;
   extracted_text?: string | null;
   linked_notes?: LinkedNote[];

@@ -43,6 +43,15 @@ def index_note_graph(db: Session, note_id: uuid.UUID) -> dict[str, Any]:
     if not note:
         raise NoteNotFoundError("Note not found.")
 
+    if not getattr(note, "extract_knowledge", True):
+        return {
+            "status": "skipped",
+            "reason": "extract_knowledge is disabled for this note",
+            "entities_extracted": 0,
+            "relationships_extracted": 0,
+            "failed_steps": [],
+        }
+
     entities: list[GraphEntity] = []
     relationships: list[GraphRelationship] = []
     failed_steps: list[str] = []
@@ -129,11 +138,19 @@ def extract_workspace_graph(
     if note_ids:
         target_ids = [uuid.UUID(str(nid)) for nid in note_ids]
         notes = db.scalars(
-            select(Note).where(Note.workspace_id == workspace_id, Note.id.in_(target_ids))
+            select(Note).where(
+                Note.workspace_id == workspace_id,
+                Note.id.in_(target_ids),
+                Note.extract_knowledge.is_(True),
+            )
         ).all()
     else:
         notes = db.scalars(
-            select(Note).where(Note.workspace_id == workspace_id, Note.is_archived.is_(False))
+            select(Note).where(
+                Note.workspace_id == workspace_id,
+                Note.is_archived.is_(False),
+                Note.extract_knowledge.is_(True),
+            )
         ).all()
 
     total_notes = len(notes)
