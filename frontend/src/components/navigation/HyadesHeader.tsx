@@ -489,8 +489,8 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             type="button"
             onClick={onOpenAccountModal}
             data-testid="profile-bottom-left-btn"
-            title="Account & Workspace Setup"
-            aria-label="Account & Workspace Setup"
+            title="Account & Setup"
+            aria-label="Account & Setup"
             className="w-7 h-7 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] flex items-center justify-center font-serif text-[10px] font-semibold hover:bg-[var(--accent-midnight-light)] transition-colors shadow-2xs border border-[#2D3F5E] cursor-pointer"
           >
             RS

@@ -36,6 +36,18 @@ vi.mock('@/api/graph', () => ({
 vi.mock('@/api/graph_index', () => ({
   triggerExtraction: vi.fn(),
   triggerReindex: vi.fn(),
+  getExtractionStatus: vi.fn().mockResolvedValue({
+    total_eligible: 3,
+    extracted_count: 2,
+    pending_count: 1,
+    failed_count: 0,
+    ineligible_count: 0,
+    categories: {
+      notes: { total: 2, extracted: 2, pending: 0, failed: 0, ineligible: 0 },
+      sources: { total: 1, extracted: 0, pending: 1, failed: 0, ineligible: 0 },
+    },
+    items: [],
+  }),
 }));
 
 vi.mock('@/api/jobs', () => ({
