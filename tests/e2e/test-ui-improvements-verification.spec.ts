@@ -7,8 +7,8 @@ test.describe('Hyades UI & Knowledge Extraction Improvements Verification', () =
     await page.waitForTimeout(1500);
 
     // Left controls segment
-    const addEntityBtn = page.getByRole('button', { name: /\+ Entity/i });
-    const connectBtn = page.getByTitle('Connect Two Entities (C)');
+    const addEntityBtn = page.getByTestId('add-entity-btn');
+    const connectBtn = page.getByTestId('connect-entities-btn');
     const savedViewsBtn = page.getByRole('button', { name: /Saved Views/i });
 
     await expect(addEntityBtn).toBeVisible();

@@ -706,12 +706,18 @@ html.vt-enabled .page-transition {
 .focused-view #reopen-left-sidebar,
 .focused-view #reopen-right-sidebar,
 .focused-view #search-bar-container,
-.focused-view header,
+.focused-view .hyades-header,
 .focused-view .observatory-profile-tab {
   opacity: 0 !important;
   pointer-events: none !important;
   transform: translateY(-12px) !important;
   transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+#observatory-command-bar {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: none !important;
 }
 .focused-view #graph-controls {
   right: 24px !important;

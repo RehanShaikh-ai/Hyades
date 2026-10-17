@@ -775,6 +775,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   onToggleFullscreen,
   onOpenSearch,
 }) => {
+  void onOpenSearch;
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null);
   const graticuleRef = useRef<SVGSVGElement>(null);
@@ -833,6 +834,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   const [filterConcepts, setFilterConcepts] = useState(true);
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null);
 
+
+
   // Focus node, hover & search state
   const [selectedNode, setSelectedNode] = useState<CelestialNode | null>(null);
   const [isSavedViewsModalOpen, setIsSavedViewsModalOpen] = useState(false);
@@ -840,6 +843,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   useEffect(() => {
     selectedNodeRef.current = selectedNode;
   }, [selectedNode]);
+
+
 
   const [hoveredNode, setHoveredNode] = useState<CelestialNode | null>(null);
   const hoveredNodeRef = useRef<CelestialNode | null>(null);
@@ -1158,6 +1163,45 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     return { celestialNodes: nodes, celestialLinks: links };
   }, [graphData, clusters, workspaceId, containerDimensions]);
 
+  // Helper to determine if a node is visible under active filters
+  const isNodeVisible = useCallback(
+    (n: CelestialNode, hubs: boolean, concepts: boolean, clusterId: string | null) => {
+      if (!hubs && n.hierarchy === 'core') return false;
+      if (!concepts && n.hierarchy !== 'core') return false;
+      if (clusterId && n.clusterId !== clusterId && n.clusterKey !== clusterId) {
+        return false;
+      }
+      return true;
+    },
+    []
+  );
+
+  // Canonical memoized visible nodes across the entire Observatory
+  const visibleNodes = useMemo(() => {
+    return celestialNodes.filter((n) =>
+      isNodeVisible(n, filterHubs, filterConcepts, selectedClusterId)
+    );
+  }, [celestialNodes, filterHubs, filterConcepts, selectedClusterId, isNodeVisible]);
+
+  const visibleNodeIds = useMemo(() => {
+    return new Set(visibleNodes.map((n) => n.id));
+  }, [visibleNodes]);
+
+  // Automatically deselect node if it becomes filtered out
+  useEffect(() => {
+    if (selectedNode && !visibleNodeIds.has(selectedNode.id)) {
+      setSelectedNode(null);
+    }
+  }, [visibleNodeIds, selectedNode]);
+
+  const visibleLinks = useMemo(() => {
+    return celestialLinks.filter((l) => {
+      const sId = typeof l.source === 'string' ? l.source : (l.source as any).id;
+      const tId = typeof l.target === 'string' ? l.target : (l.target as any).id;
+      return visibleNodeIds.has(sId) && visibleNodeIds.has(tId);
+    });
+  }, [celestialLinks, visibleNodeIds]);
+
   // Keep nodePositionsRef synchronized with stored coordinates
   useEffect(() => {
     if (workspaceId) {
@@ -1241,18 +1285,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     const width = containerRef.current.clientWidth || window.innerWidth;
     const height = containerRef.current.clientHeight || window.innerHeight;
 
-    const visibleNodes = celestialNodes.filter((n) => {
-      if (!filterHubs && n.hierarchy === 'core') return false;
-      if (!filterConcepts && n.hierarchy !== 'core') return false;
-      if (
-        selectedClusterId &&
-        n.clusterId !== selectedClusterId &&
-        n.clusterKey !== selectedClusterId
-      ) {
-        return false;
-      }
-      return true;
-    });
+// Uses top-level visibleNodes
 
     const positions: Array<{ x: number; y: number }> = [];
     visibleNodes.forEach((n) => {
@@ -1596,20 +1629,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     const width = containerRef.current.clientWidth || window.innerWidth;
     const height = containerRef.current.clientHeight || window.innerHeight;
 
-    // Filter nodes based on user toggle
-    const filteredNodes: CelestialNode[] = celestialNodes.filter((n) => {
-      if (!filterHubs && n.hierarchy === 'core') return false;
-      if (!filterConcepts && n.hierarchy !== 'core') return false;
-      if (selectedClusterId && n.catalog !== selectedClusterId) return false;
-      return true;
-    });
-
-    const activeNodeIds = new Set(filteredNodes.map((n) => n.id));
-    const filteredLinks: CelestialLink[] = celestialLinks.filter(
-      (l) =>
-        activeNodeIds.has(typeof l.source === 'string' ? l.source : (l.source as any).id) &&
-        activeNodeIds.has(typeof l.target === 'string' ? l.target : (l.target as any).id)
-    );
+    // Render active visible nodes based on active filters and constellation
+    const filteredNodes: CelestialNode[] = visibleNodes;
+    const filteredLinks: CelestialLink[] = visibleLinks;
 
     const svg = d3
       .select(containerRef.current)
@@ -2265,11 +2287,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       }
     };
   }, [
-    celestialNodes,
-    celestialLinks,
-    filterHubs,
-    filterConcepts,
-    selectedClusterId,
+    visibleNodes,
+    visibleLinks,
     renderCelestialGraticule,
     workspaceId,
   ]);
@@ -2427,7 +2446,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
   // Search candidate ranking (Exact > Prefix > Word-prefix > Substring > Catalog) (§2)
   const searchCandidates = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q || celestialNodes.length === 0) return [];
+    if (!q || visibleNodes.length === 0) return [];
 
     interface ScoredCandidate {
       node: CelestialNode;
@@ -2437,7 +2456,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
     const scored: ScoredCandidate[] = [];
 
-    celestialNodes.forEach((n) => {
+    visibleNodes.forEach((n) => {
       const labelLower = n.label.toLowerCase();
       let score = 0;
       let matchType: ScoredCandidate['matchType'] = 'substring';
@@ -2470,7 +2489,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, 6).map((s) => s.node);
-  }, [searchQuery, celestialNodes]);
+  }, [searchQuery, visibleNodes]);
 
   // Search commit: center camera on target node WITHOUT recreating simulation (§2)
   const handleSearchCommit = (targetNode?: CelestialNode) => {
@@ -2516,7 +2535,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       isSelected: boolean;
     }> = [];
 
-    celestialNodes.forEach((n) => {
+    visibleNodes.forEach((n) => {
       const x = n.x;
       const y = n.y;
       if (x !== undefined && y !== undefined && !isNaN(x) && !isNaN(y)) {
@@ -2618,7 +2637,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       clusters: clusterCentroids,
       selectedPoint,
     };
-  }, [celestialNodes, selectedNode, currentTransform, isMinimapExpanded, clusters, containerDimensions]);
+  }, [visibleNodes, selectedNode, currentTransform, isMinimapExpanded, clusters, containerDimensions]);
 
   const handleMiniMapClick = useCallback(
     (clickX: number, clickY: number, width: number, height: number) => {
@@ -2644,10 +2663,193 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
   return (
     <div
-      className={`h-screen w-full relative text-[13px] leading-relaxed select-none overflow-hidden ${
+      className={`h-full w-full relative flex flex-col text-[13px] leading-relaxed select-none overflow-hidden ${
         isFullscreen ? 'focused-view' : ''
       }`}
     >
+      {/* ================= TOP OBSERVATORY COMMAND BAR ================= */}
+      <header id="observatory-command-bar" className="h-12 w-full shrink-0 z-30 bg-[#FAF8F2]/95 backdrop-blur-md border-b border-[var(--border-parchment)] px-4 flex items-center justify-between gap-4 select-none pointer-events-auto">
+        {/* Left Toolbar Area: Constellations Shelf Toggle & Graph Actions */}
+        <div className="flex items-center gap-3">
+          {/* Constellations Shelf Toggle Column matching sidebar width */}
+          <div className="w-[288px] flex items-center justify-between shrink-0">
+            <button
+              type="button"
+              data-testid="toggle-constellations-shelf"
+              onClick={() => setIsLeftSidebarOpen((prev) => !prev)}
+              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
+                isLeftSidebarOpen
+                  ? 'bg-[var(--bg-panel-subtle)] border-[var(--border-strong)] text-[var(--ink-primary)]'
+                  : 'bg-white hover:bg-[var(--bg-panel-subtle)] border-[var(--border-parchment)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)]'
+              }`}
+              title={isLeftSidebarOpen ? "Collapse Constellations Shelf" : "Expand Constellations Shelf"}
+              aria-label="Toggle Constellations Sidebar"
+            >
+              <i className="ph ph-compass text-sm text-[var(--accent-terracotta)]" />
+              <span className="serif font-semibold">Constellations</span>
+              <span className="text-[10px] mono px-1.5 py-0.5 rounded-full bg-black/5 text-[var(--ink-secondary)] font-normal">
+                {clusters.length || celestialNodes.length}
+              </span>
+            </button>
+            <div className="w-px h-5 bg-[var(--border-parchment)] mx-2" />
+          </div>
+
+          {/* Creation & Action Toolbar: Add Entity & Connect */}
+          <div className="flex items-center gap-2" role="toolbar" aria-label="Observatory Actions">
+            <button
+              type="button"
+              onClick={() => setIsEntityEditorOpen(true)}
+              data-testid="add-entity-btn"
+              className="px-3 py-1.5 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
+              title="Add Entity to Knowledge Sky (A)"
+              aria-label="Add Entity"
+            >
+              <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
+              <span>+ Entity</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsRelationshipEditorOpen(true)}
+              data-testid="connect-entities-btn"
+              className="px-3 py-1.5 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
+              title="Connect Two Entities (C)"
+              aria-label="Connect Two Entities"
+            >
+              <i className="ph ph-arrows-split text-xs text-[var(--accent-terracotta)]" />
+              <span>Connect</span>
+            </button>
+
+            {/* Overflow Menu */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsMoreMenuOpen((prev) => !prev)}
+                className="w-7 h-7 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+                title="More Graph Actions"
+                aria-label="More Graph Actions"
+              >
+                <i className="ph-bold ph-dots-three-vertical text-xs" />
+              </button>
+
+              {isMoreMenuOpen && (
+                <div className="absolute left-0 mt-2 w-48 bg-white border border-[var(--border-strong)] rounded-xl shadow-lg py-1.5 z-50 text-xs animate-fade-in select-none">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleUntangle();
+                      setIsMoreMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
+                  >
+                    <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
+                    <span>Untangle / Organize (U)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSuggestionsOpen(true);
+                      setIsMoreMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
+                  >
+                    <i className="ph ph-sparkle text-xs text-[var(--accent-terracotta)]" />
+                    <span>Link Suggestions</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAtlasPlate((p) => !p);
+                      setIsMoreMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
+                  >
+                    <i className="ph ph-newspaper text-xs text-[var(--accent-midnight)]" />
+                    <span>{showAtlasPlate ? "Hide Atlas Plate" : "Show Atlas Plate"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowGraticule((p) => !p);
+                      setIsMoreMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
+                  >
+                    <i className="ph ph-grid-four text-xs text-[var(--accent-brass)]" />
+                    <span>{showGraticule ? "Hide Coordinates" : "Show Coordinates"}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Center Area: Focused Coordinate HUD */}
+        <div className="hidden md:flex items-center justify-center max-w-md truncate">
+          {selectedNode ? (
+            <div className="bg-white/80 border border-[var(--border-parchment)] shadow-2xs rounded-full px-3.5 py-1 flex items-center gap-2.5 truncate">
+              <div
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  selectedNode.hierarchy === "core"
+                    ? "bg-[var(--accent-terracotta)] animate-pulse"
+                    : selectedNode.hierarchy === "subtopic"
+                    ? "bg-[var(--accent-brass)]"
+                    : "bg-[var(--accent-midnight)]"
+                }`}
+              />
+              <span className="serif text-xs font-semibold text-[var(--ink-primary)] leading-none truncate max-w-[170px]">
+                {selectedNode.label}
+              </span>
+              <span className="w-px h-2.5 bg-[var(--border-parchment)] shrink-0" />
+              <span className="mono text-[10px] text-[var(--ink-tertiary)] shrink-0">
+                {selectedNode.coords}
+              </span>
+              <span className="mono text-[9px] text-[var(--accent-midnight)] bg-[var(--bg-panel-subtle)] px-1.5 py-0.5 rounded-full border border-[var(--border-parchment)] font-medium shrink-0">
+                {selectedNode.catalog}
+              </span>
+            </div>
+          ) : (
+            <div className="text-xs text-[var(--ink-tertiary)] mono px-3 py-1 rounded-full bg-black/[0.02] truncate">
+              Click a star to focus coordinates · Drag canvas to chart
+            </div>
+          )}
+        </div>
+
+        {/* Right Toolbar Area: Saved Views & Focus / Fullscreen in separate area */}
+        <div className="flex items-center gap-2 shrink-0" role="toolbar" aria-label="Observatory View Controls">
+          <button
+            type="button"
+            onClick={() => setIsSavedViewsModalOpen(true)}
+            data-testid="saved-views-btn"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-xs font-medium text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] shadow-2xs transition-all cursor-pointer"
+            title="Saved Observatory Views"
+            aria-label="Saved Views"
+          >
+            <i className="ph ph-bookmarks text-xs text-[var(--accent-terracotta)]" />
+            <span>Saved Views</span>
+          </button>
+
+          {onToggleFullscreen && (
+            <button
+              type="button"
+              onClick={onToggleFullscreen}
+              data-testid="fullscreen-btn"
+              className="w-8 h-8 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center shadow-2xs transition-all cursor-pointer"
+              title={isFullscreen ? "Exit Fullscreen Focus (Shift+F)" : "Enter Fullscreen Focus (Shift+F)"}
+              aria-label={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen Focus"}
+            >
+              <i
+                className={`ph-bold ${
+                  isFullscreen ? "ph-arrows-in" : "ph-arrows-out"
+                } text-xs text-[var(--accent-terracotta)]`}
+              />
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* Main Map Viewport below header */}
+      <div className="flex-1 min-h-0 w-full relative overflow-hidden">
       {/* Archival paper grain texture */}
       <div className="paper-grain" />
 
@@ -2690,163 +2892,33 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         </div>
       )}
 
-      {/* ================= OBSERVATORY CONTEXTUAL ACTION TOOLBAR ================= */}
-      {/* SEGMENT 1 (LEFT): Real Graph Actions — positioned to never overlap left sidebar or edge tab */}
-      <div
-        className={`absolute ${isFullscreen ? "top-4" : "top-18"} transition-all duration-300 z-30 pointer-events-auto flex items-center gap-2 bg-[#FAF8F2]/95 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-3 py-1.5 select-none ${
-          isLeftSidebarOpen ? 'left-[310px]' : 'left-36'
-        }`}
-      >
-        {/* Action: + Entity */}
-        <button
-          type="button"
-          onClick={() => setIsEntityEditorOpen(true)}
-          className="px-2.5 py-1 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer"
-          title="Add Entity to Knowledge Sky (A)"
-        >
-          <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
-          <span>+ Entity</span>
-        </button>
-
-        {/* Action: Connect */}
-        <button
-          type="button"
-          onClick={() => setIsRelationshipEditorOpen(true)}
-          className="px-2.5 py-1 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1 shadow-2xs transition-all active:scale-95 cursor-pointer"
-          title="Connect Two Entities (C)"
-        >
-          <i className="ph ph-arrows-split text-xs text-[var(--accent-terracotta)]" />
-          <span>Connect</span>
-        </button>
-
-        {/* Compact More Menu */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setIsMoreMenuOpen((prev) => !prev)}
-            className="w-6 h-6 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
-            title="More Graph Actions"
-          >
-            <i className="ph-bold ph-dots-three-vertical text-xs" />
-          </button>
-
-          {isMoreMenuOpen && (
-            <div className="absolute left-0 mt-2 w-48 bg-white border border-[var(--border-strong)] rounded-xl shadow-lg py-1.5 z-50 text-xs animate-fade-in select-none">
-              <button
-                type="button"
-                onClick={() => {
-                  handleUntangle();
-                  setIsMoreMenuOpen(false);
-                }}
-                className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-              >
-                <i className="ph-bold ph-magic-wand text-xs text-[var(--accent-terracotta)]" />
-                <span>Untangle / Organize (U)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSuggestionsOpen(true);
-                  setIsMoreMenuOpen(false);
-                }}
-                className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-              >
-                <i className="ph ph-sparkle text-xs text-[var(--accent-terracotta)]" />
-                <span>Link Suggestions</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAtlasPlate((p) => !p);
-                  setIsMoreMenuOpen(false);
-                }}
-                className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-              >
-                <i className="ph ph-newspaper text-xs text-[var(--accent-midnight)]" />
-                <span>{showAtlasPlate ? "Hide Atlas Plate" : "Show Atlas Plate"}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowGraticule((p) => !p);
-                  setIsMoreMenuOpen(false);
-                }}
-                className="w-full text-left px-3 py-1.5 hover:bg-[var(--bg-panel-subtle)] flex items-center gap-2 text-[var(--ink-primary)] cursor-pointer"
-              >
-                <i className="ph ph-grid-four text-xs text-[var(--accent-brass)]" />
-                <span>{showGraticule ? "Hide Coordinates" : "Show Coordinates"}</span>
-              </button>
+      {/* Empty State when all concepts are hidden by active filters */}
+      {!isLoading && celestialNodes.length > 0 && visibleNodes.length === 0 && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-15 pointer-events-auto bg-[#FAF8F2]/60 backdrop-blur-xs select-none">
+          <div className="instrument-panel max-w-sm p-6 text-center flex flex-col items-center gap-3 bg-white/95 shadow-lg border border-[var(--border-parchment)] rounded-xl">
+            <div className="w-12 h-12 rounded-full bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[var(--accent-terracotta)] text-xl mb-1">
+              <i className="ph ph-funnel-simple-x" />
             </div>
-          )}
+            <h3 className="serif text-xl font-semibold text-[var(--ink-primary)]">
+              No Concepts Match Active Filters
+            </h3>
+            <p className="text-xs text-[var(--ink-secondary)] leading-relaxed">
+              All concepts have been hidden by the active constellation filter settings.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setFilterHubs(true);
+                setFilterConcepts(true);
+                setSelectedClusterId(null);
+              }}
+              className="mt-1 px-4 py-1.5 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium transition-all shadow-2xs cursor-pointer active:scale-95"
+            >
+              Reset Filters
+            </button>
+          </div>
         </div>
-      </div>
-
-      {/* SEGMENT 2 (CENTER): Compact Focused Coordinate HUD Capsule — centered */}
-      <div className={`absolute ${isFullscreen ? "top-4" : "top-18"} left-1/2 -translate-x-1/2 z-30 hidden lg:flex items-center pointer-events-auto select-none transition-all duration-300`}>
-        {selectedNode ? (
-          <div className="bg-[#FAF8F2]/90 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-3.5 py-1.5 flex items-center gap-2.5">
-            <div
-              className={`w-2 h-2 rounded-full ${
-                selectedNode.hierarchy === "core"
-                  ? "bg-[var(--accent-terracotta)] animate-pulse"
-                  : selectedNode.hierarchy === "subtopic"
-                  ? "bg-[var(--accent-brass)]"
-                  : "bg-[var(--accent-midnight)]"
-              }`}
-            />
-            <span className="serif text-xs font-semibold text-[var(--ink-primary)] leading-none max-w-[170px] truncate">
-              {selectedNode.label}
-            </span>
-            <span className="w-px h-2.5 bg-[var(--border-parchment)]" />
-            <span className="mono text-[10px] text-[var(--ink-tertiary)]">
-              {selectedNode.coords}
-            </span>
-            <span className="mono text-[9px] text-[var(--accent-midnight)] bg-white px-1.5 py-0.5 rounded-full border border-[var(--border-parchment)] font-medium">
-              {selectedNode.catalog}
-            </span>
-          </div>
-        ) : (
-          <div className="bg-[#FAF8F2]/80 backdrop-blur-md border border-[var(--border-parchment)] rounded-full px-3 py-1 text-xs text-[var(--ink-tertiary)] mono">
-            Click a star to focus coordinates
-          </div>
-        )}
-      </div>
-
-      {/* SEGMENT 3 (RIGHT): Saved Views & Fullscreen Controls — positioned to never overlap right detail panel */}
-      <div
-        className={`absolute ${isFullscreen ? "top-4" : "top-18"} transition-all duration-300 z-30 pointer-events-auto flex items-center gap-2 bg-[#FAF8F2]/95 backdrop-blur-md border border-[var(--border-parchment)] shadow-sm rounded-full px-2.5 py-1.5 select-none ${
-          isRightSidebarOpen && selectedNode
-            ? 'right-[420px]'
-            : selectedNode
-            ? 'right-[120px]'
-            : 'right-6'
-        }`}
-      >
-        <button
-          type="button"
-          onClick={() => setIsSavedViewsModalOpen(true)}
-          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full hover:bg-white text-xs font-medium text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer mr-1"
-          title="Saved Observatory Views"
-        >
-          <i className="ph ph-bookmarks text-xs text-[var(--accent-terracotta)]" />
-          <span>Saved Views</span>
-        </button>
-
-        {onToggleFullscreen && (
-          <button
-            type="button"
-            onClick={onToggleFullscreen}
-            className="w-6 h-6 rounded-full hover:bg-white text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] flex items-center justify-center transition-colors cursor-pointer"
-            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen / Focused View"}
-          >
-            <i
-              className={`ph-bold ${
-                isFullscreen ? "ph-corners-in" : "ph-corners-out"
-              } text-xs text-[var(--accent-terracotta)]`}
-            />
-          </button>
-        )}
-      </div>
+      )}
 
       {/* Honest Empty State when Workspace Graph is Empty */}
       {!isLoading && celestialNodes.length === 0 && (
@@ -2888,7 +2960,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
       {/* Persistent Reopen Left Edge Tab */}
       {!isLeftSidebarOpen && (
-        <div id="reopen-left-sidebar" className="fixed top-18 left-0 z-30 pointer-events-auto">
+        <div id="reopen-left-sidebar" className="absolute top-4 left-0 z-20 pointer-events-auto">
           <button
             type="button"
             onClick={() => setIsLeftSidebarOpen(true)}
@@ -2995,7 +3067,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                   {clusters.length > 0 ? (
                     clusters.map((cl) => {
                       const starCount = celestialNodes.filter(
-                        (n) => n.clusterId === cl.id || n.clusterKey === cl.id
+                        (n) =>
+                          (n.clusterId === cl.id || n.clusterKey === cl.id) &&
+                          isNodeVisible(n, filterHubs, filterConcepts, null)
                       ).length;
                       return (
                         <button
@@ -3141,10 +3215,11 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           type="button"
           onClick={handleFitView}
           data-testid="fit-view-btn"
-          className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer"
-          title="Fit View to Content (F)"
+          className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--ink-secondary)] hover:bg-[var(--bg-panel-subtle)] hover:text-[var(--accent-terracotta)] transition-colors cursor-pointer"
+          title="Fit to Content (F) - Fit all concepts into frame"
+          aria-label="Fit to Content"
         >
-          <i className="ph-bold ph-corners-out text-xs" />
+          <i className="ph-bold ph-frame-corners text-xs" />
         </button>
 
         <button
@@ -3377,7 +3452,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
               </span>
               <div className="flex items-center gap-2">
                 <span className="text-[9px] text-[var(--ink-tertiary)] mono">
-                  {celestialNodes.length}★
+                  {visibleNodes.length}★
                 </span>
                 <button
                   type="button"
@@ -3623,6 +3698,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         </div>
       </div>
 
+      </div>
+
       {/* Real Entity Editor Modal */}
       <EntityEditor
         workspaceId={workspaceId}
@@ -3661,14 +3738,36 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         workspaceId={workspaceId}
         currentState={{
           version: 1,
-          zoom: 1.0,
-          center: { x: 0.0, y: 0.0 },
-          filters: {},
+          zoom: currentTransform.k || 1.0,
+          center: { x: currentTransform.x || 0.0, y: currentTransform.y || 0.0 },
+          filters: {
+            filterHubs,
+            filterConcepts,
+            selectedClusterId,
+          },
           focus_entity_ids: selectedNode ? [selectedNode.id] : [],
         }}
-        onRestoreState={(restoredState) => {
-          if (restoredState.focus_entity_ids?.length && celestialNodes.length) {
-            const target = celestialNodes.find((n: CelestialNode) => restoredState.focus_entity_ids.includes(n.id));
+        onRestoreState={(restoredState, activeFocusIds) => {
+          if (restoredState.filters) {
+            if (typeof restoredState.filters.filterHubs === 'boolean') {
+              setFilterHubs(restoredState.filters.filterHubs);
+            }
+            if (typeof restoredState.filters.filterConcepts === 'boolean') {
+              setFilterConcepts(restoredState.filters.filterConcepts);
+            }
+            if (restoredState.filters.selectedClusterId !== undefined) {
+              setSelectedClusterId(restoredState.filters.selectedClusterId as string | null);
+            }
+          }
+          if (restoredState.zoom && restoredState.center && svgRef.current && zoomBehaviorRef.current) {
+            svgRef.current.transition().duration(600).call(
+              zoomBehaviorRef.current.transform,
+              d3.zoomIdentity.translate(restoredState.center.x, restoredState.center.y).scale(restoredState.zoom)
+            );
+          }
+          const focusId = activeFocusIds?.[0] || restoredState.focus_entity_ids?.[0];
+          if (focusId && celestialNodes.length) {
+            const target = celestialNodes.find((n: CelestialNode) => n.id === focusId);
             if (target) setSelectedNode(target);
           }
         }}
