@@ -1,11 +1,11 @@
 import React from 'react';
 import { SearchResultItem } from '@/types/search';
 import { ObservatoryTarget, StellaContext } from '@/types/navigation';
-import { FileText, Database, Zap, Hash } from 'lucide-react';
+import { FileText, Database, Zap, Hash, BookOpen, Network, Folder, MessageSquare } from 'lucide-react';
 
 interface SearchResultCardProps {
   result: SearchResultItem;
-  onClick: (noteId: string) => void;
+  onClick: (itemId: string) => void;
   onViewInObservatory?: (target: ObservatoryTarget) => void;
   onAskStella?: (context: StellaContext) => void;
 }
@@ -16,6 +16,36 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
   onViewInObservatory,
   onAskStella,
 }) => {
+  const itemType = result.item_type || 'note';
+  const targetId = result.item_id || result.note_id || result.entity_id || result.collection_id || result.thread_id || '';
+
+  const getItemIcon = () => {
+    switch (itemType) {
+      case 'source':
+        return <BookOpen size={15} className="text-[var(--accent-terracotta)] opacity-80 shrink-0" />;
+      case 'entity':
+        return <Network size={15} className="text-[var(--accent-brass)] opacity-80 shrink-0" />;
+      case 'collection':
+        return <Folder size={15} className="text-[var(--accent-midnight)] opacity-80 shrink-0" />;
+      case 'thread':
+        return <MessageSquare size={15} className="text-[var(--accent-terracotta)] opacity-80 shrink-0" />;
+      case 'note':
+      default:
+        return <FileText size={15} className="text-[var(--accent-midnight)] opacity-80 shrink-0" />;
+    }
+  };
+
+  const handleCardClick = () => {
+    if (itemType === 'entity' && onViewInObservatory) {
+      onViewInObservatory({
+        entityName: result.title,
+        entityId: result.entity_id || targetId,
+      });
+      return;
+    }
+    onClick(targetId);
+  };
+
   const formatScore = () => {
     const s = result.score;
     if (result.search_mode === 'semantic') {
@@ -59,17 +89,20 @@ export const SearchResultCard: React.FC<SearchResultCardProps> = ({
   return (
     <div
       className="card-surface p-3.5 rounded-xl border border-[var(--border-parchment)] bg-white hover:border-[var(--border-strong)] hover:shadow-2xs transition-all cursor-pointer group"
-      onClick={() => onClick(result.note_id)}
+      onClick={handleCardClick}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') onClick(result.note_id);
+        if (e.key === 'Enter') handleCardClick();
       }}
     >
       <div className="flex items-start justify-between mb-1.5">
         <div className="flex items-center gap-2 text-[var(--ink-primary)] font-semibold text-[14.5px] serif">
-          <FileText size={15} className="text-[var(--accent-midnight)] opacity-80" />
+          {getItemIcon()}
           <span className="group-hover:underline">{result.title}</span>
+          <span className="px-1.5 py-0.2 rounded bg-[var(--bg-panel-subtle)] text-[9.5px] font-mono uppercase tracking-wider text-[var(--ink-secondary)] border border-[var(--border-parchment)] font-medium">
+            {itemType}
+          </span>
         </div>
         <div
           className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-[10.5px] font-mono text-[var(--ink-secondary)] font-medium"

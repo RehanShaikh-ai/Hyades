@@ -22,9 +22,14 @@ class SearchRequest(BaseModel):
 class SearchResultItem(BaseModel):
     """Search result item per CONTRACT §9.2 and CONTRACT v0.4.1 §8."""
 
+    item_type: str = "note"  # note, source, entity, collection, thread
+    item_id: uuid.UUID | None = None
     note_id: uuid.UUID | None = None
     source_id: uuid.UUID | None = None
     chunk_id: uuid.UUID | None = None
+    entity_id: uuid.UUID | None = None
+    collection_id: uuid.UUID | None = None
+    thread_id: uuid.UUID | None = None
     title: str
     excerpt: str
     score: float
@@ -33,6 +38,7 @@ class SearchResultItem(BaseModel):
     is_archived: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
 
 
 class SearchResponse(BaseModel):

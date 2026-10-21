@@ -7,12 +7,15 @@ Provides search_semantic, search_lexical, search_hybrid.
 import logging
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import String, cast, or_, select
 from sqlalchemy.orm import Session
 
+from app.models.collection import Collection
 from app.models.content_chunk import ContentChunk
+from app.models.graph_entity import GraphEntity
 from app.models.note import Note
 from app.models.source import Source
+from app.models.thread import Thread
 from app.schemas.search import SearchResultItem
 from app.services import embedding_service, search_service, vector_service
 
@@ -91,6 +94,8 @@ def search_semantic(
 
             results.append(
                 SearchResultItem(
+                    item_type="note",
+                    item_id=note.id,
                     note_id=note.id,
                     source_id=None,
                     chunk_id=c_id,
@@ -129,6 +134,8 @@ def search_semantic(
             )
             results.append(
                 SearchResultItem(
+                    item_type="source",
+                    item_id=source.id,
                     note_id=None,
                     source_id=source.id,
                     chunk_id=c_id,
@@ -154,23 +161,28 @@ def search_lexical(
     limit: int = 10,
     include_archived: bool = False,
 ) -> list[SearchResultItem]:
-    """Lexical text search per CONTRACT §9.1, §9.2."""
+    """Lexical text search across Notes, Sources, Entities, Collections, and Threads."""
+    results: list[SearchResultItem] = []
+    normalized_query = query.strip()
+    if not normalized_query:
+        return []
+
+    # 1. Notes (Title, Content, Tags)
     notes, _ = search_service.search_notes(
         db,
         workspace_id,
-        query=query,
+        query=normalized_query,
         page=1,
         page_size=limit,
     )
-
-    results: list[SearchResultItem] = []
     for rank, note in enumerate(notes):
         if note.is_archived and not include_archived:
             continue
-        # Lexical score normalized from position
         rank_score = round(1.0 / (rank + 1), 4)
         results.append(
             SearchResultItem(
+                item_type="note",
+                item_id=note.id,
                 note_id=note.id,
                 source_id=None,
                 chunk_id=None,
@@ -182,6 +194,132 @@ def search_lexical(
                 is_archived=note.is_archived,
             )
         )
+
+    # 2. Sources (Path, Identifier, Metadata)
+    sources = db.scalars(
+        select(Source)
+        .where(
+            Source.workspace_id == workspace_id,
+            or_(
+                Source.original_path.ilike(f"%{normalized_query}%"),
+                Source.source_identifier.ilike(f"%{normalized_query}%"),
+                cast(Source.raw_metadata, String).ilike(f"%{normalized_query}%"),
+            ),
+        )
+        .limit(limit)
+    ).all()
+    for rank, src in enumerate(sources):
+        src_title = (
+            src.original_path.replace("\\", "/").split("/")[-1]
+            if src.original_path
+            else (src.source_identifier or "Source Document")
+        )
+        src_excerpt = ""
+        if src.raw_metadata and isinstance(src.raw_metadata, dict):
+            src_excerpt = str(src.raw_metadata.get("text", "") or "")
+        rank_score = round(0.9 / (rank + 1), 4)
+        results.append(
+            SearchResultItem(
+                item_type="source",
+                item_id=src.id,
+                note_id=None,
+                source_id=src.id,
+                chunk_id=None,
+                title=src_title,
+                excerpt=src_excerpt[:500] if src_excerpt else f"Source file: {src_title}",
+                score=rank_score,
+                score_meaning="lexical_match",
+                search_mode="lexical",
+                is_archived=False,
+            )
+        )
+
+    # 3. Graph Entities (Name, Description)
+    entities = db.scalars(
+        select(GraphEntity)
+        .where(
+            GraphEntity.workspace_id == workspace_id,
+            or_(
+                GraphEntity.name.ilike(f"%{normalized_query}%"),
+                GraphEntity.description.ilike(f"%{normalized_query}%"),
+            ),
+        )
+        .limit(limit)
+    ).all()
+    for rank, ent in enumerate(entities):
+        rank_score = round(0.85 / (rank + 1), 4)
+        results.append(
+            SearchResultItem(
+                item_type="entity",
+                item_id=ent.id,
+                entity_id=ent.id,
+                title=ent.name,
+                excerpt=ent.description or f"Graph entity of type {ent.entity_type}",
+                score=rank_score,
+                score_meaning="lexical_match",
+                search_mode="lexical",
+                is_archived=False,
+            )
+        )
+
+    # 4. Collections (Name, Description)
+    collections = db.scalars(
+        select(Collection)
+        .where(
+            Collection.workspace_id == workspace_id,
+            or_(
+                Collection.name.ilike(f"%{normalized_query}%"),
+                Collection.description.ilike(f"%{normalized_query}%"),
+            ),
+        )
+        .limit(limit)
+    ).all()
+    for rank, coll in enumerate(collections):
+        rank_score = round(0.80 / (rank + 1), 4)
+        results.append(
+            SearchResultItem(
+                item_type="collection",
+                item_id=coll.id,
+                collection_id=coll.id,
+                title=coll.name,
+                excerpt=coll.description or "Knowledge collection",
+                score=rank_score,
+                score_meaning="lexical_match",
+                search_mode="lexical",
+                is_archived=False,
+            )
+        )
+
+    # 5. Threads (Title, Question)
+    threads = db.scalars(
+        select(Thread)
+        .where(
+            Thread.workspace_id == workspace_id,
+            or_(
+                Thread.title.ilike(f"%{normalized_query}%"),
+                Thread.question.ilike(f"%{normalized_query}%"),
+            ),
+        )
+        .limit(limit)
+    ).all()
+    for rank, thr in enumerate(threads):
+        rank_score = round(0.75 / (rank + 1), 4)
+        results.append(
+            SearchResultItem(
+                item_type="thread",
+                item_id=thr.id,
+                thread_id=thr.id,
+                title=thr.title,
+                excerpt=thr.question or "Investigation research thread",
+                score=rank_score,
+                score_meaning="lexical_match",
+                search_mode="lexical",
+                is_archived=False,
+            )
+        )
+
+    # Sort results by score descending
+    results.sort(key=lambda r: r.score, reverse=True)
     return results[:limit]
 
 
@@ -213,13 +351,13 @@ def search_hybrid(
     items_by_key: dict[str, SearchResultItem] = {}
 
     for rank, item in enumerate(semantic_results):
-        key = f"note:{item.note_id}" if item.note_id else f"source:{item.source_id}"
+        key = f"{item.item_type}:{item.item_id or item.note_id or item.source_id}"
         score = 1.0 / (k + rank + 1)
         rrf_scores[key] = rrf_scores.get(key, 0.0) + score
         items_by_key[key] = item
 
     for rank, item in enumerate(lexical_results):
-        key = f"note:{item.note_id}" if item.note_id else f"source:{item.source_id}"
+        key = f"{item.item_type}:{item.item_id or item.note_id or item.source_id or item.entity_id or item.collection_id or item.thread_id}"
         score = 1.0 / (k + rank + 1)
         rrf_scores[key] = rrf_scores.get(key, 0.0) + score
         if key not in items_by_key:
@@ -232,9 +370,14 @@ def search_hybrid(
         orig = items_by_key[key]
         final_results.append(
             SearchResultItem(
+                item_type=orig.item_type,
+                item_id=orig.item_id,
                 note_id=orig.note_id,
                 source_id=orig.source_id,
                 chunk_id=orig.chunk_id,
+                entity_id=orig.entity_id,
+                collection_id=orig.collection_id,
+                thread_id=orig.thread_id,
                 title=orig.title,
                 excerpt=orig.excerpt,
                 score=round(combined_score, 4),
@@ -245,3 +388,4 @@ def search_hybrid(
         )
 
     return final_results
+
