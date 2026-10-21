@@ -1,0 +1,52 @@
+[
+  {
+    "id": "GQ-001",
+    "question": "What principles govern stellar nucleosynthesis in main sequence stars?",
+    "domain": "Stellar Evolution",
+    "expected_note_ids": ["00000000-0000-0000-0000-0000000003e9"],
+    "expected_source_ids": ["00000000-0000-0000-0000-0000000007d1"],
+    "expected_chunk_ids": ["00000000-0000-0000-0000-00000000753a"],
+    "expected_keywords": ["stellar", "nucleosynthesis", "photometry"],
+    "min_recall_at_5": 1.0
+  },
+  {
+    "id": "GQ-002",
+    "question": "How are absorption lines used in observational spectroscopy?",
+    "domain": "Observational Spectroscopy",
+    "expected_note_ids": ["00000000-0000-0000-0000-0000000003ea"],
+    "expected_source_ids": ["00000000-0000-0000-0000-0000000007d2"],
+    "expected_chunk_ids": ["00000000-0000-0000-0000-000000007544"],
+    "expected_keywords": ["spectroscopy", "wavelength", "spectral"],
+    "min_recall_at_5": 1.0
+  },
+  {
+    "id": "GQ-003",
+    "question": "What methods are used to detect exoplanet transits via radial velocity?",
+    "domain": "Exoplanet Detection",
+    "expected_note_ids": ["00000000-0000-0000-0000-0000000003eb"],
+    "expected_source_ids": ["00000000-0000-0000-0000-0000000007d3"],
+    "expected_chunk_ids": ["00000000-0000-0000-0000-00000000754e"],
+    "expected_keywords": ["exoplanet", "velocity", "flux"],
+    "min_recall_at_5": 1.0
+  },
+  {
+    "id": "GQ-004",
+    "question": "How does adaptive optics correct atmospheric distortion with deformable mirrors?",
+    "domain": "Adaptive Optics",
+    "expected_note_ids": ["00000000-0000-0000-0000-0000000003ed"],
+    "expected_source_ids": ["00000000-0000-0000-0000-0000000007d5"],
+    "expected_chunk_ids": ["00000000-0000-0000-0000-000000007562"],
+    "expected_keywords": ["optics", "atmospheric", "distortion"],
+    "min_recall_at_5": 1.0
+  },
+  {
+    "id": "GQ-005",
+    "question": "What is the relationship between the Hubble parameter and cosmological expansion?",
+    "domain": "Cosmological Expansion",
+    "expected_note_ids": ["00000000-0000-0000-0000-0000000003ee"],
+    "expected_source_ids": ["00000000-0000-0000-0000-0000000007d6"],
+    "expected_chunk_ids": ["00000000-0000-0000-0000-00000000756c"],
+    "expected_keywords": ["cosmological", "expansion", "flux"],
+    "min_recall_at_5": 1.0
+  }
+]
