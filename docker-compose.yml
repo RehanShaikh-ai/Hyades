@@ -77,6 +77,8 @@ services:
       PROVIDER_TIMEOUT_SECONDS: ${PROVIDER_TIMEOUT_SECONDS:-30}
       CONTEXT_TOKEN_LIMIT: ${CONTEXT_TOKEN_LIMIT:-4096}
       SOURCE_STORAGE_ROOT: ${SOURCE_STORAGE_ROOT:-/app/data/sources}
+      # v0.5.1 Actions execution concurrency limit per workspace (Contract §11.2)
+      ACTION_MAX_CONCURRENT_PER_WORKSPACE: ${ACTION_MAX_CONCURRENT_PER_WORKSPACE:-2}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -139,6 +141,8 @@ services:
       JOB_MAX_RETRIES: ${JOB_MAX_RETRIES:-3}
       PROVIDER_TIMEOUT_SECONDS: ${PROVIDER_TIMEOUT_SECONDS:-30}
       SOURCE_STORAGE_ROOT: ${SOURCE_STORAGE_ROOT:-/app/data/sources}
+      # v0.5.1 Actions execution concurrency limit per workspace (Contract §11.2)
+      ACTION_MAX_CONCURRENT_PER_WORKSPACE: ${ACTION_MAX_CONCURRENT_PER_WORKSPACE:-2}
     volumes:
       - git_repositories:/data/workspaces
       - source_storage:/app/data/sources

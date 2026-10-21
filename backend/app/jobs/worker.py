@@ -79,8 +79,24 @@ async def reindex_source_job(
         source_processing_service.process_source(db, source_id)
 
 
+async def execute_action_job(
+    ctx: dict[str, Any], workspace_id_str: str, execution_id_str: str
+) -> None:
+    """ARQ job: execute background action execution per CONTRACT v0.5.1 §3.2, §10.1."""
+    execution_id = uuid.UUID(execution_id_str)
+    with SessionLocal() as db:
+        from app.services.job_progress_service import update_action_execution_stage
+
+        update_action_execution_stage(
+            db,
+            execution_id,
+            current_stage="processing",
+            status="running",
+        )
+
+
 class WorkerSettings:
-    """ARQ Worker settings per CONTRACT v0.3.1 §16.3, v0.3.2 §5.4, and v0.4.1 §4.4."""
+    """ARQ Worker settings per CONTRACT v0.3.1 §16.3, v0.3.2 §5.4, v0.4.1 §4.4, and v0.5.1 §10.1."""
 
     functions = [
         index_workspace_job,
@@ -90,5 +106,6 @@ class WorkerSettings:
         cluster_notes_job,
         process_source_job,
         reindex_source_job,
+        execute_action_job,
     ]
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
