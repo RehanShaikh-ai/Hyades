@@ -28,6 +28,7 @@ from app.api.v1 import (
     saved_views,
     search,
     sources,
+    stella_commands,
     suggestions,
     tags,
     threads,
@@ -45,6 +46,7 @@ api_router.include_router(tags.router)
 api_router.include_router(search.router)
 api_router.include_router(sources.router)
 api_router.include_router(conversations.router)
+api_router.include_router(stella_commands.router)
 api_router.include_router(graph.router)
 api_router.include_router(entities.router)
 api_router.include_router(relationships.router)
