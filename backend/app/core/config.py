@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     # v0.4.2 — Collections, Threads, Views & Knowledge Inbox (Contract v0.4.2 §1.1, §17)
     SOURCE_STORAGE_ROOT: str = "./data/sources"
 
+    # v0.5.1 — Actions & Execution Limits (Contract v0.5.1 §11.2)
+    ACTION_MAX_CONCURRENT_PER_WORKSPACE: int = 2
+
     @property
     def database_url(self) -> str:
         """Construct the canonical PostgreSQL URL (contract §18).

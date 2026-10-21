@@ -14,6 +14,9 @@ v0.4.2 models: Collection, CollectionNote, CollectionSource, CollectionEntity, C
                SavedView, InboxItem
 """
 
+from app.models.action_change_set import ActionChangeSet
+from app.models.action_execution import ActionExecution
+from app.models.action_proposal import ActionProposal
 from app.models.collection import (
     Collection,
     CollectionConversation,
@@ -95,4 +98,8 @@ __all__ = [
     "ThreadDiscovery",
     "SavedView",
     "InboxItem",
+    # v0.5.1
+    "ActionChangeSet",
+    "ActionExecution",
+    "ActionProposal",
 ]
