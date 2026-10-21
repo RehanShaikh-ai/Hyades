@@ -6,6 +6,11 @@ import { GraphResponse, ObservatoryTarget } from '@/types/graph';
 import { StellaContext } from '@/types/navigation';
 import { RAGStatusResponse } from '@/types/rag';
 import { useStellaSession } from '@/context/StellaSessionContext';
+import { SlashCommand } from '@/types/commands';
+import { listStellaCommands } from '@/api/stella_commands';
+import { SlashCommandMenu } from '@/components/assistant/SlashCommandMenu';
+import { InChatNotePreview } from '@/components/assistant/InChatNotePreview';
+import { InChatSavedNoteCard } from '@/components/assistant/InChatSavedNoteCard';
 import stellaStudiolum from '@/assets/plates/stella-studiolum.jpg';
 
 interface HyadesStellaProps {
@@ -14,6 +19,7 @@ interface HyadesStellaProps {
   initialContext?: StellaContext | null;
   onNavigateToObservatory?: (target?: ObservatoryTarget) => void;
   onNavigateToLibrary?: () => void;
+  onNavigateToNote?: (noteId: string) => void;
   environmentIndex?: number;
 }
 
@@ -22,6 +28,8 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
   initialQuery,
   initialContext,
   onNavigateToObservatory,
+  onNavigateToLibrary,
+  onNavigateToNote,
 }) => {
   const {
     conversations,
@@ -44,6 +52,9 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
     cancelGeneration,
     newChat,
     deleteConversationById,
+    saveNoteDraft,
+    regenerateNoteDraft,
+    cancelNoteDraftAction,
   } = useStellaSession();
 
   const [isInquiriesOpen, setIsInquiriesOpen] = useState(() =>
@@ -57,6 +68,43 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
   const [graphData, setGraphData] = useState<GraphResponse | null>(null);
 
   const dialogueContainerRef = useRef<HTMLDivElement>(null);
+
+  // Slash Command Autocomplete State
+  const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
+  const [dismissedSlashMenu, setDismissedSlashMenu] = useState(false);
+  const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    listStellaCommands(workspaceId).then((cmds) => setSlashCommands(cmds));
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (!inputPrompt.startsWith('/')) {
+      setDismissedSlashMenu(false);
+      setSlashSelectedIndex(0);
+    }
+  }, [inputPrompt]);
+
+  const showSlashMenu =
+    inputPrompt.startsWith('/') && !inputPrompt.includes(' ') && !dismissedSlashMenu;
+  const slashFilter = inputPrompt.startsWith('/') ? inputPrompt.slice(1) : '';
+
+  const filteredSlashCommands = useMemo(() => {
+    const q = slashFilter.toLowerCase();
+    return slashCommands.filter(
+      (c) =>
+        c.command.toLowerCase().includes(q) ||
+        c.name.toLowerCase().includes(q) ||
+        c.description.toLowerCase().includes(q)
+    );
+  }, [slashCommands, slashFilter]);
+
+  const handleSelectSlashCommand = (cmd: SlashCommand) => {
+    setInputPrompt(`${cmd.command} `);
+    setDismissedSlashMenu(false);
+    setSlashSelectedIndex(0);
+  };
 
   // Handle Escape key to cancel delete confirmation dialog
   useEffect(() => {
@@ -486,20 +534,56 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                               Retry Inquiry
                             </button>
                           </div>
-                        ) : msg.content ? (
-                          // Render Markdown with rich editorial typography
-                          <div
-                            className="markdown-body serif text-[15px] leading-relaxed text-[var(--ink-primary)]"
-                            dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
-                          />
                         ) : (
-                          <div className="text-[var(--ink-secondary)] flex items-center gap-2.5 py-2">
-                            <span className="relative flex h-2 w-2">
-                              <span className="pulse-dot absolute inline-flex h-full w-full rounded-full bg-[var(--accent-terracotta)] opacity-75" />
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--accent-terracotta)]" />
-                            </span>
-                            <span className="serif-italic text-[13.5px] text-[var(--ink-secondary)]">Synthesizing response from knowledge archive...</span>
-                          </div>
+                          <>
+                            {msg.content && (
+                              <div
+                                className="markdown-body serif text-[15px] leading-relaxed text-[var(--ink-primary)]"
+                                dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                              />
+                            )}
+
+                            {/* In-Chat Note Action Card (Callout 3 & Callout 4) */}
+                            {msg.noteDraft && (
+                              msg.noteDraft.status === 'committed' ? (
+                                <InChatSavedNoteCard
+                                  draft={msg.noteDraft}
+                                  onOpenNote={(id) => {
+                                    if (onNavigateToNote) {
+                                      onNavigateToNote(id);
+                                    } else if (onNavigateToLibrary) {
+                                      onNavigateToLibrary();
+                                    }
+                                  }}
+                                  onViewInGraph={(id, title) =>
+                                    onNavigateToObservatory &&
+                                    onNavigateToObservatory({ noteId: id, entityName: title })
+                                  }
+                                  onAskFollowUp={(prompt) => handleSendMessage(prompt)}
+                                />
+                              ) : (
+                                <InChatNotePreview
+                                  draft={msg.noteDraft}
+                                  isSaving={msg.noteDraft.status === 'committing'}
+                                  onSave={(revisedTitle, revisedContent) =>
+                                    saveNoteDraft(msg.id, revisedTitle, revisedContent)
+                                  }
+                                  onRegenerate={() => regenerateNoteDraft(msg.id)}
+                                  onCancel={() => cancelNoteDraftAction(msg.id)}
+                                />
+                              )
+                            )}
+
+                            {!msg.content && (
+                              <div className="text-[var(--ink-secondary)] flex items-center gap-2.5 py-2">
+                                <span className="relative flex h-2 w-2">
+                                  <span className="pulse-dot absolute inline-flex h-full w-full rounded-full bg-[var(--accent-terracotta)] opacity-75" />
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--accent-terracotta)]" />
+                                </span>
+                                <span className="serif-italic text-[13.5px] text-[var(--ink-secondary)]">Synthesizing response from knowledge archive...</span>
+                              </div>
+                            )}
+                          </>
                         )}
 
                         {/* Restrained Grounded Concepts and Citations footer */}
@@ -612,17 +696,55 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
               <div className="panel-bracket-br" />
 
               <div className="relative">
+                {showSlashMenu && (
+                  <SlashCommandMenu
+                    commands={slashCommands}
+                    filterQuery={slashFilter}
+                    selectedIndex={slashSelectedIndex}
+                    onSelectCommand={handleSelectSlashCommand}
+                    onHoverIndex={setSlashSelectedIndex}
+                  />
+                )}
                 <textarea
                   rows={2}
                   value={inputPrompt}
                   onChange={(e) => setInputPrompt(e.target.value)}
                   onKeyDown={(e) => {
+                    if (showSlashMenu && filteredSlashCommands.length > 0) {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setSlashSelectedIndex((prev) => (prev + 1) % filteredSlashCommands.length);
+                        return;
+                      }
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setSlashSelectedIndex((prev) =>
+                          (prev - 1 + filteredSlashCommands.length) % filteredSlashCommands.length
+                        );
+                        return;
+                      }
+                      if (e.key === 'Enter' || e.key === 'Tab') {
+                        e.preventDefault();
+                        const chosen =
+                          filteredSlashCommands[slashSelectedIndex] || filteredSlashCommands[0];
+                        if (chosen) {
+                          handleSelectSlashCommand(chosen);
+                        }
+                        return;
+                      }
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        setDismissedSlashMenu(true);
+                        return;
+                      }
+                    }
+
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
                       handleSendMessage();
                     }
                   }}
-                  placeholder="Ask Stella about your notes, sources, or concepts... (Press Enter to send)"
+                  placeholder="Ask Stella about your notes, sources, or type '/' for commands... (Press Enter to send)"
                   className="w-full bg-transparent resize-none outline-none text-[13.5px] placeholder:text-[var(--ink-tertiary)] px-2 pt-1 leading-relaxed text-[var(--ink-primary)] focus-visible:ring-1 focus-visible:ring-[var(--accent-midnight)] rounded-md"
                 />
               </div>

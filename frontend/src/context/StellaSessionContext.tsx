@@ -10,6 +10,7 @@ import {
 } from '@/api/conversations';
 import { listMessages } from '@/api/messages';
 import { streamAssistantResponse } from '@/api/assistant';
+import { createNoteDraft, commitNoteDraft, cancelNoteDraft } from '@/api/stella_commands';
 
 export const WELCOME_MESSAGE: LocalDisplayMessage = {
   id: 'stella-welcome',
@@ -40,6 +41,9 @@ interface StellaSessionContextValue {
   cancelGeneration: () => void;
   newChat: () => void;
   deleteConversationById: (convId: string) => Promise<void>;
+  saveNoteDraft: (msgId: string, revisedTitle?: string, revisedContent?: string) => Promise<void>;
+  regenerateNoteDraft: (msgId: string) => Promise<void>;
+  cancelNoteDraftAction: (msgId: string) => Promise<void>;
 }
 
 const StellaSessionContext = createContext<StellaSessionContextValue | null>(null);
@@ -220,6 +224,88 @@ export const StellaSessionProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Slash Command Execution: /create-note <topic>
+    // ─────────────────────────────────────────────────────────────────────────
+    if (text.startsWith('/create-note')) {
+      const match = text.match(/^\/create-note(?:\s+(.*))?$/i);
+      const rawTopic = match && match[1]?.trim() ? match[1].trim() : 'General Research';
+
+      const userMsgId = `user-${Date.now()}`;
+      const userDisplayMsg: LocalDisplayMessage = {
+        id: userMsgId,
+        role: 'user',
+        content: text,
+        timestamp: 'Just now',
+      };
+
+      const assistantMsgId = `assistant-${Date.now()}`;
+      const initialAssistantMsg: LocalDisplayMessage = {
+        id: assistantMsgId,
+        role: 'assistant',
+        content: `Synthesizing draft note for "${rawTopic}"...`,
+        timestamp: 'Just now',
+      };
+
+      setMessages((prev) => [...prev, userDisplayMsg, initialAssistantMsg]);
+
+      try {
+        const draftRes = await createNoteDraft(workspaceId, rawTopic, targetConvId || undefined);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? {
+                  ...m,
+                  content: `I've drafted a comprehensive note on **${rawTopic}**. Here is a preview:`,
+                  noteDraft: {
+                    proposalId: draftRes.proposal_id,
+                    confirmationToken: draftRes.confirmation_token,
+                    actionId: draftRes.action_id,
+                    title: draftRes.title,
+                    content: draftRes.content,
+                    wordCount: draftRes.word_count,
+                    status: 'preview',
+                    topic: rawTopic,
+                  },
+                }
+              : m
+          )
+        );
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : 'Failed to generate note draft.';
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? { ...m, content: 'Could not generate note draft.', error: errorMsg }
+              : m
+          )
+        );
+      } finally {
+        setIsStreaming(false);
+      }
+      return;
+    }
+
+    let promptToSend = text;
+    if (text.startsWith('/summarize')) {
+      const target = text.replace(/^\/summarize\s*/i, '').trim();
+      promptToSend = target
+        ? `Provide a structured, comprehensive summary of "${target}".`
+        : 'Summarize the primary themes across my recent notes and sources.';
+    } else if (text.startsWith('/link-notes')) {
+      const q = text.replace(/^\/link-notes\s*/i, '').trim();
+      promptToSend = q
+        ? `Analyze and identify potential semantic links and connections for notes related to "${q}".`
+        : 'Analyze and suggest connections between recently updated notes.';
+    } else if (text.startsWith('/review-inbox')) {
+      promptToSend = 'Review pending items in the ingestion inbox, summarizing candidate imports and actions.';
+    } else if (text.startsWith('/search')) {
+      const q = text.replace(/^\/search\s*/i, '').trim();
+      promptToSend = q
+        ? `Search and synthesize findings across notes, sources, and entities for "${q}".`
+        : 'Search and summarize key concepts across the workspace.';
+    }
+
     const userMsgId = `user-${Date.now()}`;
     const userDisplayMsg: LocalDisplayMessage = {
       id: userMsgId,
@@ -247,7 +333,7 @@ export const StellaSessionProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       await streamAssistantResponse(
         targetConvId,
-        text,
+        promptToSend,
         (event) => {
           if (event.type === 'chunk' && event.content) {
             accumulatedContent += event.content;
@@ -333,6 +419,142 @@ export const StellaSessionProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [activeConversationId, isStreaming]);
 
+  // Save note proposal into persistent database record
+  const saveNoteDraft = useCallback(
+    async (msgId: string, revisedTitle?: string, revisedContent?: string) => {
+      const msg = messages.find((m) => m.id === msgId);
+      if (!msg || !msg.noteDraft || !currentWorkspaceIdRef.current) return;
+      const draft = msg.noteDraft;
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msgId && m.noteDraft
+            ? { ...m, noteDraft: { ...m.noteDraft, status: 'committing' } }
+            : m
+        )
+      );
+
+      try {
+        const commitRes = await commitNoteDraft(
+          currentWorkspaceIdRef.current,
+          draft.proposalId,
+          draft.confirmationToken,
+          revisedTitle || draft.title,
+          revisedContent !== undefined ? revisedContent : draft.content
+        );
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === msgId && m.noteDraft
+              ? {
+                  ...m,
+                  noteDraft: {
+                    ...m.noteDraft,
+                    status: 'committed',
+                    savedNoteId: commitRes.note_id,
+                    title: commitRes.title,
+                    wordCount: commitRes.word_count,
+                    savedAt: 'Just now',
+                  },
+                }
+              : m
+          )
+        );
+      } catch (err: unknown) {
+        const errorMsg =
+          err instanceof Error ? err.message : 'Failed to save note to knowledge base.';
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === msgId && m.noteDraft
+              ? {
+                  ...m,
+                  noteDraft: { ...m.noteDraft, status: 'preview' },
+                  error: errorMsg,
+                }
+              : m
+          )
+        );
+      }
+    },
+    [messages]
+  );
+
+  // Regenerate note draft with a fresh synthesis
+  const regenerateNoteDraft = useCallback(
+    async (msgId: string) => {
+      const msg = messages.find((m) => m.id === msgId);
+      if (!msg || !msg.noteDraft || !currentWorkspaceIdRef.current) return;
+      const draft = msg.noteDraft;
+
+      // Cancel old proposal asynchronously
+      cancelNoteDraft(currentWorkspaceIdRef.current, draft.proposalId).catch(() => {});
+
+      try {
+        const draftRes = await createNoteDraft(
+          currentWorkspaceIdRef.current,
+          draft.topic,
+          activeConversationId || undefined
+        );
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === msgId && m.noteDraft
+              ? {
+                  ...m,
+                  content: `I've regenerated the draft note on **${draft.topic}**. Here is a preview:`,
+                  noteDraft: {
+                    proposalId: draftRes.proposal_id,
+                    confirmationToken: draftRes.confirmation_token,
+                    actionId: draftRes.action_id,
+                    title: draftRes.title,
+                    content: draftRes.content,
+                    wordCount: draftRes.word_count,
+                    status: 'preview',
+                    topic: draft.topic,
+                  },
+                }
+              : m
+          )
+        );
+      } catch (err: unknown) {
+        const errorMsg =
+          err instanceof Error ? err.message : 'Failed to regenerate note draft.';
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === msgId
+              ? { ...m, error: errorMsg }
+              : m
+          )
+        );
+      }
+    },
+    [activeConversationId, messages]
+  );
+
+  // Cancel / reject note draft proposal
+  const cancelNoteDraftAction = useCallback(
+    async (msgId: string) => {
+      const msg = messages.find((m) => m.id === msgId);
+      if (!msg || !msg.noteDraft || !currentWorkspaceIdRef.current) return;
+      const draft = msg.noteDraft;
+
+      cancelNoteDraft(currentWorkspaceIdRef.current, draft.proposalId).catch(() => {});
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msgId && m.noteDraft
+            ? {
+                ...m,
+                noteDraft: { ...m.noteDraft, status: 'cancelled' },
+                content: `Draft creation for **${draft.topic}** was cancelled.`,
+              }
+            : m
+        )
+      );
+    },
+    [messages]
+  );
+
   return (
     <StellaSessionContext.Provider
       value={{
@@ -356,6 +578,9 @@ export const StellaSessionProvider: React.FC<{ children: React.ReactNode }> = ({
         cancelGeneration,
         newChat,
         deleteConversationById,
+        saveNoteDraft,
+        regenerateNoteDraft,
+        cancelNoteDraftAction,
       }}
     >
       {children}

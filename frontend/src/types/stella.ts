@@ -1,3 +1,5 @@
+import { NoteDraftProposal } from './commands';
+
 export interface CitedSourceItem {
   chunk_id: string;
   note_id?: string | null;
@@ -16,4 +18,5 @@ export interface LocalDisplayMessage {
   latencyMs?: number;
   model?: string;
   error?: string;
+  noteDraft?: NoteDraftProposal;
 }

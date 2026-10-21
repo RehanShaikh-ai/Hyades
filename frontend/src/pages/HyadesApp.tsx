@@ -286,6 +286,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
             initialContext={stellaContext}
             onNavigateToObservatory={handleNavigateToObservatory}
             onNavigateToLibrary={() => setCurrentDestination('library')}
+            onNavigateToNote={handleNavigateToNote}
             environmentIndex={environmentIndex}
           />
         )}
