@@ -1,9 +1,9 @@
 [project]
 name = "collaborative-second-brain-backend"
-version = "0.3.1"
+version = "0.5.1"
 description = "Hyades - Celestial Knowledge Observatory & Archival Research Platform"
 
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.15"
 license = { text = "MIT" }
 authors = [
     { name = "Hyades Contributors" }

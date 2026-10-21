@@ -1,12 +1,14 @@
 [project]
 name = "collaborative-second-brain-backend"
-version = "0.4.2"
+version = "0.5.1"
 description = "Hyades - Celestial Knowledge Observatory & Archival Research Platform"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.15"
 license = { text = "MIT" }
 authors = [
-    { name = "Hyades Contributors" }
+    { name = "Rehan Shaikh" },
+    { name = "Hamza Qureshi" },
+    { name = "Mohammad Ali Bubere" },
 ]
 dependencies = [
     "fastapi>=0.115,<1.0",
