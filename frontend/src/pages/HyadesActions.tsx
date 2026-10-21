@@ -80,9 +80,7 @@ export const HyadesActions: React.FC<HyadesActionsProps> = ({
       const res = await getActionCatalogue();
       const list = res.actions || [];
       setActions(list);
-      if (list.length > 0 && !selectedAction) {
-        setSelectedAction(list[0]);
-      }
+      setSelectedAction((prev) => prev ?? (list.length > 0 ? list[0] : null));
       announce(`Loaded ${list.length} canonical actions from registry.`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to reach action registry backend';
@@ -91,7 +89,7 @@ export const HyadesActions: React.FC<HyadesActionsProps> = ({
     } finally {
       setIsLoadingCatalogue(false);
     }
-  }, [selectedAction]);
+  }, []);
 
   // 2. Load execution history (§5)
   const loadHistory = useCallback(
@@ -142,41 +140,56 @@ export const HyadesActions: React.FC<HyadesActionsProps> = ({
   }, []);
 
   // 4. Polling for active execution state updates (§3.C, §6.1, §6.8)
+  const activeExecutionId = currentExecution?.execution_id;
+  const activeStatus = currentExecution?.status;
+  const isPendingOrRunning =
+    activeStatus === 'pending' || activeStatus === 'running' || activeStatus === 'cancelling';
+
   useEffect(() => {
-    if (
-      currentExecution &&
-      (currentExecution.status === 'pending' ||
-        currentExecution.status === 'running' ||
-        currentExecution.status === 'cancelling')
-    ) {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-
-      pollingRef.current = setInterval(async () => {
-        try {
-          const updated = await getExecution(currentExecution.execution_id);
-          setCurrentExecution(updated);
-
-          if (
-            updated.status === 'succeeded' ||
-            updated.status === 'failed' ||
-            updated.status === 'cancelled' ||
-            updated.status === 'proposed' ||
-            updated.status === 'awaiting_confirmation'
-          ) {
-            if (pollingRef.current) clearInterval(pollingRef.current);
-            loadHistory(historyPage);
-            announce(`Execution status transitioned to ${updated.status}.`);
-          }
-        } catch {
-          if (pollingRef.current) clearInterval(pollingRef.current);
-        }
-      }, 1000);
-
-      return () => {
-        if (pollingRef.current) clearInterval(pollingRef.current);
-      };
+    if (!activeExecutionId || !isPendingOrRunning) {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      return;
     }
-  }, [currentExecution, historyPage, loadHistory]);
+
+    if (pollingRef.current) clearInterval(pollingRef.current);
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const updated = await getExecution(activeExecutionId);
+        setCurrentExecution(updated);
+
+        if (
+          updated.status === 'succeeded' ||
+          updated.status === 'failed' ||
+          updated.status === 'cancelled' ||
+          updated.status === 'proposed' ||
+          updated.status === 'awaiting_confirmation'
+        ) {
+          if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
+          loadHistory(historyPage);
+          announce(`Execution status transitioned to ${updated.status}.`);
+        }
+      } catch {
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+      }
+    }, 1000);
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [activeExecutionId, isPendingOrRunning, historyPage, loadHistory]);
 
   // 5. Handle action execution submission (§5.1, §6.2)
   const handleExecute = async (req: ExecuteActionRequest) => {

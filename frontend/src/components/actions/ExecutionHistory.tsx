@@ -35,7 +35,7 @@ export const ExecutionHistory: React.FC<ExecutionHistoryProps> = ({
   return (
     <div
       data-testid="execution-history"
-      className="flex flex-col h-full bg-white rounded-2xl border border-[var(--border-parchment)] shadow-sm overflow-hidden"
+      className="flex flex-col h-full bg-white rounded-xl border border-[var(--border-parchment)] shadow-sm overflow-hidden"
     >
       {/* Header & Controls */}
       <div className="p-4 border-b border-[var(--border-parchment)] bg-[var(--bg-panel)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">

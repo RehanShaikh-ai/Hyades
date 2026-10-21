@@ -119,7 +119,7 @@ export const ExecutionResultView: React.FC<ExecutionResultViewProps> = ({
   return (
     <div
       data-testid="execution-result-view"
-      className="flex flex-col h-full bg-white rounded-2xl border border-[var(--border-parchment)] shadow-sm overflow-hidden"
+      className="flex flex-col h-full bg-white rounded-xl border border-[var(--border-parchment)] shadow-sm overflow-hidden"
     >
       {/* Execution Status Header (§9, §10) */}
       <div className="p-4 sm:p-5 border-b border-[var(--border-parchment)] bg-[var(--bg-panel)] space-y-3 shrink-0">

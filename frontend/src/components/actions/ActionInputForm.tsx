@@ -355,7 +355,7 @@ export const ActionInputForm: React.FC<ActionInputFormProps> = ({
     <form
       data-testid="action-input-form"
       onSubmit={handleSubmit}
-      className="flex flex-col h-full bg-white p-5 rounded-2xl border border-[var(--border-parchment)] shadow-sm space-y-4"
+      className="flex flex-col h-full bg-white p-5 rounded-xl border border-[var(--border-parchment)] shadow-sm space-y-4"
     >
       {/* Action Header Info */}
       <div className="pb-3 border-b border-[var(--border-parchment)]">
