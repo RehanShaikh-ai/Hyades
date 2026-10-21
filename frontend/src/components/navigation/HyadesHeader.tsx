@@ -287,7 +287,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             <button
               type="button"
               data-testid="nav-workspace-trigger"
-              aria-label="Workspace Resources and Selector Menu"
+              aria-label={`Workspace: ${isWorkspaceDestination ? destinationTitle[currentDestination] : (selectedWorkspace?.name ?? 'Default')}`}
               aria-expanded={isWorkspaceMenuOpen}
               aria-haspopup="true"
               onClick={() => setIsWorkspaceMenuOpen((prev) => !prev)}
@@ -472,7 +472,6 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             onClick={onOpenSearch}
             className="px-2 sm:px-2.5 py-1 bg-white/80 hover:bg-white border border-[var(--border-strong)] rounded-full flex items-center gap-1.5 text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-all shadow-2xs group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] cursor-pointer"
             title="Global Search (⌘K)"
-            aria-label="Global Search (⌘K)"
           >
             <i className="ph ph-magnifying-glass text-xs text-[var(--accent-midnight)] group-hover:scale-110 transition-transform" />
             <span className="text-[11px] hidden sm:inline text-[var(--ink-tertiary)] group-hover:text-[var(--ink-secondary)]">Search...</span>
@@ -525,10 +524,10 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             onClick={onOpenAccountModal}
             data-testid="profile-bottom-left-btn"
             title="Account & Setup"
-            aria-label="Account & Setup"
+            aria-label="RS - Account & Setup"
             className="w-7 h-7 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] flex items-center justify-center font-serif text-[10px] font-semibold hover:bg-[var(--accent-midnight-light)] transition-colors shadow-2xs border border-[#2D3F5E] cursor-pointer"
           >
-            RS
+            <span aria-hidden="true">RS</span>
           </button>
 
           {/* Environment/Perspective Cycle */}

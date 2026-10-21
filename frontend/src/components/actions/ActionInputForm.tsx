@@ -416,7 +416,11 @@ export const ActionInputForm: React.FC<ActionInputFormProps> = ({
       )}
 
       {/* Dynamic Schema Fields */}
-      <div className="flex-1 overflow-y-auto space-y-3.5 pr-1 hyades-scroll">
+      <div
+        tabIndex={0}
+        aria-label="Action input form fields"
+        className="flex-1 overflow-y-auto space-y-3.5 pr-1 hyades-scroll focus:outline-none"
+      >
         {Object.keys(properties).length === 0 ? (
           <div className="p-4 rounded-lg bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-center text-xs text-[var(--ink-tertiary)] italic">
             This action requires no input parameters.

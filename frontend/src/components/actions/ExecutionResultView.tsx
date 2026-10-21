@@ -296,7 +296,11 @@ export const ExecutionResultView: React.FC<ExecutionResultViewProps> = ({
       </div>
 
       {/* Main Tab View Content */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-5 hyades-scroll">
+      <div
+        tabIndex={0}
+        aria-label="Execution details view"
+        className="flex-1 overflow-y-auto p-5 space-y-5 hyades-scroll focus:outline-none"
+      >
         {/* ================= TAB 1: INTERPRETATION & OUTPUT ================= */}
         {activeTab === 'result' && (
           <div className="space-y-4">

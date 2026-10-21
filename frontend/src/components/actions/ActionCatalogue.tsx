@@ -3,7 +3,8 @@ import { ActionDefinition, ActionClassification } from '@/types/actions';
 
 export interface ActionCatalogueProps {
   actions: ActionDefinition[];
-  selectedActionId: string | null;
+  selectedActionId?: string | null;
+  selectedAction?: ActionDefinition | null;
   onSelectAction: (action: ActionDefinition) => void;
   isLoading?: boolean;
   error?: string | null;
@@ -58,12 +59,14 @@ const CLASSIFICATION_CONFIG: Record<
 
 export const ActionCatalogue: React.FC<ActionCatalogueProps> = ({
   actions,
-  selectedActionId,
+  selectedActionId: propActionId,
+  selectedAction,
   onSelectAction,
   isLoading = false,
   error = null,
   onRefresh,
 }) => {
+  const activeSelectedId = propActionId ?? selectedAction?.id ?? null;
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDomain, setSelectedDomain] = useState<string>('all');
   const [selectedClassification, setSelectedClassification] = useState<string>('all');
@@ -225,9 +228,10 @@ export const ActionCatalogue: React.FC<ActionCatalogueProps> = ({
       {/* Catalogue List Content */}
       <div
         data-testid="action-list-container"
-        className="flex-1 overflow-y-auto divide-y divide-[var(--border-parchment)] p-2 space-y-1.5"
+        tabIndex={0}
+        className="flex-1 overflow-y-auto divide-y divide-[var(--border-parchment)] p-2 space-y-1.5 focus:outline-none"
         role="list"
-        aria-label="Available Actions"
+        aria-label="Available Actions List"
       >
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-16 space-y-3">
@@ -282,7 +286,7 @@ export const ActionCatalogue: React.FC<ActionCatalogueProps> = ({
           </div>
         ) : (
           filteredActions.map((action) => {
-            const isSelected = selectedActionId === action.id;
+            const isSelected = activeSelectedId === action.id;
             const isDisabled = Boolean(action.disabled_reason);
             const classConfig = CLASSIFICATION_CONFIG[action.side_effect] || CLASSIFICATION_CONFIG.read;
 

@@ -82,7 +82,9 @@ export const ExecutionHistory: React.FC<ExecutionHistoryProps> = ({
       {/* History Items List */}
       <div
         data-testid="history-list-container"
-        className="flex-1 overflow-y-auto divide-y divide-[var(--border-parchment)] p-2 space-y-1 hyades-scroll"
+        tabIndex={0}
+        aria-label="Execution history list"
+        className="flex-1 overflow-y-auto divide-y divide-[var(--border-parchment)] p-2 space-y-1 hyades-scroll focus:outline-none"
       >
         {isLoading ? (
           <div className="py-12 text-center text-xs text-[var(--ink-secondary)] flex flex-col items-center justify-center space-y-2">
