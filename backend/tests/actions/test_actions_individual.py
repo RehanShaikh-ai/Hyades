@@ -5,6 +5,7 @@ Enforces deterministic naming: test_action_<action_id_with_underscore>.
 
 import uuid
 from datetime import UTC, datetime
+
 from sqlalchemy.orm import Session
 
 from app.actions.registry import get_action
@@ -72,7 +73,9 @@ def _setup_ws(db: Session) -> tuple[Workspace, User]:
     return ws, user
 
 
-def _create_note(db: Session, ws: Workspace, user: User, title: str = "Test Note", content: str = "Content") -> Note:
+def _create_note(
+    db: Session, ws: Workspace, user: User, title: str = "Test Note", content: str = "Content"
+) -> Note:
     n = Note(workspace_id=ws.id, created_by=user.id, title=title, content=content)
     db.add(n)
     db.commit()
@@ -109,9 +112,12 @@ def _create_source(
 # 7.1 Read Actions (12)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def test_action_knowledge_search_all(db_session: Session):
     ws, user = _setup_ws(db_session)
-    _create_note(db_session, ws, user, title="Quantum Computing", content="Superposition and qubits")
+    _create_note(
+        db_session, ws, user, title="Quantum Computing", content="Superposition and qubits"
+    )
 
     action = get_action("knowledge.search_all")
     inp = KnowledgeSearchAllInput(query="qubits")
@@ -169,7 +175,9 @@ def test_action_sources_get_processing_status(db_session: Session):
 
 def test_action_entities_get(db_session: Session):
     ws, _ = _setup_ws(db_session)
-    ent = GraphEntity(workspace_id=ws.id, name="Einstein", entity_type="person", description="Physicist")
+    ent = GraphEntity(
+        workspace_id=ws.id, name="Einstein", entity_type="person", description="Physicist"
+    )
     db_session.add(ent)
     db_session.commit()
 
@@ -197,7 +205,12 @@ def test_action_graph_get_neighbors(db_session: Session):
     db_session.add_all([e1, e2])
     db_session.commit()
 
-    rel = GraphRelationship(workspace_id=ws.id, source_entity_id=e1.id, target_entity_id=e2.id, relationship_type="orbits")
+    rel = GraphRelationship(
+        workspace_id=ws.id,
+        source_entity_id=e1.id,
+        target_entity_id=e2.id,
+        relationship_type="orbits",
+    )
     db_session.add(rel)
     db_session.commit()
 
@@ -214,12 +227,19 @@ def test_action_graph_find_path(db_session: Session):
     db_session.add_all([e1, e2])
     db_session.commit()
 
-    rel = GraphRelationship(workspace_id=ws.id, source_entity_id=e1.id, target_entity_id=e2.id, relationship_type="connects")
+    rel = GraphRelationship(
+        workspace_id=ws.id,
+        source_entity_id=e1.id,
+        target_entity_id=e2.id,
+        relationship_type="connects",
+    )
     db_session.add(rel)
     db_session.commit()
 
     action = get_action("graph.find_path")
-    res = action.handler(db_session, ws.id, GraphFindPathInput(source_entity_id=e1.id, target_entity_id=e2.id))
+    res = action.handler(
+        db_session, ws.id, GraphFindPathInput(source_entity_id=e1.id, target_entity_id=e2.id)
+    )
     assert res.result["found"] is True
     assert len(res.result["path"]) == 2
 
@@ -250,9 +270,16 @@ def test_action_threads_get(db_session: Session):
 # 7.2 Understand Actions (11)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def test_action_notes_summarize(db_session: Session):
     ws, user = _setup_ws(db_session)
-    n = _create_note(db_session, ws, user, title="Quantum Entanglement", content="Entangled particles stay connected.")
+    n = _create_note(
+        db_session,
+        ws,
+        user,
+        title="Quantum Entanglement",
+        content="Entangled particles stay connected.",
+    )
 
     action = get_action("notes.summarize")
     res = action.handler(db_session, ws.id, NotesSummarizeInput(note_id=n.id))
@@ -262,7 +289,9 @@ def test_action_notes_summarize(db_session: Session):
 
 def test_action_sources_summarize(db_session: Session):
     ws, user = _setup_ws(db_session)
-    src = _create_source(db_session, ws, user, path="paper.txt", text="Detailed text about biology.")
+    src = _create_source(
+        db_session, ws, user, path="paper.txt", text="Detailed text about biology."
+    )
 
     action = get_action("sources.summarize")
     res = action.handler(db_session, ws.id, SourcesSummarizeInput(source_id=src.id))
@@ -331,7 +360,13 @@ def test_action_sources_compare(db_session: Session):
 
 def test_action_knowledge_answer(db_session: Session):
     ws, user = _setup_ws(db_session)
-    _create_note(db_session, ws, user, title="Helium Properties", content="Helium is a noble gas with atomic number 2.")
+    _create_note(
+        db_session,
+        ws,
+        user,
+        title="Helium Properties",
+        content="Helium is a noble gas with atomic number 2.",
+    )
 
     action = get_action("knowledge.answer")
     res = action.handler(db_session, ws.id, KnowledgeAnswerInput(question="What is Helium?"))
@@ -341,7 +376,9 @@ def test_action_knowledge_answer(db_session: Session):
 
 def test_action_knowledge_generate_brief(db_session: Session):
     ws, user = _setup_ws(db_session)
-    _create_note(db_session, ws, user, title="Solar Energy", content="Photovoltaic cells convert sunlight.")
+    _create_note(
+        db_session, ws, user, title="Solar Energy", content="Photovoltaic cells convert sunlight."
+    )
 
     action = get_action("knowledge.generate_brief")
     res = action.handler(db_session, ws.id, KnowledgeGenerateBriefInput(topic="Solar Energy"))
@@ -351,7 +388,9 @@ def test_action_knowledge_generate_brief(db_session: Session):
 
 def test_action_notes_extract_concepts(db_session: Session):
     ws, user = _setup_ws(db_session)
-    n = _create_note(db_session, ws, user, title="Deep Learning", content="Gradient descent optimizes loss.")
+    n = _create_note(
+        db_session, ws, user, title="Deep Learning", content="Gradient descent optimizes loss."
+    )
 
     action = get_action("notes.extract_concepts")
     res = action.handler(db_session, ws.id, NotesExtractConceptsInput(note_id=n.id))
@@ -360,7 +399,13 @@ def test_action_notes_extract_concepts(db_session: Session):
 
 def test_action_notes_suggest_tags(db_session: Session):
     ws, user = _setup_ws(db_session)
-    n = _create_note(db_session, ws, user, title="Machine Learning Classification", content="SVM and Decision Trees")
+    n = _create_note(
+        db_session,
+        ws,
+        user,
+        title="Machine Learning Classification",
+        content="SVM and Decision Trees",
+    )
 
     action = get_action("notes.suggest_tags")
     res = action.handler(db_session, ws.id, NotesSuggestTagsInput(note_id=n.id))
@@ -370,6 +415,7 @@ def test_action_notes_suggest_tags(db_session: Session):
 # ─────────────────────────────────────────────────────────────────────────────
 # 7.3 Review Actions (8)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def test_action_inbox_list(db_session: Session):
     ws, user = _setup_ws(db_session)
@@ -416,7 +462,15 @@ def test_action_sources_retry_processing(db_session: Session):
 
     action = get_action("sources.retry_processing")
     res = action.handler(db_session, ws.id, SourcesRetryProcessingInput(source_id=src.id))
-    assert res.result["status"] in ("READY", "ready", "completed", "FAILED", "failed", "PENDING", "PROCESSING")
+    assert res.result["status"] in (
+        "READY",
+        "ready",
+        "completed",
+        "FAILED",
+        "failed",
+        "PENDING",
+        "PROCESSING",
+    )
 
 
 def test_action_knowledge_audit_processing(db_session: Session):
@@ -467,6 +521,7 @@ def test_action_notes_find_related(db_session: Session):
 # ─────────────────────────────────────────────────────────────────────────────
 # 7.4 Controlled Writes (6)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def test_action_notes_create(db_session: Session):
     ws, _ = _setup_ws(db_session)
@@ -522,7 +577,9 @@ def test_action_graph_add_relationship(db_session: Session):
     db_session.commit()
 
     action = get_action("graph.add_relationship")
-    inp = GraphAddRelationshipInput(source_entity_id=e1.id, target_entity_id=e2.id, relationship_type="orbits")
+    inp = GraphAddRelationshipInput(
+        source_entity_id=e1.id, target_entity_id=e2.id, relationship_type="orbits"
+    )
     res = action.handler(db_session, ws.id, inp)
     assert len(res.proposals) == 1
     assert res.proposals[0]["relationship_type"] == "orbits"

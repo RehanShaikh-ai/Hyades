@@ -12,9 +12,8 @@ Actions:
 """
 
 import uuid
-from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.actions.types import (
@@ -43,7 +42,6 @@ from app.services import (
     inbox_service,
     note_service,
     source_service,
-    vector_service,
 )
 
 

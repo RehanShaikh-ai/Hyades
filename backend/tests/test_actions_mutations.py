@@ -10,15 +10,11 @@ Actions tested across full propose -> commit -> undo lifecycle:
 """
 
 import uuid
-from datetime import UTC, datetime, timedelta
-import pytest
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models import (
-    ActionChangeSet,
-    ActionExecution,
-    ActionProposal,
     Collection,
     CollectionNote,
     GraphEntity,
@@ -91,7 +87,9 @@ def test_notes_create_commit_and_undo(client: TestClient, db_session: Session):
 def test_notes_update_commit_and_undo(client: TestClient, db_session: Session):
     """Propose, commit, and undo notes.update."""
     ws, user = _setup_ws(db_session)
-    note = Note(workspace_id=ws.id, created_by=user.id, title="Original Title", content="Original Content")
+    note = Note(
+        workspace_id=ws.id, created_by=user.id, title="Original Title", content="Original Content"
+    )
     db_session.add(note)
     db_session.commit()
 
@@ -101,7 +99,11 @@ def test_notes_update_commit_and_undo(client: TestClient, db_session: Session):
         headers={"X-Workspace-Id": str(ws.id)},
         json={
             "mode": "propose",
-            "input": {"note_id": str(note.id), "title": "Updated Title", "content": "Updated Content"},
+            "input": {
+                "note_id": str(note.id),
+                "title": "Updated Title",
+                "content": "Updated Content",
+            },
             "idempotency_key": str(uuid.uuid4()),
         },
     )
@@ -114,7 +116,11 @@ def test_notes_update_commit_and_undo(client: TestClient, db_session: Session):
         headers={"X-Workspace-Id": str(ws.id)},
         json={
             "mode": "commit",
-            "input": {"note_id": str(note.id), "title": "Updated Title", "content": "Updated Content"},
+            "input": {
+                "note_id": str(note.id),
+                "title": "Updated Title",
+                "content": "Updated Content",
+            },
             "idempotency_key": str(uuid.uuid4()),
             "confirmation_token": token,
         },
@@ -185,7 +191,9 @@ def test_notes_link_commit_and_undo(client: TestClient, db_session: Session):
     )
     assert r_undo.status_code == 200
     db_session.expire_all()
-    link_after = db_session.query(NoteLink).filter_by(source_note_id=n1.id, target_note_id=n2.id).first()
+    link_after = (
+        db_session.query(NoteLink).filter_by(source_note_id=n1.id, target_note_id=n2.id).first()
+    )
     assert link_after is None
 
 
@@ -224,7 +232,9 @@ def test_collections_add_item_commit_and_undo(client: TestClient, db_session: Se
     assert r_commit.status_code == 200
     change_set_id = r_commit.json()["committed_changes"][0]["change_set_id"]
 
-    member = db_session.query(CollectionNote).filter_by(collection_id=coll.id, note_id=note.id).first()
+    member = (
+        db_session.query(CollectionNote).filter_by(collection_id=coll.id, note_id=note.id).first()
+    )
     assert member is not None
 
     # 3. Undo
@@ -234,7 +244,9 @@ def test_collections_add_item_commit_and_undo(client: TestClient, db_session: Se
     )
     assert r_undo.status_code == 200
     db_session.expire_all()
-    member_after = db_session.query(CollectionNote).filter_by(collection_id=coll.id, note_id=note.id).first()
+    member_after = (
+        db_session.query(CollectionNote).filter_by(collection_id=coll.id, note_id=note.id).first()
+    )
     assert member_after is None
 
 
@@ -281,9 +293,16 @@ def test_graph_add_relationship_commit_and_undo(client: TestClient, db_session: 
     assert r_commit.status_code == 200
     change_set_id = r_commit.json()["committed_changes"][0]["change_set_id"]
 
-    rel = db_session.query(GraphRelationship).filter_by(
-        workspace_id=ws.id, source_entity_id=e1.id, target_entity_id=e2.id, relationship_type="subfield_of"
-    ).first()
+    rel = (
+        db_session.query(GraphRelationship)
+        .filter_by(
+            workspace_id=ws.id,
+            source_entity_id=e1.id,
+            target_entity_id=e2.id,
+            relationship_type="subfield_of",
+        )
+        .first()
+    )
     assert rel is not None
 
     # 3. Undo
@@ -293,16 +312,25 @@ def test_graph_add_relationship_commit_and_undo(client: TestClient, db_session: 
     )
     assert r_undo.status_code == 200
     db_session.expire_all()
-    rel_after = db_session.query(GraphRelationship).filter_by(
-        workspace_id=ws.id, source_entity_id=e1.id, target_entity_id=e2.id, relationship_type="subfield_of"
-    ).first()
+    rel_after = (
+        db_session.query(GraphRelationship)
+        .filter_by(
+            workspace_id=ws.id,
+            source_entity_id=e1.id,
+            target_entity_id=e2.id,
+            relationship_type="subfield_of",
+        )
+        .first()
+    )
     assert rel_after is None
 
 
 def test_notes_delete_commit_and_undo(client: TestClient, db_session: Session):
     """Propose, commit (soft-delete), and undo (restore) notes.delete."""
     ws, user = _setup_ws(db_session)
-    note = Note(workspace_id=ws.id, created_by=user.id, title="Critical Note", content="Don't lose this")
+    note = Note(
+        workspace_id=ws.id, created_by=user.id, title="Critical Note", content="Don't lose this"
+    )
     db_session.add(note)
     db_session.commit()
 

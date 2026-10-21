@@ -13,7 +13,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.actions.types import (
@@ -41,13 +41,12 @@ from app.models.note_link import NoteLink
 from app.models.note_tag import NoteTag
 from app.models.tag import Tag
 from app.models.workspace import Workspace
-from app.schemas.note import NoteCreate, NoteUpdate
-from app.services import membership_service, note_service, version_service
-
+from app.services import membership_service, note_service
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Propose Phase Handlers (Validate inputs & build proposal payload)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def handle_notes_create(
     db: Session, workspace_id: uuid.UUID, data: NotesCreateInput
@@ -212,6 +211,7 @@ def handle_notes_delete(
 # Commit Phase Executor (Applied atomically upon confirmation token verification)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def execute_commit(
     db: Session,
     workspace_id: uuid.UUID,
@@ -301,7 +301,12 @@ def execute_commit(
 
         src = db.get(Note, src_id)
         tgt = db.get(Note, tgt_id)
-        if not src or src.workspace_id != workspace_id or not tgt or tgt.workspace_id != workspace_id:
+        if (
+            not src
+            or src.workspace_id != workspace_id
+            or not tgt
+            or tgt.workspace_id != workspace_id
+        ):
             raise NoteNotFoundError("Linked note targets no longer exist in workspace.")
 
         existing = db.scalars(
@@ -345,7 +350,12 @@ def execute_commit(
             "item_id": str(item_id),
         }
         return (
-            {"collection_id": str(coll_id), "item_type": item_type, "item_id": str(item_id), "status": "added"},
+            {
+                "collection_id": str(coll_id),
+                "item_type": item_type,
+                "item_id": str(item_id),
+                "status": "added",
+            },
             [str(coll_id), str(item_id)],
             None,
             after_state,
@@ -359,7 +369,12 @@ def execute_commit(
 
         src = db.get(GraphEntity, src_id)
         tgt = db.get(GraphEntity, tgt_id)
-        if not src or src.workspace_id != workspace_id or not tgt or tgt.workspace_id != workspace_id:
+        if (
+            not src
+            or src.workspace_id != workspace_id
+            or not tgt
+            or tgt.workspace_id != workspace_id
+        ):
             raise EntityNotFoundError("Entity targets no longer exist in workspace.")
 
         rel = GraphRelationship(
@@ -421,6 +436,7 @@ def execute_commit(
 # ─────────────────────────────────────────────────────────────────────────────
 # Undo Engine (Restores prior state and records new mutation per §6.5)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def execute_undo(
     db: Session,

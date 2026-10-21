@@ -14,10 +14,8 @@ Actions:
 23. notes.suggest_tags
 """
 
-import json
 import logging
 import uuid
-from typing import Any
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -45,7 +43,6 @@ from app.core.exceptions import (
 from app.models.collection import (
     Collection,
     CollectionNote,
-    CollectionSource,
 )
 from app.models.graph_entity import GraphEntity
 from app.models.graph_relationship import GraphRelationship
@@ -54,9 +51,7 @@ from app.models.source import Source
 from app.models.thread import (
     Thread,
     ThreadDiscovery,
-    ThreadNote,
     ThreadQuestion,
-    ThreadSource,
 )
 from app.schemas.action import EvidenceItem
 from app.services import llm_service, note_service, vector_service
@@ -74,7 +69,10 @@ def handle_notes_summarize(
 
     content = note.content or ""
     prompt = [
-        {"role": "system", "content": "You are a research assistant. Summarize the provided note concisely."},
+        {
+            "role": "system",
+            "content": "You are a research assistant. Summarize the provided note concisely.",
+        },
         {"role": "user", "content": f"Title: {note.title}\nContent:\n{content}"},
     ]
 
@@ -91,7 +89,9 @@ def handle_notes_summarize(
             excerpt=content[:200] if content else note.title,
         )
     ]
-    key_points = [line.strip("- *") for line in raw.split("\n") if line.strip().startswith(("-", "*"))]
+    key_points = [
+        line.strip("- *") for line in raw.split("\n") if line.strip().startswith(("-", "*"))
+    ]
     if not key_points:
         key_points = [raw[:100]]
 
@@ -110,9 +110,20 @@ def handle_sources_summarize(
     if not source or source.workspace_id != workspace_id:
         raise SourceNotFoundError("Source not found in workspace.")
 
-    text = (source.raw_metadata.get("text") if source.raw_metadata and isinstance(source.raw_metadata, dict) else None) or source.original_path or ""
+    text = (
+        (
+            source.raw_metadata.get("text")
+            if source.raw_metadata and isinstance(source.raw_metadata, dict)
+            else None
+        )
+        or source.original_path
+        or ""
+    )
     prompt = [
-        {"role": "system", "content": "You are a research assistant. Summarize the provided document source."},
+        {
+            "role": "system",
+            "content": "You are a research assistant. Summarize the provided document source.",
+        },
         {"role": "user", "content": f"Document: {source.original_path}\nText:\n{text[:3000]}"},
     ]
     try:
@@ -129,7 +140,9 @@ def handle_sources_summarize(
             excerpt=text[:200],
         )
     ]
-    key_points = [line.strip("- *") for line in raw.split("\n") if line.strip().startswith(("-", "*"))]
+    key_points = [
+        line.strip("- *") for line in raw.split("\n") if line.strip().startswith(("-", "*"))
+    ]
     if not key_points:
         key_points = [raw[:100]]
 
@@ -148,7 +161,9 @@ def handle_collections_summarize(
     if not coll or coll.workspace_id != workspace_id:
         raise AppException(404, "COLLECTION_NOT_FOUND", "Collection not found.")
 
-    coll_notes = db.scalars(select(CollectionNote).where(CollectionNote.collection_id == coll.id)).all()
+    coll_notes = db.scalars(
+        select(CollectionNote).where(CollectionNote.collection_id == coll.id)
+    ).all()
     evidence: list[EvidenceItem] = []
     items_text = []
 
@@ -166,7 +181,10 @@ def handle_collections_summarize(
 
     combined = "\n".join(items_text) or coll.description or coll.name
     prompt = [
-        {"role": "system", "content": "Summarize the themes across this collection of knowledge items."},
+        {
+            "role": "system",
+            "content": "Summarize the themes across this collection of knowledge items.",
+        },
         {"role": "user", "content": f"Collection '{coll.name}':\n{combined}"},
     ]
     try:
@@ -194,8 +212,12 @@ def handle_threads_summarize(
     if not thread or thread.workspace_id != workspace_id:
         raise AppException(404, "THREAD_NOT_FOUND", "Thread not found.")
 
-    questions = db.scalars(select(ThreadQuestion).where(ThreadQuestion.thread_id == thread.id)).all()
-    discoveries = db.scalars(select(ThreadDiscovery).where(ThreadDiscovery.thread_id == thread.id)).all()
+    questions = db.scalars(
+        select(ThreadQuestion).where(ThreadQuestion.thread_id == thread.id)
+    ).all()
+    discoveries = db.scalars(
+        select(ThreadDiscovery).where(ThreadDiscovery.thread_id == thread.id)
+    ).all()
 
     evidence: list[EvidenceItem] = []
     for d in discoveries:
@@ -241,13 +263,13 @@ def handle_entities_summarize(
     relationships = db.scalars(
         select(GraphRelationship).where(
             GraphRelationship.workspace_id == workspace_id,
-            (GraphRelationship.source_entity_id == entity.id) | (GraphRelationship.target_entity_id == entity.id),
+            (GraphRelationship.source_entity_id == entity.id)
+            | (GraphRelationship.target_entity_id == entity.id),
         )
     ).all()
 
     connections = [
-        f"{r.relationship_type} relationship: {r.description or ''}"
-        for r in relationships
+        f"{r.relationship_type} relationship: {r.description or ''}" for r in relationships
     ]
     evidence = [
         EvidenceItem(
@@ -279,7 +301,9 @@ def handle_notes_compare(
         )
     ).all()
     if len(notes) < 2:
-        raise NoteNotFoundError("At least two valid notes from the workspace are required for comparison.")
+        raise NoteNotFoundError(
+            "At least two valid notes from the workspace are required for comparison."
+        )
 
     evidence: list[EvidenceItem] = []
     text_blocks = []
@@ -294,7 +318,10 @@ def handle_notes_compare(
         )
 
     prompt = [
-        {"role": "system", "content": "Compare the following notes. State key similarities and differences."},
+        {
+            "role": "system",
+            "content": "Compare the following notes. State key similarities and differences.",
+        },
         {"role": "user", "content": "\n\n---\n\n".join(text_blocks)},
     ]
     try:
@@ -324,12 +351,22 @@ def handle_sources_compare(
         )
     ).all()
     if len(sources) < 2:
-        raise SourceNotFoundError("At least two valid sources from the workspace are required for comparison.")
+        raise SourceNotFoundError(
+            "At least two valid sources from the workspace are required for comparison."
+        )
 
     evidence: list[EvidenceItem] = []
     text_blocks = []
     for s in sources:
-        t = ((s.raw_metadata.get("text") if s.raw_metadata and isinstance(s.raw_metadata, dict) else None) or s.original_path or "")[:1500]
+        t = (
+            (
+                s.raw_metadata.get("text")
+                if s.raw_metadata and isinstance(s.raw_metadata, dict)
+                else None
+            )
+            or s.original_path
+            or ""
+        )[:1500]
         text_blocks.append(f"Source '{s.original_path}':\n{t}")
         evidence.append(
             EvidenceItem(
@@ -341,7 +378,10 @@ def handle_sources_compare(
         )
 
     prompt = [
-        {"role": "system", "content": "Compare the following source documents. State key similarities and differences."},
+        {
+            "role": "system",
+            "content": "Compare the following source documents. State key similarities and differences.",
+        },
         {"role": "user", "content": "\n\n---\n\n".join(text_blocks)},
     ]
     try:
@@ -499,7 +539,10 @@ def handle_knowledge_generate_brief(
     brief_text = f"# Research Brief: {topic}\n\n## Overview\nSynthesized knowledge concerning '{topic}'.\n\n## Findings\n"
     sections = [
         {"title": "Overview", "content": f"Analysis on topic '{topic}'."},
-        {"title": "Key Discoveries", "content": "\n".join(items_context) if items_context else "No active notes."},
+        {
+            "title": "Key Discoveries",
+            "content": "\n".join(items_context) if items_context else "No active notes.",
+        },
     ]
 
     return ActionHandlerResult(
@@ -528,7 +571,10 @@ def handle_notes_extract_concepts(
 
     # Simple deterministic and prompt-based concept extraction
     prompt = [
-        {"role": "system", "content": "Extract key domain concepts from the text. Return a comma-separated list."},
+        {
+            "role": "system",
+            "content": "Extract key domain concepts from the text. Return a comma-separated list.",
+        },
         {"role": "user", "content": f"Title: {note.title}\n{content}"},
     ]
     try:

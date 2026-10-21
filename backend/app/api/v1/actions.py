@@ -44,14 +44,17 @@ def _resolve_workspace_id(
     if header_ws:
         try:
             return uuid.UUID(header_ws.strip())
-        except ValueError:
-            raise ValidationError(f"Invalid UUID in X-Workspace-Id header: {header_ws}")
-    raise ValidationError("workspace_id must be provided via query parameter, path, or X-Workspace-Id header.")
+        except ValueError as err:
+            raise ValidationError(f"Invalid UUID in X-Workspace-Id header: {header_ws}") from err
+    raise ValidationError(
+        "workspace_id must be provided via query parameter, path, or X-Workspace-Id header."
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Action Catalogue (§5, §5.2)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.get(
     "/actions",
@@ -80,6 +83,7 @@ def get_workspace_action_catalogue(workspace_id: uuid.UUID) -> ActionCatalogueRe
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. Action Execution (§5, §5.1, §6.2)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.post(
     "/actions/{action_id}/execute",
@@ -129,6 +133,7 @@ def execute_action_workspace_endpoint(
 # 3. Execution Status & Results (§5, §9)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @router.get(
     "/actions/executions/{execution_id}",
     response_model=ActionResultEnvelope,
@@ -165,6 +170,7 @@ def get_workspace_execution_status(
 # 4. Action Cancellation (§5, §6.8)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @router.post(
     "/actions/executions/{execution_id}/cancel",
     response_model=ActionResultEnvelope,
@@ -200,6 +206,7 @@ def cancel_workspace_execution_endpoint(
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. Execution Listing & Pagination (§5)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.get(
     "/actions/executions",
@@ -238,6 +245,7 @@ def list_workspace_executions_endpoint(
 # ─────────────────────────────────────────────────────────────────────────────
 # 6. Proposal Rejection & Safe Undo (§6.4, §6.5)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.post(
     "/actions/proposals/{proposal_id}/reject",

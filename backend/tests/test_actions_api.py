@@ -16,12 +16,11 @@ Covers:
 """
 
 import uuid
-from datetime import UTC, datetime
-import pytest
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models import ActionChangeSet, ActionExecution, ActionProposal, Note, User, Workspace
+from app.models import ActionExecution, Note, User, Workspace
 
 
 def _create_workspace_and_user(db: Session) -> tuple[Workspace, User]:
@@ -140,7 +139,9 @@ def test_two_phase_controlled_write_lifecycle(client: TestClient, db_session: Se
     assert commit_data["committed_changes"][0]["change_set_id"] is not None
 
     # Note now exists in DB
-    created_note = db_session.query(Note).filter_by(workspace_id=ws.id, title="Proposed Note").first()
+    created_note = (
+        db_session.query(Note).filter_by(workspace_id=ws.id, title="Proposed Note").first()
+    )
     assert created_note is not None
 
 

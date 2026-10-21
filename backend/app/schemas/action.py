@@ -52,7 +52,9 @@ class ActionExecuteRequest(BaseModel):
 
     mode: ExecutionMode = Field(..., description="Execution mode: read, propose, or commit")
     input: dict[str, Any] = Field(default_factory=dict, description="Action-specific input data")
-    idempotency_key: str = Field(..., min_length=1, max_length=255, description="Client idempotency key")
+    idempotency_key: str = Field(
+        ..., min_length=1, max_length=255, description="Client idempotency key"
+    )
     confirmation_token: str | None = Field(
         default=None,
         description="Required confirmation token when mode is commit",
@@ -64,11 +66,17 @@ class ActionExecuteRequest(BaseModel):
 class EvidenceItem(BaseModel):
     """Grounding evidence item per Contract v0.5.1 §8.2."""
 
-    chunk_id: uuid.UUID | None = Field(default=None, description="UUID of chunk if source is chunked")
+    chunk_id: uuid.UUID | None = Field(
+        default=None, description="UUID of chunk if source is chunked"
+    )
     source_id: uuid.UUID | None = Field(default=None, description="UUID of source if applicable")
     similarity_score: float | None = Field(default=None, description="Similarity score (0.0 - 1.0)")
-    item_type: str | None = Field(default=None, description="Type: note, source, entity, collection, thread")
-    item_id: uuid.UUID | str | None = Field(default=None, description="ID of item supporting evidence")
+    item_type: str | None = Field(
+        default=None, description="Type: note, source, entity, collection, thread"
+    )
+    item_id: uuid.UUID | str | None = Field(
+        default=None, description="ID of item supporting evidence"
+    )
     excerpt: str | None = Field(default=None, description="Direct text excerpt or locator")
 
     model_config = ConfigDict(extra="ignore")

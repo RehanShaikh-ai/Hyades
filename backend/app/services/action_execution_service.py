@@ -85,9 +85,7 @@ def _envelope_from_execution(
 
     result_dict = execution.result_payload or {}
     evidence_raw = result_dict.pop("__evidence__", [])
-    evidence_items = [
-        EvidenceItem(**e) if isinstance(e, dict) else e for e in evidence_raw
-    ]
+    evidence_items = [EvidenceItem(**e) if isinstance(e, dict) else e for e in evidence_raw]
     interpretation = result_dict.pop("__interpretation__", None)
 
     return ActionResultEnvelope(
@@ -126,7 +124,10 @@ def execute_action(
         raise ValidationError(
             f"Action '{action_id}' is a read-only action and does not support mode '{request.mode}'."
         )
-    if action.side_effect in ("propose", "destructive") and request.mode not in ("propose", "commit"):
+    if action.side_effect in ("propose", "destructive") and request.mode not in (
+        "propose",
+        "commit",
+    ):
         raise ValidationError(
             f"Action '{action_id}' requires two-phase execution with mode 'propose' or 'commit'."
         )
@@ -151,12 +152,15 @@ def execute_action(
 
     # 5. Concurrency Limit Enforcement (§11.2)
     max_concurrent = settings.ACTION_MAX_CONCURRENT_PER_WORKSPACE
-    active_count = db.scalar(
-        select(func.count(ActionExecution.id)).where(
-            ActionExecution.workspace_id == workspace_id,
-            ActionExecution.status.in_(["running", "cancelling"]),
+    active_count = (
+        db.scalar(
+            select(func.count(ActionExecution.id)).where(
+                ActionExecution.workspace_id == workspace_id,
+                ActionExecution.status.in_(["running", "cancelling"]),
+            )
         )
-    ) or 0
+        or 0
+    )
     if active_count >= max_concurrent:
         raise AppException(
             429,
@@ -169,9 +173,7 @@ def execute_action(
         validated_input = action.input_schema_cls.model_validate(request.input)
     except PydanticValidationError as e:
         invalid_fields = [str(err["loc"][0]) for err in e.errors() if err.get("loc")]
-        raise ValidationError(
-            f"Validation failed for fields: {', '.join(invalid_fields)}"
-        )
+        raise ValidationError(f"Validation failed for fields: {', '.join(invalid_fields)}") from e
 
     # ─────────────────────────────────────────────────────────────────────────
     # Phase 2: Commit (§6.2)
@@ -189,7 +191,9 @@ def execute_action(
         ).first()
 
         if not proposal:
-            raise AppException(404, "TOKEN_INVALID", "Confirmation token is invalid or does not exist.")
+            raise AppException(
+                404, "TOKEN_INVALID", "Confirmation token is invalid or does not exist."
+            )
         if proposal.status == "committed":
             raise ConflictError("Confirmation token has already been committed.")
         if proposal.status == "rejected":
@@ -284,7 +288,9 @@ def execute_action(
             token_hash = _hash_token(raw_token)
             expires_at = datetime.now(UTC) + timedelta(minutes=15)
 
-            proposal_payload = handler_result.proposals[0] if handler_result.proposals else request.input
+            proposal_payload = (
+                handler_result.proposals[0] if handler_result.proposals else request.input
+            )
             proposal = ActionProposal(
                 execution_id=execution.id,
                 workspace_id=workspace_id,
@@ -309,7 +315,9 @@ def execute_action(
             db.refresh(execution)
 
             duration_ms = int((time.perf_counter() - start_time) * 1000)
-            return _envelope_from_execution(db, execution, raw_token=raw_token, duration_ms=duration_ms)
+            return _envelope_from_execution(
+                db, execution, raw_token=raw_token, duration_ms=duration_ms
+            )
 
         except Exception as exc:
             db.rollback()
@@ -351,8 +359,12 @@ def execute_action(
                 execution_id=execution.id,
                 action_id=action_id,
                 affected_item_ids=[str(i) for i in handler_result.affected_item_ids],
-                before_state=jsonable_encoder(handler_result.before_state) if handler_result.before_state else None,
-                after_state=jsonable_encoder(handler_result.after_state) if handler_result.after_state else None,
+                before_state=jsonable_encoder(handler_result.before_state)
+                if handler_result.before_state
+                else None,
+                after_state=jsonable_encoder(handler_result.after_state)
+                if handler_result.after_state
+                else None,
                 committed_at=datetime.now(UTC),
                 undo_status="not_undone",
             )
@@ -430,9 +442,14 @@ def list_executions(
         .offset(offset)
         .limit(limit)
     )
-    total = db.scalar(
-        select(func.count(ActionExecution.id)).where(ActionExecution.workspace_id == workspace_id)
-    ) or 0
+    total = (
+        db.scalar(
+            select(func.count(ActionExecution.id)).where(
+                ActionExecution.workspace_id == workspace_id
+            )
+        )
+        or 0
+    )
 
     items = list(db.scalars(query).all())
     summaries = [
@@ -453,9 +470,7 @@ def list_executions(
     return ExecutionListResponse(items=summaries, total=total, offset=offset, limit=limit)
 
 
-def reject_proposal(
-    db: Session, workspace_id: uuid.UUID, proposal_id: uuid.UUID
-) -> dict[str, Any]:
+def reject_proposal(db: Session, workspace_id: uuid.UUID, proposal_id: uuid.UUID) -> dict[str, Any]:
     """Reject a pending proposal per Contract §6.4."""
     proposal = db.get(ActionProposal, proposal_id)
     if not proposal or proposal.workspace_id != workspace_id:
@@ -471,9 +486,7 @@ def reject_proposal(
     return {"proposal_id": str(proposal.id), "status": "rejected"}
 
 
-def undo_change_set(
-    db: Session, workspace_id: uuid.UUID, change_set_id: uuid.UUID
-) -> UndoResponse:
+def undo_change_set(db: Session, workspace_id: uuid.UUID, change_set_id: uuid.UUID) -> UndoResponse:
     """Execute undo operation for a recorded change-set per Contract §6.5."""
     change_set = db.get(ActionChangeSet, change_set_id)
     if not change_set or change_set.workspace_id != workspace_id:

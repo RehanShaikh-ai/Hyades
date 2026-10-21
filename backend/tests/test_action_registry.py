@@ -11,6 +11,7 @@ Verifies:
 """
 
 import pytest
+
 from app.actions.registry import get_action, get_catalogue, list_actions
 from app.core.exceptions import AppException
 

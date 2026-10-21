@@ -17,7 +17,8 @@ Actions:
 
 import uuid
 from typing import Any
-from sqlalchemy import cast, func, or_, select, String
+
+from sqlalchemy import String, cast, or_, select
 from sqlalchemy.orm import Session
 
 from app.actions.types import (
@@ -63,10 +64,7 @@ from app.models.thread import (
 )
 from app.schemas.action import EvidenceItem
 from app.services import (
-    graph_service,
     note_service,
-    source_service,
-    thread_service,
     vector_service,
 )
 
@@ -164,7 +162,15 @@ def handle_knowledge_search_all(
             .limit(limit)
         ).all()
         for src in lex_sources:
-            src_text = (src.raw_metadata.get("text") if src.raw_metadata and isinstance(src.raw_metadata, dict) else None) or src.original_path or ""
+            src_text = (
+                (
+                    src.raw_metadata.get("text")
+                    if src.raw_metadata and isinstance(src.raw_metadata, dict)
+                    else None
+                )
+                or src.original_path
+                or ""
+            )
             item_dict = {
                 "item_type": "source",
                 "item_id": str(src.id),
@@ -354,9 +360,19 @@ def handle_sources_get(
         "processing_status": source.processing_status,
         "file_size_bytes": source.file_size_bytes,
         "created_at": source.imported_at.isoformat() if source.imported_at else None,
-        "updated_at": (source.last_synced_at or source.imported_at).isoformat() if (source.last_synced_at or source.imported_at) else None,
+        "updated_at": (source.last_synced_at or source.imported_at).isoformat()
+        if (source.last_synced_at or source.imported_at)
+        else None,
     }
-    src_text = (source.raw_metadata.get("text") if source.raw_metadata and isinstance(source.raw_metadata, dict) else None) or source.original_path or ""
+    src_text = (
+        (
+            source.raw_metadata.get("text")
+            if source.raw_metadata and isinstance(source.raw_metadata, dict)
+            else None
+        )
+        or source.original_path
+        or ""
+    )
     evidence = [
         EvidenceItem(
             item_type="source",
@@ -389,7 +405,15 @@ def handle_sources_search(
     items = []
     evidence = []
     for s in sources:
-        stext = (s.raw_metadata.get("text") if s.raw_metadata and isinstance(s.raw_metadata, dict) else None) or s.original_path or ""
+        stext = (
+            (
+                s.raw_metadata.get("text")
+                if s.raw_metadata and isinstance(s.raw_metadata, dict)
+                else None
+            )
+            or s.original_path
+            or ""
+        )
         items.append(
             {
                 "id": str(s.id),
@@ -598,24 +622,18 @@ def handle_graph_find_path(
     if found_path:
         entities_dict = {
             e.id: e
-            for e in db.scalars(
-                select(GraphEntity).where(GraphEntity.id.in_(found_path))
-            ).all()
+            for e in db.scalars(select(GraphEntity).where(GraphEntity.id.in_(found_path))).all()
         }
         path_items = [
             {
                 "id": str(nid),
                 "name": entities_dict[nid].name if nid in entities_dict else "",
-                "entity_type": (
-                    entities_dict[nid].entity_type if nid in entities_dict else ""
-                ),
+                "entity_type": (entities_dict[nid].entity_type if nid in entities_dict else ""),
             }
             for nid in found_path
         ]
 
-    return ActionHandlerResult(
-        result={"found": found_path is not None, "path": path_items}
-    )
+    return ActionHandlerResult(result={"found": found_path is not None, "path": path_items})
 
 
 def handle_collections_get(
@@ -626,9 +644,7 @@ def handle_collections_get(
     if not coll or coll.workspace_id != workspace_id:
         raise AppException(404, "COLLECTION_NOT_FOUND", "Collection not found.")
 
-    notes = db.scalars(
-        select(CollectionNote).where(CollectionNote.collection_id == coll.id)
-    ).all()
+    notes = db.scalars(select(CollectionNote).where(CollectionNote.collection_id == coll.id)).all()
     sources = db.scalars(
         select(CollectionSource).where(CollectionSource.collection_id == coll.id)
     ).all()
@@ -636,9 +652,7 @@ def handle_collections_get(
         select(CollectionEntity).where(CollectionEntity.collection_id == coll.id)
     ).all()
     convs = db.scalars(
-        select(CollectionConversation).where(
-            CollectionConversation.collection_id == coll.id
-        )
+        select(CollectionConversation).where(CollectionConversation.collection_id == coll.id)
     ).all()
 
     items = []
@@ -649,9 +663,7 @@ def handle_collections_get(
     for e in entities:
         items.append({"item_type": "entity", "item_id": str(e.entity_id)})
     for c in convs:
-        items.append(
-            {"item_type": "conversation", "item_id": str(c.conversation_id)}
-        )
+        items.append({"item_type": "conversation", "item_id": str(c.conversation_id)})
 
     coll_data = {
         "id": str(coll.id),
@@ -680,15 +692,9 @@ def handle_threads_get(
         select(ThreadDiscovery).where(ThreadDiscovery.thread_id == thread.id)
     ).all()
 
-    notes = db.scalars(
-        select(ThreadNote).where(ThreadNote.thread_id == thread.id)
-    ).all()
-    sources = db.scalars(
-        select(ThreadSource).where(ThreadSource.thread_id == thread.id)
-    ).all()
-    entities = db.scalars(
-        select(ThreadEntity).where(ThreadEntity.thread_id == thread.id)
-    ).all()
+    notes = db.scalars(select(ThreadNote).where(ThreadNote.thread_id == thread.id)).all()
+    sources = db.scalars(select(ThreadSource).where(ThreadSource.thread_id == thread.id)).all()
+    entities = db.scalars(select(ThreadEntity).where(ThreadEntity.thread_id == thread.id)).all()
     convs = db.scalars(
         select(ThreadConversation).where(ThreadConversation.thread_id == thread.id)
     ).all()
@@ -701,9 +707,7 @@ def handle_threads_get(
     for e in entities:
         items.append({"item_type": "entity", "item_id": str(e.entity_id)})
     for c in convs:
-        items.append(
-            {"item_type": "conversation", "item_id": str(c.conversation_id)}
-        )
+        items.append({"item_type": "conversation", "item_id": str(c.conversation_id)})
 
     thread_data = {
         "id": str(thread.id),
