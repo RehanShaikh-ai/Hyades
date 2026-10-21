@@ -21,3 +21,4 @@ export * from './collections';
 export * from './threads';
 export * from './saved_views';
 export * from './inbox';
+export * from './actions';

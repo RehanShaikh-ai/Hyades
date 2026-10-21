@@ -1788,14 +1788,16 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                     <i className="ph-bold ph-book-open text-xs text-[var(--accent-terracotta)]" />
                     <span>Preview Document</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenEditNote(selectedItem)}
-                    className="w-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-colors py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
-                  >
-                    <i className="ph ph-book-open" />
-                    <span>{selectedItem.type === 'note' ? 'Edit Note in Scriptorium' : 'Open Document Reader'}</span>
-                  </button>
+                  {selectedItem.type === 'note' && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditNote(selectedItem)}
+                      className="w-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-colors py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
+                    >
+                      <i className="ph ph-note-pencil" />
+                      <span>Edit Note in Scriptorium</span>
+                    </button>
+                  )}
 
                   <div className="grid grid-cols-2 gap-2">
                     <button
