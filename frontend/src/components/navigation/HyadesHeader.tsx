@@ -9,7 +9,8 @@ export type HyadesDestination =
   | 'stella'
   | 'collections'
   | 'threads'
-  | 'inbox';
+  | 'inbox'
+  | 'actions';
 
 interface HyadesHeaderProps {
   currentDestination: HyadesDestination;
@@ -49,11 +50,13 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
     library: HTMLButtonElement | null;
     observatory: HTMLButtonElement | null;
     stella: HTMLButtonElement | null;
+    actions: HTMLButtonElement | null;
   }>({
     overview: null,
     library: null,
     observatory: null,
     stella: null,
+    actions: null,
   });
 
   const [indicatorStyle, setIndicatorStyle] = useState<{ x: number; width: number; visible: boolean }>({
@@ -72,7 +75,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
       setIndicatorStyle({ x: 0, width: 0, visible: false });
       return;
     }
-    const activeTab = tabRefs.current[currentDestination as 'overview' | 'library' | 'observatory' | 'stella'];
+    const activeTab = tabRefs.current[currentDestination as 'overview' | 'library' | 'observatory' | 'stella' | 'actions'];
     const rail = navRailRef.current;
     if (activeTab && rail) {
       const railRect = rail.getBoundingClientRect();
@@ -121,6 +124,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
     collections: 'Collections',
     threads: 'Threads',
     inbox: 'Inbox',
+    actions: 'Actions',
   };
 
   const handleSelectNav = (dest: HyadesDestination) => {
@@ -246,6 +250,23 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-brass)]" />
           </button>
 
+          <button
+            ref={(el) => { tabRefs.current.actions = el; }}
+            type="button"
+            data-testid="nav-item-actions"
+            aria-label="Actions"
+            onClick={() => onNavigate('actions')}
+            className={`nav-item px-3 py-1 text-xs rounded-full transition-colors cursor-pointer flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] ${
+              currentDestination === 'actions'
+                ? 'active font-semibold text-[var(--ink-primary)] bg-white shadow-2xs'
+                : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white/50'
+            }`}
+            aria-current={currentDestination === 'actions' ? 'page' : undefined}
+          >
+            <span>Actions</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)]" />
+          </button>
+
           {/* Gliding terracotta underline indicator */}
           <span
             className="nav-indicator"
@@ -266,7 +287,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             <button
               type="button"
               data-testid="nav-workspace-trigger"
-              aria-label="Workspace Resources and Selector Menu"
+              aria-label={`Workspace: ${isWorkspaceDestination ? destinationTitle[currentDestination] : (selectedWorkspace?.name ?? 'Default')}`}
               aria-expanded={isWorkspaceMenuOpen}
               aria-haspopup="true"
               onClick={() => setIsWorkspaceMenuOpen((prev) => !prev)}
@@ -451,7 +472,6 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             onClick={onOpenSearch}
             className="px-2 sm:px-2.5 py-1 bg-white/80 hover:bg-white border border-[var(--border-strong)] rounded-full flex items-center gap-1.5 text-xs text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-all shadow-2xs group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] cursor-pointer"
             title="Global Search (⌘K)"
-            aria-label="Global Search (⌘K)"
           >
             <i className="ph ph-magnifying-glass text-xs text-[var(--accent-midnight)] group-hover:scale-110 transition-transform" />
             <span className="text-[11px] hidden sm:inline text-[var(--ink-tertiary)] group-hover:text-[var(--ink-secondary)]">Search...</span>
@@ -504,10 +524,10 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             onClick={onOpenAccountModal}
             data-testid="profile-bottom-left-btn"
             title="Account & Setup"
-            aria-label="Account & Setup"
+            aria-label="RS - Account & Setup"
             className="w-7 h-7 rounded-full bg-[var(--accent-midnight)] text-[#FAF8F2] flex items-center justify-center font-serif text-[10px] font-semibold hover:bg-[var(--accent-midnight-light)] transition-colors shadow-2xs border border-[#2D3F5E] cursor-pointer"
           >
-            RS
+            <span aria-hidden="true">RS</span>
           </button>
 
           {/* Environment/Perspective Cycle */}
@@ -564,7 +584,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
                   Core Destinations
                 </div>
                 <div className="space-y-1">
-                  {(['overview', 'library', 'observatory', 'stella'] as HyadesDestination[]).map((dest) => {
+                  {(['overview', 'library', 'observatory', 'stella', 'actions'] as HyadesDestination[]).map((dest) => {
                     const isActive = currentDestination === dest;
                     return (
                       <button

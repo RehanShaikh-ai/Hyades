@@ -13,6 +13,7 @@ import { HyadesStella } from './HyadesStella';
 import { HyadesCollections } from './HyadesCollections';
 import { HyadesThreads } from './HyadesThreads';
 import { HyadesInbox } from './HyadesInbox';
+import { HyadesActions } from './HyadesActions';
 import { WorkspaceShell } from '@/components/navigation/WorkspaceShell';
 
 import { HyadesGlobalSearchModal } from '@/components/search/HyadesGlobalSearchModal';
@@ -40,6 +41,7 @@ const VALID_DESTINATIONS: HyadesDestination[] = [
   'collections',
   'threads',
   'inbox',
+  'actions',
 ];
 
 const parseHashDestination = (): HyadesDestination => {
@@ -285,6 +287,16 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
             onNavigateToObservatory={handleNavigateToObservatory}
             onNavigateToLibrary={() => setCurrentDestination('library')}
             environmentIndex={environmentIndex}
+          />
+        )}
+
+        {currentDestination === 'actions' && (
+          <HyadesActions
+            workspaceId={effectiveWorkspaceId}
+            userId={selectedUser?.id || initialUserId || selectedWorkspace?.owner_id || users[0]?.id}
+            onNavigateToLibrary={() => setCurrentDestination('library')}
+            onNavigateToObservatory={handleNavigateToObservatory}
+            onNavigateToStella={handleNavigateToStella}
           />
         )}
 
