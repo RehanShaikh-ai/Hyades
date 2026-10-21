@@ -66,7 +66,11 @@ def test_retrieval_recall_and_mrr(golden_questions, test_db_session):
         # Rank by matching keywords count
         matching_notes = []
         for note in notes:
-            score = sum(1 for kw in keywords if kw.lower() in note.title.lower() or kw.lower() in note.content.lower())
+            score = sum(
+                1
+                for kw in keywords
+                if kw.lower() in note.title.lower() or kw.lower() in note.content.lower()
+            )
             if score > 0:
                 matching_notes.append((note, score))
 

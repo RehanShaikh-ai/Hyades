@@ -230,10 +230,14 @@ def test_migration_0009_upgrade_and_downgrade_cycle_with_data_preservation():
         assert "progress" in cols
 
         # Verify pre-existing data is 100% preserved
-        res = conn.execute(
-            text("SELECT id, workspace_id, progress FROM index_jobs WHERE id = :id"),
-            {"id": job_id},
-        ).mappings().one()
+        res = (
+            conn.execute(
+                text("SELECT id, workspace_id, progress FROM index_jobs WHERE id = :id"),
+                {"id": job_id},
+            )
+            .mappings()
+            .one()
+        )
         assert res["id"] == job_id
         assert res["workspace_id"] == ws_id
         assert "total_notes" in res["progress"]

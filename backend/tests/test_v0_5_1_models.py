@@ -210,4 +210,3 @@ def test_index_job_updated_at_and_progress_accessors(db_session: Session):
     assert legacy_job.completed_items == 9
     assert legacy_job.failed_items == 1
     assert legacy_job.current_stage == "finalizing"
-

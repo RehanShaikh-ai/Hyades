@@ -29,8 +29,9 @@ describe('NoteCard', () => {
     expect(screen.getByText('react')).toBeInTheDocument();
     expect(screen.getByText('typescript')).toBeInTheDocument();
     
-    // Check formatted date presence (Jan 2, 2023 or similar depending on locale)
-    expect(screen.getByText(/Jan 2, 2023/i)).toBeInTheDocument();
+    // Check formatted date presence (Jan 2, 2023 or 2 Jan 2023 depending on locale)
+    expect(screen.getByText(/(Jan 2, 2023|2 Jan 2023)/i)).toBeInTheDocument();
+
   });
 
   it('shows pinned indicator when pinned', () => {

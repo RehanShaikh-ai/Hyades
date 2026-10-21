@@ -12,18 +12,18 @@ from pathlib import Path
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-# Add project root so scripts can be imported
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from scripts.benchmark_v0_5_1_latency import run_latency_benchmark
-
 from app.db.base import Base
 from app.models.content_chunk import ContentChunk
 from app.models.note import Note
 from app.models.source import Source
 from tests.fixtures.v0_5_1_benchmark_data import create_reproducible_benchmark_dataset
+
+# Add project root so scripts can be imported
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from scripts.benchmark_v0_5_1_latency import run_latency_benchmark  # noqa: E402
 
 
 def test_reproducible_benchmark_dataset_generation():
@@ -41,8 +41,12 @@ def test_reproducible_benchmark_dataset_generation():
 
         # Verify database counts
         total_notes = len(list(db.scalars(select(Note).where(Note.workspace_id == workspace.id))))
-        total_sources = len(list(db.scalars(select(Source).where(Source.workspace_id == workspace.id))))
-        total_chunks = len(list(db.scalars(select(ContentChunk).where(ContentChunk.workspace_id == workspace.id))))
+        total_sources = len(
+            list(db.scalars(select(Source).where(Source.workspace_id == workspace.id)))
+        )
+        total_chunks = len(
+            list(db.scalars(select(ContentChunk).where(ContentChunk.workspace_id == workspace.id)))
+        )
 
         assert total_notes == 100
         assert total_sources == 20

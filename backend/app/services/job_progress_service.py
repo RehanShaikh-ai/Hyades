@@ -89,8 +89,11 @@ def record_retry_progress(
         # Move from failed to pending/processed
         failed_items = max(0, failed_items - 1)
         failed_list = [
-            f for f in failed_list
-            if not (isinstance(f, dict) and (f.get("item_id") == item_id or f.get("note_id") == item_id))
+            f
+            for f in failed_list
+            if not (
+                isinstance(f, dict) and (f.get("item_id") == item_id or f.get("note_id") == item_id)
+            )
         ]
 
     if success:

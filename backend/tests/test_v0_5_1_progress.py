@@ -14,7 +14,6 @@ Contract references:
             - Frontend refresh MUST NOT erase execution progress.
 """
 
-
 from sqlalchemy.orm import Session
 
 from app.models.action_execution import ActionExecution
