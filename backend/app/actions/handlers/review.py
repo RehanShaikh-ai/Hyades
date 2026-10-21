@@ -102,14 +102,15 @@ def handle_inbox_reject(
     if not item or item.workspace_id != workspace_id:
         raise AppException(404, "INBOX_ITEM_NOT_FOUND", "Inbox item not found.")
 
-    rejected_item = inbox_service.reject_inbox_item(db, data.inbox_item_id)
+    inbox_service.reject_inbox_item(db, data.inbox_item_id)
+    db.refresh(item)
     return ActionHandlerResult(
         result={
-            "inbox_item_id": str(rejected_item.id),
-            "status": rejected_item.status,
+            "inbox_item_id": str(item.id),
+            "status": item.status,
         },
-        affected_item_ids=[str(rejected_item.id)],
-        interpretation=f"Rejected inbox item {rejected_item.id}.",
+        affected_item_ids=[str(item.id)],
+        interpretation=f"Rejected inbox item {item.id}.",
     )
 
 
@@ -151,7 +152,7 @@ def handle_knowledge_audit_processing(
                     "title": s.original_path or "Source Document",
                     "status": s.processing_status,
                     "error_stage": s.error_stage,
-                    "error_message": s.error_message or s.processing_error,
+                    "error_message": s.error_message,
                 }
             )
 

@@ -310,25 +310,20 @@ def execute_commit(
                 NoteLink.target_note_id == tgt_id,
             )
         ).first()
-        if existing:
-            link = existing
-        else:
+        if not existing:
             link = NoteLink(
                 source_note_id=src_id,
                 target_note_id=tgt_id,
-                link_type="manual",
             )
             db.add(link)
             db.commit()
-            db.refresh(link)
 
         after_state = {
-            "link_id": str(link.id),
             "source_note_id": str(src_id),
             "target_note_id": str(tgt_id),
         }
         return (
-            {"link_id": str(link.id), "source_note_id": str(src_id), "target_note_id": str(tgt_id)},
+            {"source_note_id": str(src_id), "target_note_id": str(tgt_id), "status": "linked"},
             [str(src_id), str(tgt_id)],
             None,
             after_state,
@@ -343,7 +338,7 @@ def execute_commit(
         if not coll or coll.workspace_id != workspace_id:
             raise AppException(404, "COLLECTION_NOT_FOUND", "Collection not found in workspace.")
 
-        membership_service.add_item_to_collection(db, coll_id, item_type, item_id)
+        membership_service.add_collection_item(db, coll, item_type, item_id)
         after_state = {
             "collection_id": str(coll_id),
             "item_type": item_type,
@@ -481,8 +476,15 @@ def execute_undo(
 
     elif action_id == "notes.link":
         # Undo link by deleting NoteLink
-        if after_state and "link_id" in after_state:
-            link = db.get(NoteLink, uuid.UUID(after_state["link_id"]))
+        if after_state and "source_note_id" in after_state and "target_note_id" in after_state:
+            src_id = uuid.UUID(after_state["source_note_id"])
+            tgt_id = uuid.UUID(after_state["target_note_id"])
+            link = db.scalars(
+                select(NoteLink).where(
+                    NoteLink.source_note_id == src_id,
+                    NoteLink.target_note_id == tgt_id,
+                )
+            ).first()
             if link:
                 db.delete(link)
                 db.commit()
@@ -494,7 +496,9 @@ def execute_undo(
             coll_id = uuid.UUID(after_state["collection_id"])
             item_id = uuid.UUID(after_state["item_id"])
             item_type = after_state["item_type"]
-            membership_service.remove_item_from_collection(db, coll_id, item_type, item_id)
+            coll = db.get(Collection, coll_id)
+            if coll:
+                membership_service.remove_collection_item(db, coll, item_type, item_id)
         mutation_details = {"undone_action": "collections.add_item", "item_removed": True}
 
     elif action_id == "graph.add_relationship":

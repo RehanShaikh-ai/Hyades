@@ -17,7 +17,7 @@ Actions:
 
 import uuid
 from typing import Any
-from sqlalchemy import func, or_, select
+from sqlalchemy import cast, func, or_, select, String
 from sqlalchemy.orm import Session
 
 from app.actions.types import (
@@ -157,17 +157,19 @@ def handle_knowledge_search_all(
                 Source.workspace_id == workspace_id,
                 or_(
                     Source.original_path.ilike(f"%{query_str}%"),
-                    Source.extracted_text.ilike(f"%{query_str}%"),
+                    Source.source_identifier.ilike(f"%{query_str}%"),
+                    cast(Source.raw_metadata, String).ilike(f"%{query_str}%"),
                 ),
             )
             .limit(limit)
         ).all()
         for src in lex_sources:
+            src_text = (src.raw_metadata.get("text") if src.raw_metadata and isinstance(src.raw_metadata, dict) else None) or src.original_path or ""
             item_dict = {
                 "item_type": "source",
                 "item_id": str(src.id),
                 "title": src.original_path or "Source Document",
-                "excerpt": (src.extracted_text or "")[:200],
+                "excerpt": src_text[:200],
                 "search_method": "lexical",
                 "similarity_score": 0.80,
             }
@@ -178,7 +180,7 @@ def handle_knowledge_search_all(
                     item_id=src.id,
                     source_id=src.id,
                     similarity_score=0.80,
-                    excerpt=(src.extracted_text or src.original_path or "")[:200],
+                    excerpt=src_text[:200],
                 )
             )
 
@@ -351,15 +353,16 @@ def handle_sources_get(
         "source_type": source.source_type,
         "processing_status": source.processing_status,
         "file_size_bytes": source.file_size_bytes,
-        "created_at": source.created_at.isoformat(),
-        "updated_at": source.updated_at.isoformat(),
+        "created_at": source.imported_at.isoformat() if source.imported_at else None,
+        "updated_at": (source.last_synced_at or source.imported_at).isoformat() if (source.last_synced_at or source.imported_at) else None,
     }
+    src_text = (source.raw_metadata.get("text") if source.raw_metadata and isinstance(source.raw_metadata, dict) else None) or source.original_path or ""
     evidence = [
         EvidenceItem(
             item_type="source",
             item_id=source.id,
             source_id=source.id,
-            excerpt=(source.extracted_text or source.original_path or "")[:200],
+            excerpt=src_text[:200],
         )
     ]
     return ActionHandlerResult(result={"source": source_data}, evidence=evidence)
@@ -376,31 +379,34 @@ def handle_sources_search(
             Source.workspace_id == workspace_id,
             or_(
                 Source.original_path.ilike(f"%{query_str}%"),
-                Source.extracted_text.ilike(f"%{query_str}%"),
+                Source.source_identifier.ilike(f"%{query_str}%"),
+                cast(Source.raw_metadata, String).ilike(f"%{query_str}%"),
             ),
         )
         .limit(data.limit)
     ).all()
 
-    items = [
-        {
-            "id": str(s.id),
-            "title": s.original_path or "Source Document",
-            "source_type": s.source_type,
-            "processing_status": s.processing_status,
-            "excerpt": (s.extracted_text or "")[:200],
-        }
-        for s in sources
-    ]
-    evidence = [
-        EvidenceItem(
-            item_type="source",
-            item_id=s.id,
-            source_id=s.id,
-            excerpt=(s.extracted_text or s.original_path or "")[:200],
+    items = []
+    evidence = []
+    for s in sources:
+        stext = (s.raw_metadata.get("text") if s.raw_metadata and isinstance(s.raw_metadata, dict) else None) or s.original_path or ""
+        items.append(
+            {
+                "id": str(s.id),
+                "title": s.original_path or "Source Document",
+                "source_type": s.source_type,
+                "processing_status": s.processing_status,
+                "excerpt": stext[:200],
+            }
         )
-        for s in sources
-    ]
+        evidence.append(
+            EvidenceItem(
+                item_type="source",
+                item_id=s.id,
+                source_id=s.id,
+                excerpt=stext[:200],
+            )
+        )
     return ActionHandlerResult(
         result={"items": items, "total": len(items)},
         evidence=evidence,
@@ -419,8 +425,8 @@ def handle_sources_get_processing_status(
         result={
             "source_id": str(source.id),
             "processing_status": source.processing_status,
-            "detected_count": getattr(source, "detected_count", None),
-            "error_message": source.processing_error,
+            "detected_count": getattr(source, "chunk_count", None),
+            "error_message": source.error_message,
         }
     )
 
@@ -651,7 +657,7 @@ def handle_collections_get(
         "id": str(coll.id),
         "name": coll.name,
         "description": coll.description,
-        "color": coll.color,
+        "color": getattr(coll, "color", None),
         "icon": coll.icon,
         "created_at": coll.created_at.isoformat(),
         "updated_at": coll.updated_at.isoformat(),

@@ -19,7 +19,7 @@ import logging
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.actions.types import (
@@ -110,7 +110,7 @@ def handle_sources_summarize(
     if not source or source.workspace_id != workspace_id:
         raise SourceNotFoundError("Source not found in workspace.")
 
-    text = source.extracted_text or source.original_path or ""
+    text = (source.raw_metadata.get("text") if source.raw_metadata and isinstance(source.raw_metadata, dict) else None) or source.original_path or ""
     prompt = [
         {"role": "system", "content": "You are a research assistant. Summarize the provided document source."},
         {"role": "user", "content": f"Document: {source.original_path}\nText:\n{text[:3000]}"},
@@ -203,13 +203,13 @@ def handle_threads_summarize(
             EvidenceItem(
                 item_type="thread",
                 item_id=thread.id,
-                excerpt=d.discovery[:200],
+                excerpt=(d.content or "")[:200],
             )
         )
 
     context = f"Thread: {thread.title}\nQuestion: {thread.question or ''}\n"
-    context += "Questions:\n" + "\n".join(f"- {q.question}" for q in questions) + "\n"
-    context += "Discoveries:\n" + "\n".join(f"- {d.discovery}" for d in discoveries)
+    context += "Questions:\n" + "\n".join(f"- {q.text}" for q in questions) + "\n"
+    context += "Discoveries:\n" + "\n".join(f"- {d.content}" for d in discoveries)
 
     prompt = [
         {"role": "system", "content": "Summarize the investigation thread and its key findings."},
@@ -221,7 +221,7 @@ def handle_threads_summarize(
         logger.warning("LLM thread summarize failed: %s", e)
         raw = f"Investigation '{thread.title}' addressing {len(questions)} questions and {len(discoveries)} discoveries."
 
-    findings = [d.discovery for d in discoveries] if discoveries else [raw[:100]]
+    findings = [d.content for d in discoveries] if discoveries else [raw[:100]]
 
     return ActionHandlerResult(
         result={"summary": raw, "findings": findings},
@@ -329,7 +329,7 @@ def handle_sources_compare(
     evidence: list[EvidenceItem] = []
     text_blocks = []
     for s in sources:
-        t = (s.extracted_text or s.original_path or "")[:1500]
+        t = ((s.raw_metadata.get("text") if s.raw_metadata and isinstance(s.raw_metadata, dict) else None) or s.original_path or "")[:1500]
         text_blocks.append(f"Source '{s.original_path}':\n{t}")
         evidence.append(
             EvidenceItem(
@@ -369,12 +369,40 @@ def handle_knowledge_answer(
     context_chunks = []
 
     # Retrieve matching notes
+    terms = [q_str]
+    words = [
+        w.strip("?,.!")
+        for w in q_str.split()
+        if len(w) > 2
+        and w.lower()
+        not in {
+            "what",
+            "when",
+            "where",
+            "which",
+            "with",
+            "from",
+            "that",
+            "this",
+            "have",
+            "the",
+            "are",
+        }
+    ]
+    if words:
+        terms.extend(words)
+
+    note_clauses = []
+    for t in terms:
+        note_clauses.append(Note.title.ilike(f"%{t}%"))
+        note_clauses.append(Note.content.ilike(f"%{t}%"))
+
     notes = db.scalars(
         select(Note)
         .where(
             Note.workspace_id == workspace_id,
             Note.is_archived.is_(False),
-            (Note.title.ilike(f"%{q_str}%")) | (Note.content.ilike(f"%{q_str}%")),
+            or_(*note_clauses),
         )
         .limit(5)
     ).all()
