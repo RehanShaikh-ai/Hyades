@@ -9,7 +9,8 @@ export type HyadesDestination =
   | 'stella'
   | 'collections'
   | 'threads'
-  | 'inbox';
+  | 'inbox'
+  | 'actions';
 
 interface HyadesHeaderProps {
   currentDestination: HyadesDestination;
@@ -49,11 +50,13 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
     library: HTMLButtonElement | null;
     observatory: HTMLButtonElement | null;
     stella: HTMLButtonElement | null;
+    actions: HTMLButtonElement | null;
   }>({
     overview: null,
     library: null,
     observatory: null,
     stella: null,
+    actions: null,
   });
 
   const [indicatorStyle, setIndicatorStyle] = useState<{ x: number; width: number; visible: boolean }>({
@@ -72,7 +75,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
       setIndicatorStyle({ x: 0, width: 0, visible: false });
       return;
     }
-    const activeTab = tabRefs.current[currentDestination as 'overview' | 'library' | 'observatory' | 'stella'];
+    const activeTab = tabRefs.current[currentDestination as 'overview' | 'library' | 'observatory' | 'stella' | 'actions'];
     const rail = navRailRef.current;
     if (activeTab && rail) {
       const railRect = rail.getBoundingClientRect();
@@ -121,6 +124,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
     collections: 'Collections',
     threads: 'Threads',
     inbox: 'Inbox',
+    actions: 'Actions',
   };
 
   const handleSelectNav = (dest: HyadesDestination) => {
@@ -244,6 +248,23 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
           >
             <span>Stella</span>
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-brass)]" />
+          </button>
+
+          <button
+            ref={(el) => { tabRefs.current.actions = el; }}
+            type="button"
+            data-testid="nav-item-actions"
+            aria-label="Actions"
+            onClick={() => onNavigate('actions')}
+            className={`nav-item px-3 py-1 text-xs rounded-full transition-colors cursor-pointer flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] ${
+              currentDestination === 'actions'
+                ? 'active font-semibold text-[var(--ink-primary)] bg-white shadow-2xs'
+                : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white/50'
+            }`}
+            aria-current={currentDestination === 'actions' ? 'page' : undefined}
+          >
+            <span>Actions</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)]" />
           </button>
 
           {/* Gliding terracotta underline indicator */}
@@ -564,7 +585,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
                   Core Destinations
                 </div>
                 <div className="space-y-1">
-                  {(['overview', 'library', 'observatory', 'stella'] as HyadesDestination[]).map((dest) => {
+                  {(['overview', 'library', 'observatory', 'stella', 'actions'] as HyadesDestination[]).map((dest) => {
                     const isActive = currentDestination === dest;
                     return (
                       <button
