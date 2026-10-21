@@ -110,6 +110,47 @@ class IndexJob(Base):
         nullable=True,
         default=None,
     )
+    # v0.5.1 Contract §4.1, §10.1: Track last status update timestamp
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+    @property
+    def total_items(self) -> int:
+        """Total logical items count per Contract v0.5.1 §4.1, §10.1."""
+        if isinstance(self.progress, dict):
+            return self.progress.get("total_items", self.progress.get("total_notes", 0))
+        return 0
+
+    @property
+    def completed_items(self) -> int:
+        """Completed logical items count per Contract v0.5.1 §4.1, §10.1."""
+        if isinstance(self.progress, dict):
+            return self.progress.get("completed_items", self.progress.get("processed_notes", 0))
+        return 0
+
+    @property
+    def failed_items(self) -> int:
+        """Failed logical items count per Contract v0.5.1 §4.1, §10.1."""
+        if isinstance(self.progress, dict):
+            val = self.progress.get("failed_items")
+            if val is not None:
+                return val
+            failed_list = self.progress.get("failed_notes")
+            if isinstance(failed_list, list):
+                return len(failed_list)
+        return 0
+
+    @property
+    def current_stage(self) -> str | None:
+        """Current execution stage per Contract v0.5.1 §4.1, §10.1."""
+        if isinstance(self.progress, dict):
+            return self.progress.get("current_stage", self.progress.get("stage"))
+        return None
 
     # Relationships
     workspace: Mapped["Workspace"] = relationship("Workspace")

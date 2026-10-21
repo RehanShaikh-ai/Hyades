@@ -155,3 +155,59 @@ def test_action_change_set_model(db_session: Session):
     assert change_set.after_state == {"content": "New Content"}
     assert change_set.undo_status == "not_undone"
     assert change_set.undone_at is None
+
+
+def test_index_job_updated_at_and_progress_accessors(db_session: Session):
+    """Verify IndexJob updated_at column and progress properties per §4.1, §10.1."""
+    from app.models import IndexJob
+
+    user = User(display_name="Job Owner")
+    db_session.add(user)
+    db_session.commit()
+
+    workspace = Workspace(name="Job Workspace", owner_id=user.id)
+    db_session.add(workspace)
+    db_session.commit()
+
+    job = IndexJob(
+        workspace_id=workspace.id,
+        job_type="index_workspace",
+        status="running",
+        progress={
+            "total_items": 100,
+            "completed_items": 45,
+            "failed_items": 2,
+            "current_stage": "chunking",
+        },
+    )
+    db_session.add(job)
+    db_session.commit()
+    db_session.refresh(job)
+
+    assert job.updated_at is not None
+    assert job.total_items == 100
+    assert job.completed_items == 45
+    assert job.failed_items == 2
+    assert job.current_stage == "chunking"
+
+    # Also verify fallback to legacy keys
+    legacy_job = IndexJob(
+        workspace_id=workspace.id,
+        job_type="index_note",
+        status="completed",
+        progress={
+            "total_notes": 10,
+            "processed_notes": 9,
+            "failed_notes": [{"note_id": "xyz", "error": "failed"}],
+            "stage": "finalizing",
+        },
+    )
+    db_session.add(legacy_job)
+    db_session.commit()
+    db_session.refresh(legacy_job)
+
+    assert legacy_job.total_items == 10
+    assert legacy_job.completed_items == 9
+    assert legacy_job.failed_items == 1
+    assert legacy_job.current_stage == "finalizing"
+
