@@ -45,6 +45,8 @@ htmlcov/
 
 # Agents & AI Tooling
 .agents/
+.artist/
+.archive/
 skills-lock.json
 
 # Backups

@@ -1,0 +1,199 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" width="1200" height="400">
+  <defs>
+    <!-- Warm Archival Paper Tint -->
+    <linearGradient id="bgGradClean" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FCFAF6" />
+      <stop offset="50%" stop-color="#FAF7F2" />
+      <stop offset="100%" stop-color="#F3ECE0" />
+    </linearGradient>
+
+    <!-- Ambient Aura behind Instrument -->
+    <radialGradient id="armGlowClean" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#C48E2E" stop-opacity="0.22" />
+      <stop offset="45%" stop-color="#BD532B" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#FAF7F2" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Star Flare -->
+    <radialGradient id="starFlareClean" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="1" />
+      <stop offset="35%" stop-color="#E8B854" stop-opacity="0.8" />
+      <stop offset="70%" stop-color="#BD532B" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#BD532B" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- GitHub Octocat Mark -->
+    <g id="gh-icon-clean">
+      <path fill="#1A1918" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+    </g>
+  </defs>
+
+  <!-- 1. Background Archival Rag Paper -->
+  <rect width="1200" height="400" fill="url(#bgGradClean)" />
+
+  <!-- 2. Subtle Blueprint Grid Lines (Clean, Non-Intrusive) -->
+  <g stroke="#EFE9DD" stroke-width="0.75" opacity="0.8">
+    <line x1="60" y1="0" x2="60" y2="400" />
+    <line x1="600" y1="0" x2="600" y2="400" stroke="#E5DEC0" stroke-dasharray="4,6" />
+    <line x1="0" y1="60" x2="1200" y2="60" />
+    <line x1="0" y1="340" x2="1200" y2="340" />
+  </g>
+
+  <!-- Outer Framing Rulers -->
+  <g stroke="#D4CCBE" stroke-width="1" opacity="0.85">
+    <rect x="32" y="32" width="1136" height="336" fill="none" />
+    <!-- Corner Framing Crosshairs -->
+    <path d="M 24,32 L 40,32 M 32,24 L 32,40" />
+    <path d="M 1160,32 L 1176,32 M 1168,24 L 1168,40" />
+    <path d="M 24,368 L 40,368 M 32,360 L 32,376" />
+    <path d="M 1160,368 L 1176,368 M 1168,360 L 1168,376" />
+  </g>
+
+  <!-- Minimal Margins Metadata (No Buzzwords, Real Astronomy) -->
+  <g font-family="'JetBrains Mono', 'Fira Code', monospace" font-size="9" fill="#8C8476" letter-spacing="1.5">
+    <text x="48" y="24">HYADES · KNOWLEDGE OBSERVATORY</text>
+    <text x="1152" y="24" text-anchor="end">RA 04ʰ 28ᵐ · DEC +15° 52′</text>
+    <text x="48" y="384">v0.5.1 · OPEN SOURCE</text>
+    <text x="1152" y="384" text-anchor="end">JOHANNES HEVELIUS (1690)</text>
+  </g>
+
+
+  <!-- 3. LEFT SECTION: HUMANIZED, REFINED EDITORIAL TYPOGRAPHY -->
+  <g id="hero-left-content" transform="translate(68, 0)">
+    <!-- Terracotta Accent Indicator -->
+    <line x1="0" y1="92" x2="64" y2="92" stroke="#BD532B" stroke-width="2.5" />
+
+    <!-- Monumental Brand Title: Hyades -->
+    <text x="0" y="160" 
+          font-family="'Newsreader', 'Playfair Display', 'DejaVu Serif', 'Georgia', serif" 
+          font-size="76" 
+          font-weight="700" 
+          letter-spacing="1" 
+          fill="#181614">Hyades</text>
+
+    <!-- Subtitle -->
+    <text x="4" y="202" 
+          font-family="'Newsreader', 'Playfair Display', 'DejaVu Serif', 'Georgia', serif" 
+          font-style="italic" 
+          font-size="28" 
+          font-weight="400" 
+          letter-spacing="0.3" 
+          fill="#BD532B">a celestial observatory for your thoughts.</text>
+
+    <!-- Description -->
+    <text x="4" y="238" 
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" 
+          font-size="14" 
+          font-weight="400" 
+          fill="#4A453E" 
+          letter-spacing="0.1">A personal knowledge graph that maps connections as constellations</text>
+    <text x="4" y="258" 
+          font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" 
+          font-size="14" 
+          font-weight="400" 
+          fill="#4A453E" 
+          letter-spacing="0.1">and grounds research in verified source provenance.</text>
+
+    <!-- Understated Footer Pills: Tech Stack & GitHub Link -->
+    <g transform="translate(4, 290)">
+      <!-- GitHub Repo Pill -->
+      <g>
+        <rect x="0" y="0" width="220" height="32" rx="6" 
+              fill="#FFFFFF" stroke="#D8D1C4" stroke-width="1" />
+        <g transform="translate(12, 8)">
+          <use href="#gh-icon-clean" width="16" height="16" />
+        </g>
+        <text x="36" y="20.5" 
+              font-family="'JetBrains Mono', monospace" 
+              font-size="11.5" 
+              font-weight="500" 
+              fill="#181614">RehanShaikh-ai / Hyades</text>
+      </g>
+
+      <!-- Tech Stack Pill (Honest, Concrete Facts) -->
+      <g transform="translate(230, 0)">
+        <rect x="0" y="0" width="270" height="32" rx="6" 
+              fill="#FFFFFF" stroke="#D8D1C4" stroke-width="1" />
+        <text x="135" y="20.5" 
+              font-family="'JetBrains Mono', monospace" 
+              font-size="11" 
+              font-weight="500" 
+              text-anchor="middle" 
+              fill="#5C564C">Python · FastAPI · React · Qdrant</text>
+      </g>
+    </g>
+  </g>
+
+
+  <!-- 4. RIGHT SECTION: SIGNATURE 3D ARMILLARY INSTRUMENT -->
+  <g id="instrument-right">
+    <circle cx="920" cy="200" r="160" fill="url(#armGlowClean)" />
+
+    <!-- Outer Concentric Reticle Rings -->
+    <g stroke="#EAE4D9" stroke-width="0.8" fill="none">
+      <circle cx="920" cy="200" r="150" stroke-dasharray="3,4" />
+      <circle cx="920" cy="200" r="130" stroke-dasharray="2,3" />
+    </g>
+
+    <!-- 3D Armillary Wireframe Rings (Rendered at High Precision) -->
+    <!-- Fixed Colure Ring -->
+    <circle cx="920" cy="200" r="114" fill="none" stroke="#BD532B" stroke-width="2.4" opacity="0.95" />
+    <circle cx="920" cy="200" r="108" fill="none" stroke="#BD532B" stroke-width="0.8" opacity="0.6" stroke-dasharray="2,3" />
+
+    <!-- Degree Calibrations on Outer Ring -->
+    <g stroke="#BD532B" stroke-width="1.2" opacity="0.85">
+      <line x1="920" y1="86" x2="920" y2="92" />
+      <line x1="920" y1="308" x2="920" y2="314" />
+      <line x1="806" y1="200" x2="812" y2="200" />
+      <line x1="1028" y1="200" x2="1034" y2="200" />
+    </g>
+
+    <!-- Equatorial Ring (3D Ellipse) -->
+    <ellipse cx="920" cy="200" rx="108" ry="38" fill="none" stroke="#1E3A5F" stroke-width="1.8" stroke-dasharray="6,3" opacity="0.9" />
+
+    <!-- 23.44° Inclined Ecliptic Orbit (Antique Gold) -->
+    <g transform="rotate(-23.44 920 200)">
+      <ellipse cx="920" cy="200" rx="108" ry="48" fill="none" stroke="#C48E2E" stroke-width="2.5" opacity="0.95" />
+      <line x1="812" y1="200" x2="1028" y2="200" stroke="#C48E2E" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.7" />
+    </g>
+
+    <!-- Polar Meridian Axis -->
+    <line x1="920" y1="92" x2="920" y2="308" stroke="#2D2A26" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.75" />
+
+    <!-- Focal Aldebaran Beacon (8-Point Diamond Pulsar) -->
+    <g transform="translate(920, 200)">
+      <circle cx="0" cy="0" r="32" fill="url(#starFlareClean)" opacity="0.9" />
+      
+      <!-- 8-Point Diamond Starburst -->
+      <path fill="#BD532B" d="
+        M 0,-22 
+        L 4.5,-6 
+        L 22,0 
+        L 4.5,6 
+        L 0,22 
+        L -4.5,6 
+        L -22,0 
+        L -4.5,-6 Z
+      " />
+      
+      <!-- Secondary Starlight Gold Rays -->
+      <path fill="#C48E2E" d="
+        M -11,-11 L 0,-3.5 L 11,-11 L 3.5,0 L 11,11 L 0,3.5 L -11,11 L -3.5,0 Z
+      " />
+      
+      <!-- Radiant Star Core -->
+      <circle cx="0" cy="0" r="4.5" fill="#FFFFFF" stroke="#BD532B" stroke-width="1.8" />
+      <circle cx="0" cy="0" r="1.8" fill="#C48E2E" />
+
+      <text x="18" y="-12" font-family="'Newsreader', serif" font-style="italic" font-size="13" font-weight="600" fill="#BD532B">α</text>
+      <text x="18" y="2" font-family="'JetBrains Mono', monospace" font-size="8.5" font-weight="600" fill="#C48E2E">ALDEBARAN</text>
+    </g>
+
+    <!-- Subtle Astrolabe Axis Callout -->
+    <g font-family="'JetBrains Mono', monospace" font-size="8" fill="#8C8476">
+      <text x="920" y="68" text-anchor="middle" letter-spacing="2">SPHAERA ARMILLARIS</text>
+      <text x="920" y="336" text-anchor="middle" letter-spacing="2">AXIS 23° 27′ · POLUS BOREALIS</text>
+    </g>
+  </g>
+</svg>
+
