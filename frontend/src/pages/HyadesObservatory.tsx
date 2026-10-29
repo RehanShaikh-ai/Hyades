@@ -3936,10 +3936,9 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
           onAskStella={(ent) => {
             if (onNavigateToStella) {
               onNavigateToStella({
-                kind: 'entity',
-                id: ent?.id || '',
-                name: ent?.name || '',
-                summary: ent?.description || undefined,
+                entityIds: ent ? [ent.id] : undefined,
+                entityNames: ent ? [ent.name] : undefined,
+                prompt: ent ? `Tell me about the celestial entity "${ent.name}"` : undefined,
               });
             }
           }}

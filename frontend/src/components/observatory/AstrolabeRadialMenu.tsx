@@ -17,6 +17,7 @@ import {
   Grid,
   Sparkles,
   Check,
+  LucideIcon,
 } from 'lucide-react';
 
 export interface RadialAction {
@@ -24,7 +25,7 @@ export interface RadialAction {
   label: string;
   subtitle: string;
   color: string;
-  icon: React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
+  icon: LucideIcon;
   onSelect: () => void;
   destructive?: boolean;
 }
@@ -501,8 +502,11 @@ export const AstrolabeRadialMenu: React.FC<AstrolabeRadialMenuProps> = ({
           <g
             className="cursor-pointer"
             onClick={onClose}
-            title="Click or press Esc to close"
+            role="button"
+            tabIndex={0}
+            aria-label="Click or press Esc to close"
           >
+            <title>Click or press Esc to close</title>
             <circle
               cx="0"
               cy="0"
@@ -532,7 +536,7 @@ export const AstrolabeRadialMenu: React.FC<AstrolabeRadialMenuProps> = ({
                   fill={
                     entity.entity_type === 'concept'
                       ? '#BD532B'
-                      : entity.entity_type === 'observation'
+                      : entity.entity_type === 'technology'
                       ? '#8C731A'
                       : '#1E50A2'
                   }
