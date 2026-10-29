@@ -125,7 +125,7 @@ export const AstrolabeRadialMenu: React.FC<AstrolabeRadialMenuProps> = ({
   // Construct action items with 360° continuous spectral gradient loop
   const actions: RadialAction[] = useMemo(() => {
     if (entity) {
-      // 6-Slice Hexagonal Loop: 16° -> 50° -> 145° -> 218° -> 252° -> 332° -> 16°
+      // 5-Point Pentagram Star Fidelity: 16° -> 50° -> 190° -> 252° -> 332° -> 16°
       return [
         {
           id: 'edit',
@@ -150,18 +150,10 @@ export const AstrolabeRadialMenu: React.FC<AstrolabeRadialMenuProps> = ({
           },
         },
         {
-          id: 'copy',
-          label: copiedNotification ? 'COPIED' : 'COPY ID',
-          subtitle: 'UUID / Label',
-          color: '#28754E', // 145° Jade Celadon (Green)
-          icon: copiedNotification ? Check : Copy,
-          onSelect: handleCopyId,
-        },
-        {
           id: 'focus',
           label: 'FOCUS',
           subtitle: 'Center & 1-Hop',
-          color: '#1E50A2', // 218° Ultramarine (Cobalt Blue)
+          color: '#1C7688', // 190° Antwerp Oceanic Cyan (Cyan-Teal)
           icon: Focus,
           onSelect: () => {
             onClose();
@@ -552,15 +544,37 @@ export const AstrolabeRadialMenu: React.FC<AstrolabeRadialMenuProps> = ({
                 >
                   {entity.name.length > 18 ? `${entity.name.slice(0, 17)}…` : entity.name}
                 </text>
-                <text
-                  x="0"
-                  y="18"
-                  textAnchor="middle"
-                  className="font-mono text-[11px]"
-                  fill="var(--ink-faint, #A69E94)"
+                {/* Central Hub Interactive Copy UUID Pill */}
+                <g
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Copy Entity UUID"
+                  className="cursor-pointer transition-transform active:scale-95"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCopyId();
+                  }}
                 >
-                  {entity.description ? 'Documented Star' : 'Empty Star'}
-                </text>
+                  <rect
+                    x="-48"
+                    y="7"
+                    width="96"
+                    height="19"
+                    rx="9.5"
+                    fill={copiedNotification ? 'rgba(40, 117, 78, 0.2)' : 'var(--bg-surface-elevated, #F5EFE6)'}
+                    stroke={copiedNotification ? '#28754E' : 'var(--hairline-color, #E5DEC9)'}
+                    strokeWidth="1.1"
+                  />
+                  <text
+                    x="0"
+                    y="19.5"
+                    textAnchor="middle"
+                    className="font-mono text-[9px] font-bold tracking-wider"
+                    fill={copiedNotification ? '#28754E' : 'var(--ink-secondary, #6E675F)'}
+                  >
+                    {copiedNotification ? 'COPIED UUID' : 'COPY UUID'}
+                  </text>
+                </g>
               </>
             ) : (
               <>

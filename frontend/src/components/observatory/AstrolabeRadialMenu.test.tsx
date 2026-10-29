@@ -44,14 +44,21 @@ describe('AstrolabeRadialMenu (Issue #37 - 8-Sector Precision)', () => {
     expect(screen.getByText('Esc • Close')).toBeInTheDocument();
   });
 
-  it('renders all 6 entity action wedges with accessible labels and distinct hues', () => {
+  it('renders exactly 5 entity action wedges following 5-point star fidelity', () => {
     render(<AstrolabeRadialMenu {...defaultProps} />);
+    const menuItems = screen.getAllByRole('menuitem');
+    expect(menuItems).toHaveLength(5);
     expect(screen.getByRole('menuitem', { name: /EDIT: Name & Type/i })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /LINK: Connect Star/i })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /FOCUS: Center & 1-Hop/i })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /STELLA: Ask Context/i })).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: /COPY ID: UUID \/ Label/i })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /PRUNE: Delete Star/i })).toBeInTheDocument();
+  });
+
+  it('renders COPY UUID badge in central hub for direct one-click copying', () => {
+    render(<AstrolabeRadialMenu {...defaultProps} />);
+    expect(screen.getByRole('button', { name: /Copy Entity UUID/i })).toBeInTheDocument();
+    expect(screen.getByText('COPY UUID')).toBeInTheDocument();
   });
 
   it('triggers onEditEntity when EDIT wedge is clicked (Issue #37)', () => {
