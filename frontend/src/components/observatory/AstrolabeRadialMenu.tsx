@@ -6,7 +6,6 @@ import {
   Share2,
   Compass,
   Trash2,
-  Copy,
   Focus,
   PlusCircle,
   FileText,
@@ -16,7 +15,6 @@ import {
   UploadCloud,
   Grid,
   Sparkles,
-  Check,
   LucideIcon,
 } from 'lucide-react';
 
