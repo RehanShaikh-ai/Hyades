@@ -537,7 +537,7 @@ export const AstrolabeRadialMenu: React.FC<AstrolabeRadialMenuProps> = ({
                       : '#1E50A2'
                   }
                 >
-                  {entity.entity_type || 'ENTITY'}
+                  {(entity.entity_type || 'ENTITY').toUpperCase()}
                 </text>
                 <text
                   x="0"
@@ -606,3 +606,4 @@ export const AstrolabeRadialMenu: React.FC<AstrolabeRadialMenuProps> = ({
     document.body
   );
 };
+
