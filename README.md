@@ -1,6 +1,10 @@
+<p align="center">
+  <img alt="Hyades — A Celestial Observatory for Your Thoughts" src="branding/banner/hyades-banner-motion-light.gif" width="100%">
+</p>
+
 # Hyades
 
-> A contract-driven personal knowledge and research intelligence platform that connects concepts, surfaces latent relationships, and grounds conversational synthesis in verified source provenance.
+> A celestial observatory for your thoughts. A personal knowledge graph that maps connections as constellations and grounds research in verified source provenance.
 
 [![Release](https://img.shields.io/badge/release-v0.4.2-blue.svg)](CONTRACT_v0.4.2.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
