@@ -1,4 +1,6 @@
 import { SavedViewsModal } from '@/components/observatory/SavedViewsModal';
+import { AstrolabeRadialMenu } from '@/components/observatory/AstrolabeRadialMenu';
+import { GraphEntity, EntityType } from '@/types/graph_entity';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as d3 from 'd3';
@@ -826,6 +828,16 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
   // Dialogs / Panels
   const [isEntityEditorOpen, setIsEntityEditorOpen] = useState(false);
+  const [editingEntity, setEditingEntity] = useState<GraphEntity | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    isOpen: boolean;
+    position: { x: number; y: number };
+    entity: GraphEntity | null;
+  }>({
+    isOpen: false,
+    position: { x: 0, y: 0 },
+    entity: null,
+  });
   const [isRelationshipEditorOpen, setIsRelationshipEditorOpen] = useState(false);
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
 
@@ -1448,8 +1460,13 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         Boolean(activeEl?.isContentEditable);
 
       if (e.key === 'Escape') {
+        if (contextMenu.isOpen) {
+          setContextMenu((prev) => ({ ...prev, isOpen: false }));
+          return;
+        }
         if (isEntityEditorOpen) {
           setIsEntityEditorOpen(false);
+          setEditingEntity(null);
           return;
         }
         if (isRelationshipEditorOpen) {
@@ -1488,6 +1505,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
 
       if (e.key === 'a' || e.key === 'A') {
         e.preventDefault();
+        setEditingEntity(null);
         setIsEntityEditorOpen(true);
       } else if (e.key === 'c' || e.key === 'C') {
         e.preventDefault();
@@ -1508,6 +1526,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
+    contextMenu.isOpen,
     isEntityEditorOpen,
     isRelationshipEditorOpen,
     isSuggestionsOpen,
@@ -1807,6 +1826,15 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       .on('click', () => {
         setSelectedNode(null);
         setHoveredNode(null);
+      })
+      .on('contextmenu', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setContextMenu({
+          isOpen: true,
+          position: { x: event.clientX, y: event.clientY },
+          entity: null,
+        });
       });
 
     svg.on('click', (event) => {
@@ -1819,6 +1847,24 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       ) {
         setSelectedNode(null);
         setHoveredNode(null);
+      }
+    });
+
+    svg.on('contextmenu', (event) => {
+      const target = event.target as HTMLElement | SVGElement;
+      if (
+        target === svg.node() ||
+        target.classList?.contains('graph-blank-catcher') ||
+        target.classList?.contains('observatory-viewport') ||
+        target.classList?.contains('graticule-group')
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        setContextMenu({
+          isOpen: true,
+          position: { x: event.clientX, y: event.clientY },
+          entity: null,
+        });
       }
     });
 
@@ -1899,6 +1945,26 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
               d3.zoomIdentity.translate(tx, ty).scale(scale)
             );
         }
+      })
+      .on('contextmenu', (event, d) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const targetEntity: GraphEntity = {
+          id: d.id,
+          workspace_id: workspaceId,
+          name: d.label,
+          entity_type: (d.type === 'hub' ? 'concept' : d.type === 'concept' ? 'concept' : 'concept') as EntityType,
+          description: d.desc || null,
+          is_manual: true,
+          cluster_id: d.clusterId || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        setContextMenu({
+          isOpen: true,
+          position: { x: event.clientX, y: event.clientY },
+          entity: targetEntity,
+        });
       })
       .on('mouseenter', function (_event, d) {
         setHoveredNode(d);
@@ -2816,6 +2882,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
               <button
                 type="button"
                 onClick={() => {
+                  setEditingEntity(null);
                   setIsEntityEditorOpen(true);
                   setIsMoreMenuOpen(false);
                 }}
@@ -3038,7 +3105,10 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setIsEntityEditorOpen(true)}
+                onClick={() => {
+                  setEditingEntity(null);
+                  setIsEntityEditorOpen(true);
+                }}
                 className="px-4 py-2 border border-[var(--border-strong)] hover:bg-[var(--bg-panel-subtle)] text-xs font-medium rounded-lg text-[var(--ink-primary)] flex items-center gap-1.5 cursor-pointer transition-colors"
               >
                 <i className="ph ph-plus text-xs" />
@@ -3816,16 +3886,96 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         </div>
       </div>
 
-      {/* Real Entity Editor Modal */}
+      {/* Real Entity Editor Modal (Issue #37) */}
       <EntityEditor
         workspaceId={workspaceId}
+        entity={editingEntity}
         isOpen={isEntityEditorOpen}
-        onClose={() => setIsEntityEditorOpen(false)}
+        onClose={() => {
+          setIsEntityEditorOpen(false);
+          setEditingEntity(null);
+        }}
         onSave={() => {
           setIsEntityEditorOpen(false);
+          setEditingEntity(null);
           fetchGraph();
         }}
       />
+
+      {/* Astrolabe Radial Context Menu (Issue #37) */}
+      {contextMenu.isOpen && (
+        <AstrolabeRadialMenu
+          entity={contextMenu.entity}
+          position={contextMenu.position}
+          onClose={() => setContextMenu((prev) => ({ ...prev, isOpen: false }))}
+          onEditEntity={(ent) => {
+            setEditingEntity(ent);
+            setIsEntityEditorOpen(true);
+          }}
+          onAddRelationship={() => {
+            setIsRelationshipEditorOpen(true);
+          }}
+          onFocusEntity={(ent) => {
+            const d = celestialNodes.find((n) => n.id === ent.id);
+            if (svgRef.current && zoomBehaviorRef.current && d && d.x !== undefined && d.y !== undefined) {
+              const w = containerRef.current?.clientWidth || window.innerWidth;
+              const h = containerRef.current?.clientHeight || window.innerHeight;
+              const scale = 1.35;
+              const tx = w * 0.44 - d.x * scale;
+              const ty = h * 0.48 - d.y * scale;
+              svgRef.current
+                .transition()
+                .duration(550)
+                .ease(d3.easeCubicOut)
+                .call(
+                  zoomBehaviorRef.current.transform,
+                  d3.zoomIdentity.translate(tx, ty).scale(scale)
+                );
+            }
+          }}
+          onAskStella={(ent) => {
+            if (onNavigateToStella) {
+              onNavigateToStella({
+                kind: 'entity',
+                id: ent?.id || '',
+                name: ent?.name || '',
+                summary: ent?.description || undefined,
+              });
+            }
+          }}
+          onDeleteEntity={async (ent) => {
+            if (window.confirm(`Are you sure you want to delete entity "${ent.name}"?`)) {
+              try {
+                const { deleteEntity } = await import('@/api/entities');
+                await deleteEntity(ent.id);
+                fetchGraph();
+              } catch (err) {
+                console.error('Failed to delete entity', err);
+              }
+            }
+          }}
+          onCreateEntity={() => {
+            setEditingEntity(null);
+            setIsEntityEditorOpen(true);
+          }}
+          onCreateNote={() => {
+            if (onNavigateToDestination) {
+              onNavigateToDestination('library');
+            }
+          }}
+          onResetCamera={handleFitView}
+          onUntangleGraph={handleUntangle}
+          onClusterGraph={fetchGraph}
+          onImportSources={() => {
+            if (onNavigateToDestination) {
+              onNavigateToDestination('library');
+            }
+          }}
+          onToggleSkyGrid={() => {
+            setShowGraticule((prev) => !prev);
+          }}
+        />
+      )}
 
       {/* Real Relationship Editor Modal */}
       <RelationshipEditor
