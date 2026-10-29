@@ -41,7 +41,7 @@ describe('AstrolabeRadialMenu (Issue #37 - 8-Sector Precision)', () => {
     render(<AstrolabeRadialMenu {...defaultProps} />);
     expect(screen.getByText(/concept/i)).toBeInTheDocument();
     expect(screen.getByText('Kepler-16b System')).toBeInTheDocument();
-    expect(screen.getByText(/close/i)).toBeInTheDocument();
+    expect(screen.getByText('Esc • Close')).toBeInTheDocument();
   });
 
   it('renders all 6 entity action wedges with accessible labels and distinct hues', () => {
