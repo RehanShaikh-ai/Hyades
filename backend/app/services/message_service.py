@@ -52,7 +52,9 @@ def create_message(
     clean_content = content.strip()
     if not clean_content:
         raise ValidationError("Message content cannot be empty.")
-    if len(clean_content) > 4000:
+    # CONTRACT §6.3, §6.4: Prompt length limit applies to user inputs
+    # Assistant messages contain Markdown and action result comments and must not be truncated
+    if role == "user" and len(clean_content) > 4000:
         clean_content = clean_content[:4000]
 
     conv = db.get(Conversation, conversation_id)
