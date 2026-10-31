@@ -1,5 +1,6 @@
 import {
   AddToCollectionProposalData,
+  FlashcardDeckData,
   GenericActionProposalData,
   GenericActionResultData,
   InboxReviewCardData,
@@ -35,5 +36,6 @@ export interface LocalDisplayMessage {
   linkNotesResults?: LinkNotesCardData;
   genericProposal?: GenericActionProposalData;
   genericResult?: GenericActionResultData;
+  flashcardDeck?: FlashcardDeckData;
 }
 

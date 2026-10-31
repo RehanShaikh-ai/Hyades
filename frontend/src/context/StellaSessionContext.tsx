@@ -16,10 +16,8 @@ import {
   cancelNoteDraft,
   summarizeItem,
   executeStellaSearch,
-  reviewStellaInbox,
   stageAddToCollection,
   commitAddToCollection,
-  getStellaLinkNotes,
   connectStellaNoteLink,
   getCommandSuggestions,
   executeStellaCommand,
@@ -127,6 +125,7 @@ export const StellaSessionProvider: React.FC<{ children: React.ReactNode }> = ({
         let searchResults: any = undefined;
         let inboxReview: any = undefined;
         let linkNotesResults: any = undefined;
+        let flashcardDeck: any = undefined;
         let cleanContent = m.content || '';
 
         if (m.role === 'assistant') {
@@ -260,6 +259,8 @@ export const StellaSessionProvider: React.FC<{ children: React.ReactNode }> = ({
                   affectedItemIds:
                     parsed.affected_item_ids || parsed.affectedItemIds || [],
                 };
+              } else if (cardType === 'flashcards' || parsed.flashcardDeck || parsed.data?.flashcardDeck) {
+                flashcardDeck = parsed.flashcardDeck || parsed.data?.flashcardDeck || parsed.data || parsed;
               } else {
                 genericResult = {
                   command: parsed.command || '',
@@ -334,6 +335,7 @@ export const StellaSessionProvider: React.FC<{ children: React.ReactNode }> = ({
           linkNotesResults,
           genericResult,
           genericProposal,
+          flashcardDeck,
         });
       }
 
@@ -963,19 +965,31 @@ export const StellaSessionProvider: React.FC<{ children: React.ReactNode }> = ({
             )
           );
         } else {
+          const isFlashcards =
+            command.startsWith('/generate-flashcards') ||
+            res.data?.flashcardDeck ||
+            res.data?.cards ||
+            res.data?.deck_id;
+          const flashcardDeck = isFlashcards
+            ? res.data?.flashcardDeck || res.data
+            : undefined;
+
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantMsgId
                 ? {
                     ...m,
                     content: res.message,
-                    genericResult: {
-                      command,
-                      actionId: res.action_id,
-                      message: res.message,
-                      status: 'completed',
-                      data: res.data,
-                    },
+                    flashcardDeck,
+                    genericResult: isFlashcards
+                      ? undefined
+                      : {
+                          command,
+                          actionId: res.action_id,
+                          message: res.message,
+                          status: 'completed',
+                          data: res.data,
+                        },
                   }
                 : m
             )

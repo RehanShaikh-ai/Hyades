@@ -140,3 +140,24 @@ export interface GenericActionResultData {
   data?: Record<string, any>;
 }
 
+export interface FlashcardItem {
+  id: string;
+  question: string;
+  answer: string;
+  explanation?: string | null;
+  concept?: string | null;
+}
+
+export interface FlashcardDeckData {
+  deck_id: string;
+  title: string;
+  source_type: string;
+  source_id?: string | null;
+  source_title: string;
+  cards_count: number;
+  cards: FlashcardItem[];
+  current_index?: number;
+  review_state?: Record<string, 'got_it' | 'again'>;
+}
+
+
