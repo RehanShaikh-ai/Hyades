@@ -134,7 +134,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           blockquote: ({ children, ...props }) => (
             <blockquote
               {...props}
-              className="border-l-3 border-[var(--accent-terracotta)] bg-white/70 px-3.5 py-2 my-2.5 rounded-r-lg italic text-[var(--ink-secondary)] shadow-2xs"
+              className="border-l border-[var(--accent-terracotta)] pl-3.5 py-1 my-2.5 italic text-[var(--ink-secondary)]"
             >
               {children}
             </blockquote>

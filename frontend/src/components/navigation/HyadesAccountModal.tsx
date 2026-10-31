@@ -71,7 +71,7 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
               <h2 id="account-modal-title" className="serif text-lg font-semibold text-[#1C1917] leading-tight">
                 Account & Workspace Setup
               </h2>
-              <p className="text-xs text-[#878074]">
+              <p className="text-xs text-[var(--ink-tertiary)]">
                 Manage researcher identities and knowledge archives
               </p>
             </div>
@@ -85,7 +85,7 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
                 className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                   activeTab === 'workspaces'
                     ? 'bg-[#FAF8F2] text-[#1C1917] shadow-xs'
-                    : 'text-[#878074] hover:text-[#1C1917]'
+                    : 'text-[var(--ink-tertiary)] hover:text-[#1C1917]'
                 }`}
               >
                 Workspaces ({workspaces.length})
@@ -96,7 +96,7 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
                 className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                   activeTab === 'users'
                     ? 'bg-[#FAF8F2] text-[#1C1917] shadow-xs'
-                    : 'text-[#878074] hover:text-[#1C1917]'
+                    : 'text-[var(--ink-tertiary)] hover:text-[#1C1917]'
                 }`}
               >
                 Identities ({users.length})
@@ -107,7 +107,7 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
                 className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                   activeTab === 'local_ai'
                     ? 'bg-[#FAF8F2] text-[#1C1917] shadow-xs'
-                    : 'text-[#878074] hover:text-[#1C1917]'
+                    : 'text-[var(--ink-tertiary)] hover:text-[#1C1917]'
                 }`}
               >
                 Local AI & FreeLLMAPI
@@ -117,7 +117,7 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 text-[#878074] hover:text-[#1C1917] hover:bg-[#EFECE4] rounded-lg transition-colors ml-2 focus:outline-none"
+              className="p-1.5 text-[var(--ink-tertiary)] hover:text-[#1C1917] hover:bg-[#EFECE4] rounded-lg transition-colors ml-2 focus:outline-none"
               aria-label="Close"
             >
               <X size={18} />
@@ -149,7 +149,7 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
                 <div className="md:col-span-5 bg-white p-4 rounded-xl border border-[#DCD6C8]">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-[#878074] mb-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--ink-tertiary)] mb-3">
                     Create New Workspace
                   </h4>
                   {selectedUser ? (
@@ -159,14 +159,14 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
                       onWorkspaceCreated={onWorkspaceCreated}
                     />
                   ) : (
-                    <p className="text-xs text-[#878074] italic">
+                    <p className="text-xs text-[var(--ink-tertiary)] italic">
                       Please select an identity first in the Identities tab.
                     </p>
                   )}
                 </div>
 
                 <div className="md:col-span-7 bg-white p-4 rounded-xl border border-[#DCD6C8]">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-[#878074] mb-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--ink-tertiary)] mb-3">
                     Available Archives
                   </h4>
                   <WorkspaceList
@@ -196,14 +196,14 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
                 <div className="md:col-span-5 bg-white p-4 rounded-xl border border-[#DCD6C8]">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-[#878074] mb-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--ink-tertiary)] mb-3">
                     Register Identity
                   </h4>
                   <UserCreateForm onUserCreated={onUserCreated} />
                 </div>
 
                 <div className="md:col-span-7 bg-white p-4 rounded-xl border border-[#DCD6C8]">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-[#878074] mb-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--ink-tertiary)] mb-3">
                     Identities Directory
                   </h4>
                   <UserList
@@ -223,7 +223,7 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-3 border-t border-[#DCD6C8] bg-[#F7F5EE] flex items-center justify-between text-xs text-[#878074]">
+        <div className="px-6 py-3 border-t border-[#DCD6C8] bg-[#F7F5EE] flex items-center justify-between text-xs text-[var(--ink-tertiary)]">
           <span className="mono">HYADES · v0.4.1</span>
           <button
             type="button"

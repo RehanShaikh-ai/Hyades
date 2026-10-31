@@ -247,7 +247,6 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             aria-current={currentDestination === 'stella' ? 'page' : undefined}
           >
             <span>Stella</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-brass)]" />
           </button>
 
           <button
@@ -264,7 +263,6 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             aria-current={currentDestination === 'actions' ? 'page' : undefined}
           >
             <span>Actions</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)]" />
           </button>
 
           {/* Gliding terracotta underline indicator */}
@@ -304,7 +302,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
                 className="max-w-[130px] sm:max-w-[180px] truncate font-medium text-[var(--ink-primary)]"
               >
                 {isWorkspaceDestination
-                  ? `Workspace: ${destinationTitle[currentDestination]}`
+                  ? `Workspace: ${selectedWorkspace?.name ?? 'Default'} · ${destinationTitle[currentDestination]}`
                   : `Workspace: ${selectedWorkspace?.name ?? 'Default'}`}
               </span>
               <i className={`ph ph-caret-down text-[10px] opacity-70 transition-transform duration-200 ${isWorkspaceMenuOpen ? 'rotate-180' : ''}`} />

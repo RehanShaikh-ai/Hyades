@@ -48,7 +48,7 @@ export const Modal: React.FC<ModalProps> = ({
         }
       }}
     >
-      <div className={cn('dialog-content flex flex-col bg-[#FAF8F2] border border-[#C9C2B0] text-[#1C1917] rounded-2xl shadow-2xl overflow-hidden', widthClasses[width], className)}>
+      <div className={cn('dialog-content flex flex-col bg-[var(--bg-panel)] border border-[var(--border-strong)] text-[var(--ink-primary)] rounded-2xl shadow-2xl overflow-hidden', widthClasses[width], className)}>
         {children}
       </div>
     </div>

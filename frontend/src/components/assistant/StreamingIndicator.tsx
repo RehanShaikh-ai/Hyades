@@ -14,19 +14,19 @@ export const StreamingIndicator: React.FC<StreamingIndicatorProps> = ({
   return (
     <div
       className={cn(
-        'streaming-indicator flex items-center gap-2 px-3 py-1.5 rounded-full bg-sky-500/10 border border-sky-500/25 text-sky-300 text-xs font-medium w-fit animate-pulse',
+        'streaming-indicator flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-[var(--ink-secondary)] text-xs font-medium w-fit',
         className
       )}
       role="status"
       aria-live="polite"
       data-testid="streaming-indicator"
     >
-      <Sparkles size={13} className="text-sky-400 animate-spin" style={{ animationDuration: '3s' }} />
-      <span>{label}</span>
+      <Sparkles size={13} className="text-[var(--accent-terracotta)] stella-twinkle" />
+      <span className="stella-breathe">{label}</span>
       <span className="flex gap-1 ml-1">
-        <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-        <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-        <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+        <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)] stella-breathe" style={{ animationDelay: '0ms' }} />
+        <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)] stella-breathe" style={{ animationDelay: '150ms' }} />
+        <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)] stella-breathe" style={{ animationDelay: '300ms' }} />
       </span>
     </div>
   );

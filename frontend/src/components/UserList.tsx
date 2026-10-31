@@ -26,7 +26,7 @@ export const UserList: React.FC<UserListProps> = ({
   return (
     <div className="mb-6">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-xs font-semibold text-[#878074] uppercase tracking-wider font-mono">
+        <h3 className="text-xs font-semibold text-[var(--ink-tertiary)] uppercase tracking-wider font-mono">
           Identities ({users.length})
         </h3>
         {onRefresh && (
@@ -73,10 +73,10 @@ export const UserList: React.FC<UserListProps> = ({
                       </span>
                     )}
                   </div>
-                  <span className="text-[11px] text-[#878074] font-mono truncate">{user.id}</span>
+                  <span className="text-[11px] text-[var(--ink-tertiary)] font-mono truncate">{user.id}</span>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-[11px] text-[#878074] font-mono hidden sm:inline">
+                  <span className="text-[11px] text-[var(--ink-tertiary)] font-mono hidden sm:inline">
                     {new Date(user.created_at).toLocaleDateString()}
                   </span>
                   {onUserSelect && (

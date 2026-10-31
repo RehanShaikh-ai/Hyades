@@ -38,7 +38,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     >
       {/* Assistant avatar on the left */}
       {!isUser && (
-        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-sky-400 to-indigo-600 text-slate-950 flex items-center justify-center flex-shrink-0 shadow-lg shadow-sky-500/10 mt-1">
+        <div className="w-8 h-8 rounded-xl bg-[var(--accent-midnight)] text-[var(--accent-brass)] flex items-center justify-center flex-shrink-0 shadow-2xs mt-1">
           <Bot size={17} />
         </div>
       )}
@@ -46,15 +46,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       {/* Message Card */}
       <div
         className={cn(
-          'message-bubble rounded-2xl p-4 sm:p-5 max-w-[92%] sm:max-w-[85%] md:max-w-[80%] space-y-2 text-[13.5px] leading-relaxed shadow-lg',
+          'message-bubble rounded-2xl p-4 sm:p-5 max-w-[92%] sm:max-w-[85%] md:max-w-[80%] space-y-2 text-[13.5px] leading-relaxed',
           isUser
-            ? 'bg-gradient-to-br from-indigo-600/90 to-sky-600/90 text-white rounded-tr-none border border-sky-400/30'
-            : 'bg-slate-900/90 text-slate-200 rounded-tl-none border border-slate-800 backdrop-blur-xl'
+            ? 'user-bubble text-[var(--ink-primary)] rounded-tr-none'
+            : 'stella-card text-[var(--ink-primary)] rounded-tl-none'
         )}
       >
         {/* Author header / meta */}
-        <div className="flex items-center justify-between gap-3 text-[10px] opacity-75 pb-1 border-b border-white/[0.08]">
-          <span className="font-semibold uppercase tracking-wider">
+        <div className="flex items-center justify-between gap-3 text-[10px] text-[var(--ink-tertiary)] pb-1 border-b border-[var(--border-parchment)]">
+          <span className="font-semibold uppercase tracking-wider text-[var(--ink-secondary)]">
             {isUser ? 'You' : 'Stella'}
           </span>
           <div className="flex items-center gap-2 font-mono">
@@ -79,10 +79,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         {/* Message Content rendered safely with DOMPurify */}
         {message.content ? (
           <div
-            className={cn(
-              'markdown-body prose prose-invert prose-xs max-w-none break-words leading-relaxed',
-              isUser ? 'text-white' : 'text-slate-200'
-            )}
+            className="markdown-body max-w-none break-words leading-relaxed text-[var(--ink-primary)]"
             data-testid="message-content"
             dangerouslySetInnerHTML={{ __html: htmlContent }}
           />
@@ -110,7 +107,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
       {/* User avatar on the right */}
       {isUser && (
-        <div className="w-8 h-8 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 flex items-center justify-center flex-shrink-0 mt-1">
+        <div className="w-8 h-8 rounded-xl bg-[var(--bg-panel-subtle)] text-[var(--ink-secondary)] border border-[var(--border-strong)] flex items-center justify-center flex-shrink-0 mt-1">
           <UserIcon size={16} />
         </div>
       )}

@@ -52,12 +52,12 @@ export const HyadesGlobalSearchModal: React.FC<HyadesGlobalSearchModalProps> = (
             <span id="global-search-title" className="serif font-semibold text-sm text-[#1C1917]">
               Global Knowledge Search
             </span>
-            <span className="mono text-[10px] text-[#878074]">· Hybrid Semantic & Graph</span>
+            <span className="mono text-[10px] text-[var(--ink-tertiary)]">· Hybrid Semantic & Graph</span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 text-[#878074] hover:text-[#1C1917] hover:bg-[#EFECE4] rounded-md transition-colors focus:outline-none"
+            className="p-1 text-[var(--ink-tertiary)] hover:text-[#1C1917] hover:bg-[#EFECE4] rounded-md transition-colors focus:outline-none"
             aria-label="Close search"
           >
             <X size={16} />
@@ -89,7 +89,7 @@ export const HyadesGlobalSearchModal: React.FC<HyadesGlobalSearchModalProps> = (
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-2.5 border-t border-[#DCD6C8] bg-[#F7F5EE] flex items-center justify-between text-[11px] text-[#878074]">
+        <div className="px-5 py-2.5 border-t border-[#DCD6C8] bg-[#F7F5EE] flex items-center justify-between text-[11px] text-[var(--ink-tertiary)]">
           <div className="flex items-center gap-3">
             <span><kbd className="mono px-1 py-0.5 bg-white border border-[#C9C2B0] rounded">↑↓</kbd> Navigate</span>
             <span><kbd className="mono px-1 py-0.5 bg-white border border-[#C9C2B0] rounded">↵</kbd> Select</span>
