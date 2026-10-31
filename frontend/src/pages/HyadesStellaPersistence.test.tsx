@@ -525,4 +525,95 @@ How can we evaluate Large Language Models (LLMs) and Retrieval-Augmented Generat
     fireEvent.click(viewSrcBtn);
     expect(onNavLibrary).toHaveBeenCalledTimes(1);
   });
+
+  it('restores flashcard deck from conversation history and renders visual deck card with full interactivity', async () => {
+    const flashcardDeckPayload = {
+      card_type: 'flashcards',
+      command: '/generate-flashcards "OSI Model"',
+      action_id: 'notes.get',
+      status: 'completed',
+      message: "I've generated a flashcard deck from your notes on OSI Model.",
+      flashcardDeck: {
+        deck_id: 'deck-osi-persistence-test',
+        title: 'OSI Model: Key Concepts',
+        source_type: 'note',
+        source_id: 'note-osi-123',
+        source_title: 'OSI Model',
+        cards_count: 2,
+        cards: [
+          {
+            id: 'card-osi-1',
+            question: 'What is the main purpose of the OSI model?',
+            answer: 'To provide a conceptual framework that standardizes network communication functions.',
+            explanation: 'Developed by ISO in 1984.',
+            concept: 'Architecture & Purpose',
+          },
+          {
+            id: 'card-osi-2',
+            question: 'Which layer of the OSI model is responsible for end-to-end data transfer?',
+            answer: 'Layer 4 — The Transport Layer.',
+            explanation: 'Utilizes TCP or UDP.',
+            concept: 'Transport Layer',
+          },
+        ],
+      },
+    };
+
+    const serialized = JSON.stringify(flashcardDeckPayload);
+
+    vi.mocked(conversationsApi.listConversations).mockResolvedValue({
+      items: [
+        {
+          id: 'conv-deck-1',
+          title: 'OSI Study Session',
+          workspace_id: mockWorkspaceId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ],
+    } as any);
+
+    vi.mocked(messagesApi.listMessages).mockResolvedValue({
+      items: [
+        {
+          id: 'm-user-deck-1',
+          conversation_id: 'conv-deck-1',
+          role: 'user',
+          content: '/generate-flashcards "OSI Model"',
+          citations: [],
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: 'm-ast-deck-1',
+          conversation_id: 'conv-deck-1',
+          role: 'assistant',
+          content: `I've generated a flashcard deck from your notes on OSI Model.\n\n<!--hyades-action-result:${serialized}-->`,
+          citations: [],
+          created_at: new Date().toISOString(),
+        },
+      ],
+    } as any);
+
+    render(
+      <StellaSessionProvider>
+        <HyadesStella workspaceId={mockWorkspaceId} />
+      </StellaSessionProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('in-chat-flashcard-deck')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('OSI Model: Key Concepts')).toBeInTheDocument();
+    expect(screen.getByText('What is the main purpose of the OSI model?')).toBeInTheDocument();
+    expect(screen.getByText('1 / 2')).toBeInTheDocument();
+
+    // Flip to answer
+    const card = screen.getByRole('button', { name: /Flashcard - click to flip/i });
+    fireEvent.click(card);
+    expect(screen.getByText('ANSWER')).toBeInTheDocument();
+    expect(
+      screen.getByText('To provide a conceptual framework that standardizes network communication functions.')
+    ).toBeInTheDocument();
+  });
 });
