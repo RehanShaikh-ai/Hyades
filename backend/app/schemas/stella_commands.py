@@ -232,6 +232,37 @@ class StellaInboxReviewResponse(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Flashcard Deck Models
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class StellaFlashcardItem(BaseModel):
+    """Single interactive flashcard with front/back content and explanation."""
+
+    id: str
+    question: str
+    answer: str
+    explanation: str | None = None
+    concept: str | None = None
+    model_config = ConfigDict(extra="ignore")
+
+
+class StellaFlashcardDeck(BaseModel):
+    """Complete flashcard deck generated from note or source material."""
+
+    deck_id: str
+    title: str
+    source_type: str = "note"
+    source_id: str | None = None
+    source_title: str
+    cards_count: int
+    cards: list[StellaFlashcardItem]
+    current_index: int = 0
+    review_state: dict[str, str] = Field(default_factory=dict)
+    model_config = ConfigDict(extra="ignore")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Add to Collection Action Request/Response (§7.4)
 # ─────────────────────────────────────────────────────────────────────────────
 
