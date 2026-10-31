@@ -168,12 +168,13 @@ def execute_action(
             f"Active action concurrency limit of {max_concurrent} reached for this workspace.",
         )
 
-    # 6. Validate input against canonical schema (§3.1, §5)
-    try:
-        validated_input = action.input_schema_cls.model_validate(request.input)
-    except PydanticValidationError as e:
-        invalid_fields = [str(err["loc"][0]) for err in e.errors() if err.get("loc")]
-        raise ValidationError(f"Validation failed for fields: {', '.join(invalid_fields)}") from e
+    # 6. Validate input for non-commit modes against canonical schema (§3.1, §5)
+    if request.mode != "commit":
+        try:
+            validated_input = action.input_schema_cls.model_validate(request.input)
+        except PydanticValidationError as e:
+            invalid_fields = [str(err["loc"][0]) for err in e.errors() if err.get("loc")]
+            raise ValidationError(f"Validation failed for fields: {', '.join(invalid_fields)}") from e
 
     # ─────────────────────────────────────────────────────────────────────────
     # Phase 2: Commit (§6.2)
@@ -206,6 +207,19 @@ def execute_action(
             db.commit()
             raise AppException(422, "TOKEN_EXPIRED", "Confirmation token has expired.")
 
+        # Merge staged proposal payload with any inline commit input overrides
+        effective_input = dict(proposal.proposal_payload or {})
+        effective_input.update({k: v for k, v in request.input.items() if v is not None})
+
+        # Validate effective input against canonical schema (filtering to declared schema fields)
+        schema_fields = set(action.input_schema_cls.model_fields.keys())
+        filtered_input = {k: v for k, v in effective_input.items() if k in schema_fields}
+        try:
+            validated_input = action.input_schema_cls.model_validate(filtered_input)
+        except PydanticValidationError as e:
+            invalid_fields = [str(err["loc"][0]) for err in e.errors() if err.get("loc")]
+            raise ValidationError(f"Validation failed for fields: {', '.join(invalid_fields)}") from e
+
         # Create persistent execution record for the commit
         execution = ActionExecution(
             workspace_id=workspace_id,
@@ -213,7 +227,7 @@ def execute_action(
             status="running",
             initiated_by="user",
             idempotency_key=request.idempotency_key,
-            input_payload=request.input,
+            input_payload=effective_input,
             started_at=datetime.now(UTC),
         )
         db.add(execution)
@@ -225,7 +239,7 @@ def execute_action(
                 db=db,
                 workspace_id=workspace_id,
                 action_id=action_id,
-                proposal_payload=proposal.proposal_payload,
+                proposal_payload=effective_input,
             )
 
             # Record change set (§6.4)

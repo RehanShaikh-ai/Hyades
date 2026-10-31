@@ -473,3 +473,329 @@ class NotesDeleteOutput(BaseModel):
     note_id: str
     deleted: bool
     status: str
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7.5 Additional Workspace & CRUD Actions (24 actions)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class NotesRenameInput(BaseModel):
+    note_id: uuid.UUID = Field(..., description="Note UUID")
+    new_title: str = Field(..., min_length=1, max_length=200, description="New title for the note")
+    old_title: str | None = Field(default=None, description="Previous note title")
+    model_config = ConfigDict(extra="forbid")
+
+
+class NotesRenameOutput(BaseModel):
+    note_id: str
+    old_title: str
+    new_title: str
+    status: str
+
+
+class NotesDuplicateInput(BaseModel):
+    note_id: uuid.UUID = Field(..., description="Note UUID to duplicate")
+    model_config = ConfigDict(extra="forbid")
+
+
+class NotesDuplicateOutput(BaseModel):
+    original_note_id: str
+    new_note_id: str
+    title: str
+    status: str
+
+
+class NotesArchiveInput(BaseModel):
+    note_id: uuid.UUID = Field(..., description="Note UUID to archive")
+    model_config = ConfigDict(extra="forbid")
+
+
+class NotesArchiveOutput(BaseModel):
+    note_id: str
+    is_archived: bool
+    status: str
+
+
+class NotesRestoreInput(BaseModel):
+    note_id: uuid.UUID = Field(..., description="Note UUID to restore")
+    model_config = ConfigDict(extra="forbid")
+
+
+class NotesRestoreOutput(BaseModel):
+    note_id: str
+    is_archived: bool
+    status: str
+
+
+class NotesPinInput(BaseModel):
+    note_id: uuid.UUID = Field(..., description="Note UUID to pin")
+    model_config = ConfigDict(extra="forbid")
+
+
+class NotesPinOutput(BaseModel):
+    note_id: str
+    is_pinned: bool
+    status: str
+
+
+class NotesUnpinInput(BaseModel):
+    note_id: uuid.UUID = Field(..., description="Note UUID to unpin")
+    model_config = ConfigDict(extra="forbid")
+
+
+class NotesUnpinOutput(BaseModel):
+    note_id: str
+    is_pinned: bool
+    status: str
+
+
+class CollectionsCreateInput(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100, description="Collection name")
+    description: str | None = Field(default=None, max_length=500, description="Collection description")
+    model_config = ConfigDict(extra="forbid")
+
+
+class CollectionsCreateOutput(BaseModel):
+    collection_id: str
+    name: str
+    status: str
+
+
+class CollectionsRenameInput(BaseModel):
+    collection_id: uuid.UUID = Field(..., description="Collection UUID")
+    new_name: str = Field(..., min_length=1, max_length=100, description="New collection name")
+    old_name: str | None = Field(default=None, description="Previous collection name")
+    description: str | None = Field(default=None, max_length=500)
+    model_config = ConfigDict(extra="forbid")
+
+
+class CollectionsRenameOutput(BaseModel):
+    collection_id: str
+    name: str
+    status: str
+
+
+class CollectionsDeleteInput(BaseModel):
+    collection_id: uuid.UUID = Field(..., description="Collection UUID to delete")
+    collection_name: str | None = Field(default=None, description="Optional confirmation collection name")
+    model_config = ConfigDict(extra="forbid")
+
+
+class CollectionsDeleteOutput(BaseModel):
+    collection_id: str
+    deleted: bool
+    status: str
+
+
+class CollectionsRemoveItemInput(BaseModel):
+    collection_id: uuid.UUID = Field(..., description="Collection UUID")
+    item_type: Literal["note", "source", "entity", "conversation"] = Field(..., description="Type of member")
+    item_id: uuid.UUID = Field(..., description="UUID of item to remove")
+    model_config = ConfigDict(extra="forbid")
+
+
+class CollectionsRemoveItemOutput(BaseModel):
+    collection_id: str
+    item_id: str
+    item_type: str
+    status: str
+
+
+class CollectionsMoveItemInput(BaseModel):
+    source_collection_id: uuid.UUID = Field(..., description="Source collection UUID")
+    target_collection_id: uuid.UUID = Field(..., description="Destination collection UUID")
+    item_type: Literal["note", "source", "entity", "conversation"] = Field(..., description="Type of member")
+    item_id: uuid.UUID = Field(..., description="UUID of item to move")
+    model_config = ConfigDict(extra="forbid")
+
+
+class CollectionsMoveItemOutput(BaseModel):
+    source_collection_id: str
+    target_collection_id: str
+    item_id: str
+    status: str
+
+
+class SourcesCreateInput(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255, description="Source title or name")
+    content: str = Field(..., min_length=1, description="Source text content or document body")
+    source_type: Literal["document", "text", "link"] = Field(default="document")
+    model_config = ConfigDict(extra="forbid")
+
+
+class SourcesCreateOutput(BaseModel):
+    source_id: str
+    title: str
+    status: str
+
+
+class SourcesRenameInput(BaseModel):
+    source_id: uuid.UUID = Field(..., description="Source UUID")
+    new_title: str = Field(..., min_length=1, max_length=255, description="New title for source")
+    old_title: str | None = Field(default=None, description="Previous source title")
+    model_config = ConfigDict(extra="forbid")
+
+
+class SourcesRenameOutput(BaseModel):
+    source_id: str
+    title: str
+    status: str
+
+
+class SourcesDeleteInput(BaseModel):
+    source_id: uuid.UUID = Field(..., description="Source UUID to delete")
+    source_title: str | None = Field(default=None, description="Optional confirmation source title")
+    model_config = ConfigDict(extra="forbid")
+
+
+class SourcesDeleteOutput(BaseModel):
+    source_id: str
+    deleted: bool
+    status: str
+
+
+class SourcesArchiveInput(BaseModel):
+    source_id: uuid.UUID = Field(..., description="Source UUID to archive")
+    model_config = ConfigDict(extra="forbid")
+
+
+class SourcesArchiveOutput(BaseModel):
+    source_id: str
+    is_archived: bool
+    status: str
+
+
+class EntitiesCreateInput(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150, description="Entity name")
+    entity_type: Literal["concept", "person", "organization", "location", "event", "document"] = Field(
+        default="concept", description="Entity category"
+    )
+    description: str | None = Field(default=None, max_length=1000)
+    model_config = ConfigDict(extra="forbid")
+
+
+class EntitiesCreateOutput(BaseModel):
+    entity_id: str
+    name: str
+    entity_type: str
+    status: str
+
+
+class EntitiesUpdateInput(BaseModel):
+    entity_id: uuid.UUID = Field(..., description="Entity UUID")
+    name: str | None = Field(default=None, min_length=1, max_length=150)
+    entity_type: (
+        Literal["concept", "person", "organization", "location", "event", "document"] | None
+    ) = None
+    description: str | None = Field(default=None, max_length=1000)
+    model_config = ConfigDict(extra="forbid")
+
+
+class EntitiesUpdateOutput(BaseModel):
+    entity_id: str
+    name: str
+    status: str
+
+
+class EntitiesDeleteInput(BaseModel):
+    entity_id: uuid.UUID = Field(..., description="Entity UUID to delete")
+    entity_name: str | None = Field(default=None, description="Optional confirmation entity name")
+    model_config = ConfigDict(extra="forbid")
+
+
+class EntitiesDeleteOutput(BaseModel):
+    entity_id: str
+    deleted: bool
+    status: str
+
+
+class GraphDeleteRelationshipInput(BaseModel):
+    relationship_id: uuid.UUID = Field(..., description="Relationship UUID to delete")
+    model_config = ConfigDict(extra="forbid")
+
+
+class GraphDeleteRelationshipOutput(BaseModel):
+    relationship_id: str
+    deleted: bool
+    status: str
+
+
+class InboxDismissInput(BaseModel):
+    inbox_item_id: uuid.UUID = Field(..., description="Inbox item UUID to dismiss/reject")
+    model_config = ConfigDict(extra="forbid")
+
+
+class InboxDismissOutput(BaseModel):
+    inbox_item_id: str
+    status: str
+
+
+class InboxAcceptItemInput(BaseModel):
+    inbox_item_id: uuid.UUID = Field(..., description="Inbox item UUID to accept")
+    model_config = ConfigDict(extra="forbid")
+
+
+class InboxAcceptItemOutput(BaseModel):
+    inbox_item_id: str
+    status: str
+
+
+class TagsAddToNoteInput(BaseModel):
+    note_id: uuid.UUID = Field(..., description="Note UUID")
+    tag_name: str = Field(..., min_length=1, max_length=50, description="Tag name to add")
+    model_config = ConfigDict(extra="forbid")
+
+
+class TagsAddToNoteOutput(BaseModel):
+    note_id: str
+    tag_id: str
+    tag_name: str
+    status: str
+
+
+class TagsRemoveFromNoteInput(BaseModel):
+    note_id: uuid.UUID = Field(..., description="Note UUID")
+    tag_name: str = Field(..., min_length=1, max_length=50, description="Tag name to remove")
+    model_config = ConfigDict(extra="forbid")
+
+
+class TagsRemoveFromNoteOutput(BaseModel):
+    note_id: str
+    tag_name: str
+    status: str
+
+
+class ConversationsCreateInput(BaseModel):
+    title: str | None = Field(default=None, max_length=200, description="Initial conversation title")
+    model_config = ConfigDict(extra="forbid")
+
+
+class ConversationsCreateOutput(BaseModel):
+    conversation_id: str
+    title: str | None
+    status: str
+
+
+class ConversationsRenameInput(BaseModel):
+    conversation_id: uuid.UUID = Field(..., description="Conversation UUID")
+    new_title: str = Field(..., min_length=1, max_length=200, description="New title")
+    model_config = ConfigDict(extra="forbid")
+
+
+class ConversationsRenameOutput(BaseModel):
+    conversation_id: str
+    title: str
+    status: str
+
+
+class ConversationsDeleteInput(BaseModel):
+    conversation_id: uuid.UUID = Field(..., description="Conversation UUID to delete")
+    model_config = ConfigDict(extra="forbid")
+
+
+class ConversationsDeleteOutput(BaseModel):
+    conversation_id: str
+    deleted: bool
+    status: str
+
