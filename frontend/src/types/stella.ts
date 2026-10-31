@@ -1,4 +1,13 @@
-import { NoteDraftProposal } from './commands';
+import {
+  AddToCollectionProposalData,
+  GenericActionProposalData,
+  GenericActionResultData,
+  InboxReviewCardData,
+  LinkNotesCardData,
+  NoteDraftProposal,
+  SearchCardData,
+  SummaryCardData,
+} from './commands';
 
 export interface CitedSourceItem {
   chunk_id: string;
@@ -19,4 +28,12 @@ export interface LocalDisplayMessage {
   model?: string;
   error?: string;
   noteDraft?: NoteDraftProposal;
+  summaryCard?: SummaryCardData;
+  searchResults?: SearchCardData;
+  inboxReview?: InboxReviewCardData;
+  addToCollectionProposal?: AddToCollectionProposalData;
+  linkNotesResults?: LinkNotesCardData;
+  genericProposal?: GenericActionProposalData;
+  genericResult?: GenericActionResultData;
 }
+
