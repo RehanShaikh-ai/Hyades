@@ -19,6 +19,7 @@ import { InChatAddToCollectionProposalCard } from '@/components/assistant/InChat
 import { InChatLinkSuggestionsCard } from '@/components/assistant/InChatLinkSuggestionsCard';
 import { InChatActionProposalCard } from '@/components/assistant/InChatActionProposalCard';
 import { InChatActionResultCard } from '@/components/assistant/InChatActionResultCard';
+import { InChatFlashcardDeckCard } from '@/components/assistant/InChatFlashcardDeckCard';
 import { ArtifactPreviewDrawer, ArtifactPreviewData } from '@/components/assistant/ArtifactPreviewDrawer';
 import { FileText } from 'lucide-react';
 import stellaStudiolum from '@/assets/plates/stella-studiolum.jpg';
@@ -1154,6 +1155,20 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                                         stageOrganizationRecommendation(msg.id, configuredPayload)
                                     : undefined
                                 }
+                              />
+                            )}
+
+                            {/* In-Chat Interactive Flashcard Deck Card */}
+                            {msg.flashcardDeck && (
+                              <InChatFlashcardDeckCard
+                                deck={msg.flashcardDeck}
+                                onNavigateToItem={(id, itemType) => {
+                                  if (itemType === 'note' && onNavigateToNote) {
+                                    onNavigateToNote(id);
+                                  } else if (onNavigateToLibrary) {
+                                    onNavigateToLibrary();
+                                  }
+                                }}
                               />
                             )}
 
