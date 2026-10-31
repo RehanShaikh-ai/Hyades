@@ -1,12 +1,23 @@
 import React, { useState } from 'react';
 import { NoteDraftProposal } from '@/types/commands';
-import { FileText, ExternalLink, Network, MoreHorizontal, CheckCircle2, Sparkles, FolderPlus } from 'lucide-react';
+import {
+  FileText,
+  ExternalLink,
+  Network,
+  FolderPlus,
+  MoreHorizontal,
+  CheckCircle2,
+  FileSearch,
+  Sparkles,
+  Layers,
+} from 'lucide-react';
 
 interface InChatSavedNoteCardProps {
   draft: NoteDraftProposal;
   onOpenNote: (noteId: string) => void;
   onViewInGraph: (noteId: string, title: string) => void;
   onAskFollowUp?: (prompt: string) => void;
+  onAddToCollection?: (noteId: string, title: string) => void;
 }
 
 export const InChatSavedNoteCard: React.FC<InChatSavedNoteCardProps> = ({
@@ -14,6 +25,7 @@ export const InChatSavedNoteCard: React.FC<InChatSavedNoteCardProps> = ({
   onOpenNote,
   onViewInGraph,
   onAskFollowUp,
+  onAddToCollection,
 }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -30,10 +42,18 @@ export const InChatSavedNoteCard: React.FC<InChatSavedNoteCardProps> = ({
     }
   };
 
+  const handleAddToCollection = () => {
+    if (onAddToCollection && noteId) {
+      onAddToCollection(noteId, draft.title);
+    } else if (onAskFollowUp) {
+      onAskFollowUp(`/add-to-collection ${draft.title}`);
+    }
+  };
+
   return (
-    <div className="flex flex-col gap-2 mt-3 max-w-2xl">
+    <div className="flex flex-col gap-2 mt-3 max-w-2xl text-[var(--ink-primary)]">
       {/* Compact Saved Card */}
-      <div className="card-surface p-3.5 rounded-xl border border-[var(--border-parchment)] bg-white/95 shadow-2xs flex items-center justify-between gap-4">
+      <div className="card-surface p-3.5 rounded-xl border border-[var(--border-parchment)] bg-white/95 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 rounded-lg bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] flex items-center justify-center shrink-0 relative">
             <FileText size={16} className="text-[var(--accent-midnight)]" />
@@ -50,13 +70,13 @@ export const InChatSavedNoteCard: React.FC<InChatSavedNoteCardProps> = ({
               <span>·</span>
               <span>{wordCount} words</span>
               <span>·</span>
-              <span className="text-emerald-700 font-medium">{draft.savedAt || 'Just now'}</span>
+              <span className="text-emerald-700 font-medium">{draft.savedAt || 'Saved just now'}</span>
             </span>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
           <button
             type="button"
             onClick={() => noteId && onOpenNote(noteId)}
@@ -75,6 +95,16 @@ export const InChatSavedNoteCard: React.FC<InChatSavedNoteCardProps> = ({
           >
             <Network size={12} className="text-[var(--accent-brass)]" />
             <span>View in Graph</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleAddToCollection}
+            className="px-2.5 py-1 rounded-lg bg-[var(--bg-panel-subtle)] hover:bg-white border border-[var(--border-parchment)] hover:border-[var(--border-strong)] text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-95"
+            title="Add Note to Collection"
+          >
+            <FolderPlus size={12} className="text-[var(--accent-midnight)]" />
+            <span>Add to Collection</span>
           </button>
 
           <div className="relative">
@@ -112,34 +142,42 @@ export const InChatSavedNoteCard: React.FC<InChatSavedNoteCardProps> = ({
         </div>
       </div>
 
-      {/* Stella Follow-up Inquiry Prompt & Suggestions */}
-      <div className="px-2 pt-1 flex flex-col gap-2">
-        <p className="text-[12px] text-[var(--ink-secondary)] serif-italic leading-relaxed">
-          Saved to your notes library. Would you like me to find connections to other notes, or create a collection?
-        </p>
+      {/* Related Actions Section per Mockup Callout 8 */}
+      {onAskFollowUp && (
+        <div className="px-1 pt-1 flex flex-col gap-1.5">
+          <span className="text-[11px] font-mono uppercase tracking-wider text-[var(--ink-tertiary)] font-semibold">
+            Related actions
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onAskFollowUp(`/summarize ${draft.title}`)}
+              className="text-[11.5px] px-3 py-1 rounded-full bg-white/90 hover:bg-white border border-[var(--border-parchment)] hover:border-[var(--border-strong)] text-[var(--ink-primary)] flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer active:scale-95"
+            >
+              <FileSearch size={12} className="text-[var(--accent-terracotta)]" />
+              <span>Summarize this note</span>
+            </button>
 
-        {onAskFollowUp && (
-          <div className="flex flex-wrap items-center gap-2 pt-0.5">
             <button
               type="button"
               onClick={() => onAskFollowUp(`/link-notes ${draft.title}`)}
-              className="text-[11px] px-2.5 py-1 rounded-full bg-white/80 hover:bg-white border border-[var(--border-parchment)] hover:border-[var(--border-strong)] text-[var(--ink-primary)] flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+              className="text-[11.5px] px-3 py-1 rounded-full bg-white/90 hover:bg-white border border-[var(--border-parchment)] hover:border-[var(--border-strong)] text-[var(--ink-primary)] flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer active:scale-95"
             >
-              <Sparkles size={11} className="text-[var(--accent-brass)]" />
-              <span>Find connections to other notes</span>
+              <Sparkles size={12} className="text-[var(--accent-brass)]" />
+              <span>Find related notes</span>
             </button>
 
             <button
               type="button"
-              onClick={() => onAskFollowUp(`Create a research collection for topics related to "${draft.title}".`)}
-              className="text-[11px] px-2.5 py-1 rounded-full bg-white/80 hover:bg-white border border-[var(--border-parchment)] hover:border-[var(--border-strong)] text-[var(--ink-primary)] flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+              onClick={() => onAskFollowUp(`/generate-flashcards ${draft.title}`)}
+              className="text-[11.5px] px-3 py-1 rounded-full bg-white/90 hover:bg-white border border-[var(--border-parchment)] hover:border-[var(--border-strong)] text-[var(--ink-primary)] flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer active:scale-95"
             >
-              <FolderPlus size={11} className="text-[var(--accent-terracotta)]" />
-              <span>Create research collection</span>
+              <Layers size={12} className="text-[var(--accent-midnight)]" />
+              <span>Create flashcards</span>
             </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -425,7 +425,7 @@ export const ExecutionResultView: React.FC<ExecutionResultViewProps> = ({
 
                       {/* Excerpt quote */}
                       {ev.excerpt && (
-                        <blockquote className="border-l-2 border-[var(--accent-brass)] pl-3 py-1 text-xs text-[var(--ink-archival)] italic leading-relaxed bg-white/60 rounded-r-lg">
+                        <blockquote className="border-l border-[var(--accent-brass)] pl-3 py-1 text-xs text-[var(--ink-archival)] italic leading-relaxed">
                           &ldquo;{ev.excerpt}&rdquo;
                         </blockquote>
                       )}

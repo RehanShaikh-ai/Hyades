@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { NoteDraftProposal } from '@/types/commands';
 import { renderMarkdown } from '@/lib/markdown';
-import { FileText, Check, Edit3, RotateCw, X, ChevronUp, ChevronDown, Loader2 } from 'lucide-react';
+import { FileText, Check, Edit3, RotateCw, X, ChevronUp, ChevronDown, Loader2, Eye } from 'lucide-react';
 
 interface InChatNotePreviewProps {
   draft: NoteDraftProposal;
@@ -10,6 +10,12 @@ interface InChatNotePreviewProps {
   onCancel: () => Promise<void>;
   isSaving?: boolean;
   isRegenerating?: boolean;
+  onPreviewArtifact?: (artifact: {
+    title: string;
+    content: string;
+    type: string;
+    subtitle?: string;
+  }) => void;
 }
 
 export const InChatNotePreview: React.FC<InChatNotePreviewProps> = ({
@@ -19,6 +25,7 @@ export const InChatNotePreview: React.FC<InChatNotePreviewProps> = ({
   onCancel,
   isSaving = false,
   isRegenerating = false,
+  onPreviewArtifact,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [isRevising, setIsRevising] = useState(false);
@@ -139,6 +146,26 @@ export const InChatNotePreview: React.FC<InChatNotePreviewProps> = ({
               </>
             )}
           </button>
+
+          {onPreviewArtifact && (
+            <button
+              type="button"
+              onClick={() =>
+                onPreviewArtifact({
+                  title: editedTitle || draft.title || 'Untitled Note',
+                  content: editedContent || draft.content,
+                  type: 'Note',
+                  subtitle: draft.topic ? `Topic: ${draft.topic}` : 'Draft Concept',
+                })
+              }
+              disabled={isSaving || isRegenerating}
+              className="px-3 py-1.5 rounded-lg bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-strong)] text-xs font-medium text-[var(--ink-primary)] flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+              title="Preview full rendered note in drawer"
+            >
+              <Eye size={13} className="text-[var(--accent-midnight)]" />
+              <span>Preview</span>
+            </button>
+          )}
 
           {!isRevising && (
             <button
