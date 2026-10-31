@@ -6,11 +6,21 @@ import { GraphResponse, ObservatoryTarget } from '@/types/graph';
 import { StellaContext } from '@/types/navigation';
 import { RAGStatusResponse } from '@/types/rag';
 import { useStellaSession } from '@/context/StellaSessionContext';
-import { SlashCommand } from '@/types/commands';
-import { listStellaCommands } from '@/api/stella_commands';
+import { SlashCommand, CommandSuggestionItem } from '@/types/commands';
+import { listStellaCommands, getCommandSuggestions } from '@/api/stella_commands';
 import { SlashCommandMenu } from '@/components/assistant/SlashCommandMenu';
+import { ArgumentSuggestionsMenu } from '@/components/assistant/ArgumentSuggestionsMenu';
 import { InChatNotePreview } from '@/components/assistant/InChatNotePreview';
 import { InChatSavedNoteCard } from '@/components/assistant/InChatSavedNoteCard';
+import { InChatSummaryCard } from '@/components/assistant/InChatSummaryCard';
+import { InChatSearchResultsCard } from '@/components/assistant/InChatSearchResultsCard';
+import { InChatInboxReviewCard } from '@/components/assistant/InChatInboxReviewCard';
+import { InChatAddToCollectionProposalCard } from '@/components/assistant/InChatAddToCollectionProposalCard';
+import { InChatLinkSuggestionsCard } from '@/components/assistant/InChatLinkSuggestionsCard';
+import { InChatActionProposalCard } from '@/components/assistant/InChatActionProposalCard';
+import { InChatActionResultCard } from '@/components/assistant/InChatActionResultCard';
+import { ArtifactPreviewDrawer, ArtifactPreviewData } from '@/components/assistant/ArtifactPreviewDrawer';
+import { FileText } from 'lucide-react';
 import stellaStudiolum from '@/assets/plates/stella-studiolum.jpg';
 
 interface HyadesStellaProps {
@@ -20,6 +30,8 @@ interface HyadesStellaProps {
   onNavigateToObservatory?: (target?: ObservatoryTarget) => void;
   onNavigateToLibrary?: () => void;
   onNavigateToNote?: (noteId: string) => void;
+  onNavigateToCollections?: () => void;
+  onNavigateToThreads?: () => void;
   environmentIndex?: number;
 }
 
@@ -30,6 +42,8 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
   onNavigateToObservatory,
   onNavigateToLibrary,
   onNavigateToNote,
+  onNavigateToCollections,
+  onNavigateToThreads,
 }) => {
   const {
     conversations,
@@ -55,12 +69,19 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
     saveNoteDraft,
     regenerateNoteDraft,
     cancelNoteDraftAction,
+    confirmAddToCollection,
+    cancelAddToCollection,
+    confirmGenericProposal,
+    cancelGenericProposal,
+    stageOrganizationRecommendation,
+    connectNotesInSuggestion,
   } = useStellaSession();
 
   const [isInquiriesOpen, setIsInquiriesOpen] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
   );
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [activeArtifactPreview, setActiveArtifactPreview] = useState<ArtifactPreviewData | null>(null);
 
   // Workspace metadata & Scope
   const [selectedModel, setSelectedModel] = useState('auto');
@@ -94,17 +115,241 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
     const q = slashFilter.toLowerCase();
     return slashCommands.filter(
       (c) =>
-        c.command.toLowerCase().includes(q) ||
-        c.name.toLowerCase().includes(q) ||
-        c.description.toLowerCase().includes(q)
+        c.availability !== 'internal' &&
+        (c.command.toLowerCase().includes(q) ||
+          c.name.toLowerCase().includes(q) ||
+          c.description.toLowerCase().includes(q))
     );
   }, [slashCommands, slashFilter]);
 
+  // Keep selected index within valid filtered bounds when typing / filtering
+  useEffect(() => {
+    setSlashSelectedIndex((prev) => {
+      if (filteredSlashCommands.length === 0) return 0;
+      return Math.min(prev, filteredSlashCommands.length - 1);
+    });
+  }, [filteredSlashCommands.length]);
+
   const handleSelectSlashCommand = (cmd: SlashCommand) => {
+    if (cmd.availability === 'coming_soon' || cmd.execution_type === 'placeholder') {
+      setDismissedSlashMenu(true);
+      setSlashSelectedIndex(0);
+      sendMessage(workspaceId, cmd.command);
+      return;
+    }
     setInputPrompt(`${cmd.command} `);
     setDismissedSlashMenu(false);
     setSlashSelectedIndex(0);
   };
+
+  const handleSelectExample = (example: string) => {
+    const firstToken = example.trim().split(/\s+/)[0].toLowerCase();
+    const matchedCmd = slashCommands.find((c) => c.command.toLowerCase() === firstToken);
+    if (matchedCmd && (matchedCmd.availability === 'coming_soon' || matchedCmd.execution_type === 'placeholder')) {
+      setDismissedSlashMenu(true);
+      sendMessage(workspaceId, example);
+      return;
+    }
+    setInputPrompt(example);
+    setDismissedSlashMenu(true);
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Declarative Resource Argument Suggestions (Callouts 5 & 7)
+  // ─────────────────────────────────────────────────────────────────────────
+  const [argumentSuggestions, setArgumentSuggestions] = useState<CommandSuggestionItem[]>([]);
+  const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
+  const [suggestionsSelectedIndex, setSuggestionsSelectedIndex] = useState(0);
+  const [dismissedSuggestions, setDismissedSuggestions] = useState(false);
+  const suggestionsDebounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Find if current input starts with a known slash command followed by a space
+  const activeCommandDef = useMemo(() => {
+    const trimmed = inputPrompt.trimStart();
+    if (!trimmed.startsWith('/')) return null;
+    return (
+      slashCommands.find(
+        (c) => inputPrompt.startsWith(`${c.command} `) || inputPrompt === c.command
+      ) || null
+    );
+  }, [inputPrompt, slashCommands]);
+
+  // Determine active argument index and query from declarative command schema
+  const parsedArgState = useMemo(() => {
+    if (
+      !activeCommandDef ||
+      activeCommandDef.availability === 'coming_soon' ||
+      activeCommandDef.execution_type === 'placeholder' ||
+      !activeCommandDef.arguments ||
+      activeCommandDef.arguments.length === 0
+    ) {
+      return null;
+    }
+    const rawAfterCmd = inputPrompt.slice(activeCommandDef.command.length);
+    if (!rawAfterCmd.startsWith(' ')) {
+      return null;
+    }
+    const afterCmd = rawAfterCmd.slice(1);
+
+    // Tokenize arguments considering quotes
+    const tokens: string[] = [];
+    const tokenRegex = /[^\s"']+|"([^"]*)"|'([^']*)'/g;
+    let match;
+    let lastIndex = 0;
+    while ((match = tokenRegex.exec(afterCmd)) !== null) {
+      tokens.push(match[1] ?? match[2] ?? match[0]);
+      lastIndex = tokenRegex.lastIndex;
+    }
+
+    const hasTrailingSpace = afterCmd.endsWith(' ');
+    let activeIndex = 0;
+    let currentQuery = '';
+
+    const isVariadicMerge = activeCommandDef.command === '/merge-notes';
+    if (tokens.length === 0) {
+      activeIndex = 0;
+      currentQuery = '';
+    } else if (
+      hasTrailingSpace &&
+      (tokens.length < activeCommandDef.arguments.length || isVariadicMerge)
+    ) {
+      activeIndex = tokens.length;
+      currentQuery = '';
+    } else {
+      activeIndex = Math.max(0, tokens.length - 1);
+      currentQuery = afterCmd.slice(lastIndex).trim() || tokens[activeIndex] || '';
+    }
+
+    if (activeIndex >= activeCommandDef.arguments.length && !isVariadicMerge) {
+      return null;
+    }
+
+    const currentArgDef =
+      activeCommandDef.arguments[activeIndex] ||
+      activeCommandDef.arguments[activeCommandDef.arguments.length - 1];
+    return {
+      command: activeCommandDef.command,
+      argIndex: activeIndex,
+      argDef: currentArgDef,
+      query: currentQuery,
+      tokens,
+    };
+  }, [activeCommandDef, inputPrompt]);
+
+  const showArgumentMenu =
+    Boolean(parsedArgState && parsedArgState.argDef.arg_type === 'resource') &&
+    !dismissedSuggestions;
+
+  useEffect(() => {
+    if (!parsedArgState) {
+      setDismissedSuggestions(false);
+      setSuggestionsSelectedIndex(0);
+    }
+  }, [parsedArgState]);
+
+  useEffect(() => {
+    if (
+      !parsedArgState ||
+      parsedArgState.argDef.arg_type !== 'resource' ||
+      dismissedSuggestions
+    ) {
+      setArgumentSuggestions([]);
+      return;
+    }
+    if (suggestionsDebounceRef.current) {
+      clearTimeout(suggestionsDebounceRef.current);
+    }
+    setIsSuggestionsLoading(true);
+    suggestionsDebounceRef.current = setTimeout(async () => {
+      try {
+        const items = await getCommandSuggestions(
+          workspaceId,
+          parsedArgState.command,
+          parsedArgState.query,
+          8,
+          parsedArgState.argIndex
+        );
+        const priorSelected = new Set(
+          parsedArgState.command === '/merge-notes'
+            ? parsedArgState.tokens
+                .slice(0, parsedArgState.argIndex)
+                .map((t) => t.trim().toLowerCase())
+            : []
+        );
+        const filteredItems =
+          priorSelected.size > 0
+            ? items.filter(
+                (it) =>
+                  !priorSelected.has(it.title.trim().toLowerCase()) &&
+                  !priorSelected.has(it.id.trim().toLowerCase())
+              )
+            : items;
+        setArgumentSuggestions(filteredItems);
+        setSuggestionsSelectedIndex(0);
+      } catch {
+        setArgumentSuggestions([]);
+      } finally {
+        setIsSuggestionsLoading(false);
+      }
+    }, 150);
+
+    return () => {
+      if (suggestionsDebounceRef.current) {
+        clearTimeout(suggestionsDebounceRef.current);
+      }
+    };
+  }, [parsedArgState, workspaceId, dismissedSuggestions]);
+
+  const handleSelectSuggestion = (item: CommandSuggestionItem) => {
+    if (!parsedArgState || !activeCommandDef) return;
+    const { command, argIndex, tokens } = parsedArgState;
+    const title = item.title;
+
+    if (argIndex === 0) {
+      if (activeCommandDef.arguments && activeCommandDef.arguments.length > 1) {
+        // Multi-argument command (e.g. /add-to-collection, /merge-notes)
+        setInputPrompt(`${command} "${title}" `);
+        setDismissedSuggestions(false);
+      } else {
+        // Single argument command (e.g. /summarize, /link-notes)
+        setInputPrompt(`${command} "${title}"`);
+        setDismissedSuggestions(true);
+      }
+    } else {
+      // Second or subsequent argument (e.g. collection in /add-to-collection or additional notes in /merge-notes)
+      const priorArgs = tokens
+        .slice(0, argIndex)
+        .map((t) => `"${t}"`)
+        .join(' ');
+      setInputPrompt(`${command} ${priorArgs} "${title}"`);
+      setDismissedSuggestions(true);
+    }
+  };
+
+  // Group conversations into Today, Yesterday, Earlier (Callout 1)
+  const groupedConversations = useMemo(() => {
+    const today: typeof conversations = [];
+    const yesterday: typeof conversations = [];
+    const earlier: typeof conversations = [];
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfYesterday = new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000);
+
+    for (const conv of conversations) {
+      const dt = conv.updated_at ? new Date(conv.updated_at) : new Date(conv.created_at);
+      if (dt >= startOfToday) {
+        today.push(conv);
+      } else if (dt >= startOfYesterday) {
+        yesterday.push(conv);
+      } else {
+        earlier.push(conv);
+      }
+    }
+
+    return { today, yesterday, earlier };
+  }, [conversations]);
+
 
   // Handle Escape key to cancel delete confirmation dialog
   useEffect(() => {
@@ -247,7 +492,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
   const activeTitle = currentConversation?.title || initialQuery || 'Knowledge Inquiry';
 
   return (
-    <div className="relative flex flex-col h-[calc(100vh-57px)] overflow-hidden text-[13px] leading-relaxed select-none">
+    <div className="relative flex flex-col h-[calc(100vh-57px)] overflow-hidden text-[13px] leading-relaxed">
       {/* Archival paper grain texture */}
       <div className="paper-grain" />
 
@@ -277,7 +522,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
       )}
 
       {/* Persistent Reopen Evidence Edge Tab */}
-      {!isEvidenceOpen && (
+      {!isEvidenceOpen && !activeArtifactPreview && (
         <div className="fixed top-20 right-0 z-30 pointer-events-auto">
           <button
             type="button"
@@ -327,7 +572,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                 className="w-full py-1.5 px-3 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-xs font-medium flex items-center justify-center gap-2 shadow-2xs transition-all active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
               >
                 <i className="ph ph-plus text-xs text-[var(--accent-brass)]" />
-                <span>+ New Chat</span>
+                <span> New Chat</span>
               </button>
             </div>
 
@@ -345,90 +590,303 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                 )}
               </div>
 
-              <div className="flex flex-col gap-1.5 overflow-y-auto flex-1 pr-1">
+              <div className="flex flex-col gap-2 overflow-y-auto flex-1 pr-1 scrollbar-thin">
                 {conversations.length > 0 ? (
-                  conversations.map((conv) => {
-                    const isActive = conv.id === activeConversationId;
-                    const isDeleting = deleteConfirmId === conv.id;
+                  <>
+                    {groupedConversations.today.length > 0 && (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[var(--ink-tertiary)] px-1 pt-1">
+                          Today
+                        </span>
+                        {groupedConversations.today.map((conv) => {
+                          const isActive = conv.id === activeConversationId;
+                          const isDeleting = deleteConfirmId === conv.id;
+                          const dt = conv.updated_at ? new Date(conv.updated_at) : new Date(conv.created_at);
+                          const timeStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-                    return (
-                      <div
-                        key={conv.id}
-                        onClick={() => {
-                          if (activeConversationId !== conv.id) {
-                            selectConversation(conv.id);
-                          }
-                        }}
-                        className={`p-2.5 rounded-lg border transition-all flex flex-col gap-1 cursor-pointer group relative ${
-                          isActive
-                            ? 'bg-white border-[var(--accent-terracotta)] shadow-2xs'
-                            : 'hover:bg-white/80 border-transparent hover:border-[var(--border-parchment)]'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-1">
-                          <span
-                            className={`text-xs font-medium truncate flex-1 ${
-                              isActive ? 'text-[var(--ink-primary)]' : 'text-[var(--ink-secondary)] group-hover:text-[var(--ink-primary)]'
-                            }`}
-                          >
-                            {conv.title || 'Untitled Research'}
-                          </span>
-
-                          {/* Delete Thread Button */}
-                          {isDeleting ? (
-                            <div className="flex items-center gap-1 z-10" onClick={(e) => e.stopPropagation()}>
-                              <button
-                                type="button"
-                                onClick={(e) => handleDeleteConversation(conv.id, e)}
-                                className="px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-medium hover:bg-red-700 cursor-pointer"
-                                title="Confirm Delete"
-                              >
-                                Delete
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDeleteConfirmId(null);
-                                }}
-                                className="px-1 py-0.5 rounded text-[9px] text-[var(--ink-secondary)] hover:bg-gray-200 cursor-pointer"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDeleteConfirmId(conv.id);
+                          return (
+                            <div
+                              key={conv.id}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => {
+                                if (activeConversationId !== conv.id) {
+                                  selectConversation(conv.id);
+                                }
                               }}
-                              className="opacity-0 group-hover:opacity-100 text-[var(--ink-tertiary)] hover:text-red-600 p-1 transition-opacity cursor-pointer rounded"
-                              title="Delete conversation"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  if (activeConversationId !== conv.id) {
+                                    selectConversation(conv.id);
+                                  }
+                                }
+                              }}
+                              className={`p-2 rounded-lg border transition-all flex items-center justify-between gap-2 cursor-pointer group relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] ${
+                                isActive
+                                  ? 'bg-white border-[var(--accent-terracotta)] shadow-2xs'
+                                  : 'hover:bg-white/80 border-transparent hover:border-[var(--border-parchment)]'
+                              }`}
                             >
-                              <i className="ph ph-trash text-xs" />
-                            </button>
-                          )}
-                        </div>
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <FileText
+                                  size={13}
+                                  className={`shrink-0 ${
+                                    isActive ? 'text-[var(--accent-terracotta)]' : 'text-[var(--accent-midnight)] opacity-70'
+                                  }`}
+                                />
+                                <span
+                                  className={`text-xs font-medium truncate ${
+                                    isActive
+                                      ? 'text-[var(--ink-primary)] font-semibold'
+                                      : 'text-[var(--ink-secondary)] group-hover:text-[var(--ink-primary)]'
+                                  }`}
+                                >
+                                  {conv.title || 'Untitled Research'}
+                                </span>
+                              </div>
 
-                        <div className="flex items-center justify-between text-[10px] text-[var(--ink-tertiary)]">
-                          <span>
-                            {conv.updated_at
-                              ? new Date(conv.updated_at).toLocaleDateString([], {
-                                  month: 'short',
-                                  day: 'numeric',
-                                })
-                              : 'Recent'}
-                          </span>
-                          {isActive && (
-                            <span className="mono text-[9px] text-[var(--accent-terracotta)] font-medium">
-                              Active
-                            </span>
-                          )}
-                        </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="text-[10px] font-mono text-[var(--ink-tertiary)]">
+                                  {timeStr}
+                                </span>
+                                {isDeleting ? (
+                                  <div className="flex items-center gap-1 z-10" onClick={(e) => e.stopPropagation()}>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleDeleteConversation(conv.id, e)}
+                                      className="px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-medium hover:bg-red-700 cursor-pointer"
+                                      title="Confirm Delete"
+                                    >
+                                      Delete
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDeleteConfirmId(null);
+                                      }}
+                                      className="px-1 py-0.5 rounded text-[9px] text-[var(--ink-secondary)] hover:bg-gray-200 cursor-pointer"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDeleteConfirmId(conv.id);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-[var(--ink-tertiary)] hover:text-red-600 p-0.5 transition-opacity cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
+                                    title="Delete conversation"
+                                  >
+                                    <i className="ph ph-trash text-xs" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })
+                    )}
+
+                    {groupedConversations.yesterday.length > 0 && (
+                      <div className="flex flex-col gap-1 pt-1">
+                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[var(--ink-tertiary)] px-1 pt-1">
+                          Yesterday
+                        </span>
+                        {groupedConversations.yesterday.map((conv) => {
+                          const isActive = conv.id === activeConversationId;
+                          const isDeleting = deleteConfirmId === conv.id;
+                          const dt = conv.updated_at ? new Date(conv.updated_at) : new Date(conv.created_at);
+                          const timeStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                          return (
+                            <div
+                              key={conv.id}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => {
+                                if (activeConversationId !== conv.id) {
+                                  selectConversation(conv.id);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  if (activeConversationId !== conv.id) {
+                                    selectConversation(conv.id);
+                                  }
+                                }
+                              }}
+                              className={`p-2 rounded-lg border transition-all flex items-center justify-between gap-2 cursor-pointer group relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] ${
+                                isActive
+                                  ? 'bg-white border-[var(--accent-terracotta)] shadow-2xs'
+                                  : 'hover:bg-white/80 border-transparent hover:border-[var(--border-parchment)]'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <FileText
+                                  size={13}
+                                  className={`shrink-0 ${
+                                    isActive ? 'text-[var(--accent-terracotta)]' : 'text-[var(--accent-midnight)] opacity-70'
+                                  }`}
+                                />
+                                <span
+                                  className={`text-xs font-medium truncate ${
+                                    isActive
+                                      ? 'text-[var(--ink-primary)] font-semibold'
+                                      : 'text-[var(--ink-secondary)] group-hover:text-[var(--ink-primary)]'
+                                  }`}
+                                >
+                                  {conv.title || 'Untitled Research'}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="text-[10px] font-mono text-[var(--ink-tertiary)]">
+                                  {timeStr}
+                                </span>
+                                {isDeleting ? (
+                                  <div className="flex items-center gap-1 z-10" onClick={(e) => e.stopPropagation()}>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleDeleteConversation(conv.id, e)}
+                                      className="px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-medium hover:bg-red-700 cursor-pointer"
+                                      title="Confirm Delete"
+                                    >
+                                      Delete
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDeleteConfirmId(null);
+                                      }}
+                                      className="px-1 py-0.5 rounded text-[9px] text-[var(--ink-secondary)] hover:bg-gray-200 cursor-pointer"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDeleteConfirmId(conv.id);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-[var(--ink-tertiary)] hover:text-red-600 p-0.5 transition-opacity cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
+                                    title="Delete conversation"
+                                  >
+                                    <i className="ph ph-trash text-xs" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {groupedConversations.earlier.length > 0 && (
+                      <div className="flex flex-col gap-1 pt-1">
+                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[var(--ink-tertiary)] px-1 pt-1">
+                          Earlier
+                        </span>
+                        {groupedConversations.earlier.map((conv) => {
+                          const isActive = conv.id === activeConversationId;
+                          const isDeleting = deleteConfirmId === conv.id;
+                          const dt = conv.updated_at ? new Date(conv.updated_at) : new Date(conv.created_at);
+                          const dateStr = dt.toLocaleDateString([], { day: 'numeric', month: 'short' });
+
+                          return (
+                            <div
+                              key={conv.id}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => {
+                                if (activeConversationId !== conv.id) {
+                                  selectConversation(conv.id);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  if (activeConversationId !== conv.id) {
+                                    selectConversation(conv.id);
+                                  }
+                                }
+                              }}
+                              className={`p-2 rounded-lg border transition-all flex items-center justify-between gap-2 cursor-pointer group relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] ${
+                                isActive
+                                  ? 'bg-white border-[var(--accent-terracotta)] shadow-2xs'
+                                  : 'hover:bg-white/80 border-transparent hover:border-[var(--border-parchment)]'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <FileText
+                                  size={13}
+                                  className={`shrink-0 ${
+                                    isActive ? 'text-[var(--accent-terracotta)]' : 'text-[var(--accent-midnight)] opacity-70'
+                                  }`}
+                                />
+                                <span
+                                  className={`text-xs font-medium truncate ${
+                                    isActive
+                                      ? 'text-[var(--ink-primary)] font-semibold'
+                                      : 'text-[var(--ink-secondary)] group-hover:text-[var(--ink-primary)]'
+                                  }`}
+                                >
+                                  {conv.title || 'Untitled Research'}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="text-[10px] font-mono text-[var(--ink-tertiary)]">
+                                  {dateStr}
+                                </span>
+                                {isDeleting ? (
+                                  <div className="flex items-center gap-1 z-10" onClick={(e) => e.stopPropagation()}>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleDeleteConversation(conv.id, e)}
+                                      className="px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-medium hover:bg-red-700 cursor-pointer"
+                                      title="Confirm Delete"
+                                    >
+                                      Delete
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDeleteConfirmId(null);
+                                      }}
+                                      className="px-1 py-0.5 rounded text-[9px] text-[var(--ink-secondary)] hover:bg-gray-200 cursor-pointer"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDeleteConfirmId(conv.id);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-[var(--ink-tertiary)] hover:text-red-600 p-0.5 transition-opacity cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
+                                    title="Delete conversation"
+                                  >
+                                    <i className="ph ph-trash text-xs" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="p-3 text-center text-xs text-[var(--ink-tertiary)] italic">
                     No prior conversations recorded. Start an inquiry below.
@@ -479,7 +937,10 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                     .find((m) => m.role === 'user')?.content;
 
               const relevantConcepts = !isUser
-                ? getRelevantGroundedConcepts(msg.content, priorUserPrompt)
+                ? getRelevantGroundedConcepts(
+                    `${msg.content} ${msg.genericResult?.data?.scope_examined || ''} ${msg.genericResult?.data?.target_title || ''} ${msg.genericResult?.message || ''}`,
+                    priorUserPrompt
+                  )
                 : [];
 
               return (
@@ -518,7 +979,12 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                           <div className="p-4 rounded-xl bg-red-50/80 border border-red-200 text-red-800 flex flex-col gap-2">
                             <div className="flex items-center gap-2 font-medium text-xs">
                               <i className="ph ph-warning-circle text-base text-red-600" />
-                              <span>Assistant Reasoning Error</span>
+                              <span>
+                                {messages[index - 1]?.role === 'user' &&
+                                messages[index - 1]?.content?.trim().startsWith('/')
+                                  ? 'Command Execution Error'
+                                  : 'Assistant Reasoning Error'}
+                              </span>
                             </div>
                             <p className="text-xs text-red-700 leading-relaxed">{msg.error}</p>
                             <button
@@ -570,8 +1036,125 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                                   }
                                   onRegenerate={() => regenerateNoteDraft(msg.id)}
                                   onCancel={() => cancelNoteDraftAction(msg.id)}
+                                  onPreviewArtifact={setActiveArtifactPreview}
                                 />
                               )
+                            )}
+
+                            {/* In-Chat Structured Summary Card (Callout 4) */}
+                            {msg.summaryCard && (
+                              <InChatSummaryCard
+                                summary={msg.summaryCard}
+                                onOpenSource={(id) => {
+                                  if (onNavigateToNote) {
+                                    onNavigateToNote(id);
+                                  } else if (onNavigateToLibrary) {
+                                    onNavigateToLibrary();
+                                  }
+                                }}
+                                onFindRelatedNotes={(title) =>
+                                  handleSendMessage(`/link-notes ${title}`)
+                                }
+                              />
+                            )}
+
+                            {/* In-Chat Search Results Card */}
+                            {msg.searchResults && (
+                              <InChatSearchResultsCard
+                                searchData={msg.searchResults}
+                                onOpenItem={(id, itemType) => {
+                                  if (itemType === 'note' && onNavigateToNote) {
+                                    onNavigateToNote(id);
+                                  } else if (onNavigateToLibrary) {
+                                    onNavigateToLibrary();
+                                  }
+                                }}
+                              />
+                            )}
+
+                            {/* In-Chat Inbox Review Card */}
+                            {msg.inboxReview && (
+                              <InChatInboxReviewCard
+                                inboxData={msg.inboxReview}
+                                onNavigateToLibrary={onNavigateToLibrary}
+                                onReviewSource={() => {
+                                  if (onNavigateToLibrary) onNavigateToLibrary();
+                                }}
+                              />
+                            )}
+
+                            {/* In-Chat Add-to-Collection Proposal Card (Two-phase commit) */}
+                            {msg.addToCollectionProposal && (
+                              <InChatAddToCollectionProposalCard
+                                proposal={msg.addToCollectionProposal}
+                                isCommitting={msg.addToCollectionProposal.status === 'committing'}
+                                onConfirm={() => confirmAddToCollection(msg.id)}
+                                onCancel={() => cancelAddToCollection(msg.id)}
+                                onOpenCollection={() => {
+                                  if (onNavigateToLibrary) onNavigateToLibrary();
+                                }}
+                              />
+                            )}
+
+                            {/* In-Chat Link Notes Candidate Suggestions Card */}
+                            {msg.linkNotesResults && (
+                              <InChatLinkSuggestionsCard
+                                linkData={msg.linkNotesResults}
+                                onOpenNote={(noteId) => {
+                                  if (onNavigateToNote) onNavigateToNote(noteId);
+                                  else if (onNavigateToLibrary) onNavigateToLibrary();
+                                }}
+                                onConnectNotes={(sourceId, targetId) => {
+                                  connectNotesInSuggestion(msg.id, sourceId, targetId);
+                                }}
+                              />
+                            )}
+
+                            {/* In-Chat Generic Action Proposal Card (Two-phase CRUD operations) */}
+                            {msg.genericProposal && (
+                              <InChatActionProposalCard
+                                proposal={msg.genericProposal}
+                                isCommitting={msg.genericProposal.status === 'committing'}
+                                onConfirm={(overrides) => confirmGenericProposal(msg.id, overrides)}
+                                onCancel={() => cancelGenericProposal(msg.id)}
+                                onPreviewArtifact={setActiveArtifactPreview}
+                                onNavigateToItem={(id, itemType) => {
+                                  if (itemType === 'note' && onNavigateToNote) {
+                                    onNavigateToNote(id);
+                                  } else if (itemType === 'collection' && onNavigateToCollections) {
+                                    onNavigateToCollections();
+                                  } else if (itemType === 'thread' && onNavigateToThreads) {
+                                    onNavigateToThreads();
+                                  } else if (onNavigateToLibrary) {
+                                    onNavigateToLibrary();
+                                  }
+                                }}
+                              />
+                            )}
+
+                            {/* In-Chat Generic Action Result Card (Completed operations) */}
+                            {msg.genericResult && (
+                              <InChatActionResultCard
+                                result={msg.genericResult}
+                                onNavigateToItem={(id, itemType) => {
+                                  if (itemType === 'note' && onNavigateToNote) {
+                                    onNavigateToNote(id);
+                                  } else if (itemType === 'collection' && onNavigateToCollections) {
+                                    onNavigateToCollections();
+                                  } else if (itemType === 'thread' && onNavigateToThreads) {
+                                    onNavigateToThreads();
+                                  } else if (onNavigateToLibrary) {
+                                    onNavigateToLibrary();
+                                  }
+                                }}
+                                onRunCommand={(cmdText) => handleSendMessage(cmdText)}
+                                onStageRecommendation={
+                                  stageOrganizationRecommendation
+                                    ? (configuredPayload) =>
+                                        stageOrganizationRecommendation(msg.id, configuredPayload)
+                                    : undefined
+                                }
+                              />
                             )}
 
                             {!msg.content && (
@@ -702,7 +1285,19 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                     filterQuery={slashFilter}
                     selectedIndex={slashSelectedIndex}
                     onSelectCommand={handleSelectSlashCommand}
+                    onSelectExample={handleSelectExample}
                     onHoverIndex={setSlashSelectedIndex}
+                  />
+                )}
+                {showArgumentMenu && argumentSuggestions.length > 0 && (
+                  <ArgumentSuggestionsMenu
+                    command={parsedArgState?.command || ''}
+                    query={parsedArgState?.query || ''}
+                    suggestions={argumentSuggestions}
+                    selectedIndex={suggestionsSelectedIndex}
+                    isLoading={isSuggestionsLoading}
+                    onSelectSuggestion={handleSelectSuggestion}
+                    onHoverIndex={setSuggestionsSelectedIndex}
                   />
                 )}
                 <textarea
@@ -710,6 +1305,35 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                   value={inputPrompt}
                   onChange={(e) => setInputPrompt(e.target.value)}
                   onKeyDown={(e) => {
+                    if (showArgumentMenu && argumentSuggestions.length > 0) {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setSuggestionsSelectedIndex((prev) => (prev + 1) % argumentSuggestions.length);
+                        return;
+                      }
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setSuggestionsSelectedIndex((prev) =>
+                          (prev - 1 + argumentSuggestions.length) % argumentSuggestions.length
+                        );
+                        return;
+                      }
+                      if (e.key === 'Enter' || e.key === 'Tab') {
+                        e.preventDefault();
+                        const chosen =
+                          argumentSuggestions[suggestionsSelectedIndex] || argumentSuggestions[0];
+                        if (chosen) {
+                          handleSelectSuggestion(chosen);
+                        }
+                        return;
+                      }
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        setDismissedSuggestions(true);
+                        return;
+                      }
+                    }
+
                     if (showSlashMenu && filteredSlashCommands.length > 0) {
                       if (e.key === 'ArrowDown') {
                         e.preventDefault();
@@ -802,62 +1426,93 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
           </div>
         </section>
 
-        {/* ================= RIGHT COLUMN: SOURCES IN CONTEXT (EVIDENCE DRAWER) ================= */}
-        {isEvidenceOpen && (
-          <aside className="fixed inset-y-16 right-0 z-20 w-[280px] sm:w-[320px] lg:static lg:w-[320px] lg:h-full shrink-0 flex flex-col gap-4 transition-all duration-300 shadow-2xl lg:shadow-none bg-[var(--bg-base)]/95 lg:bg-transparent backdrop-blur-md lg:backdrop-blur-none p-3 lg:p-0">
-            <div className="instrument-panel p-4 flex-1 flex flex-col gap-3 min-h-0">
-              <div className="panel-bracket-tl" />
-              <div className="panel-bracket-br" />
+        {/* ================= RIGHT COLUMN: ARTIFACT PREVIEW OR SOURCES IN CONTEXT ================= */}
+        {activeArtifactPreview ? (
+          <ArtifactPreviewDrawer
+            artifact={activeArtifactPreview}
+            onClose={() => setActiveArtifactPreview(null)}
+          />
+        ) : (
+          isEvidenceOpen && (
+            <aside className="fixed inset-y-16 right-0 z-20 w-[280px] sm:w-[320px] lg:static lg:w-[320px] lg:h-full shrink-0 flex flex-col gap-4 transition-all duration-300 shadow-2xl lg:shadow-none bg-[var(--bg-base)]/95 lg:bg-transparent backdrop-blur-md lg:backdrop-blur-none p-3 lg:p-0">
+              <div className="instrument-panel p-4 flex-1 flex flex-col gap-3 min-h-0">
+                <div className="panel-bracket-tl" />
+                <div className="panel-bracket-br" />
 
-              <div className="flex items-center justify-between border-b border-[var(--border-parchment)] pb-2.5">
-                <div className="flex items-center gap-2">
-                  <i className="ph ph-book-bookmark text-sm text-[var(--accent-terracotta)]" />
-                  <span className="serif-italic text-sm font-medium text-[var(--ink-secondary)]">
-                    Sources in Context
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsEvidenceOpen(false)}
-                  aria-label="Close Sources Panel"
-                  className="w-6 h-6 rounded flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
-                  title="Close Sources Panel"
-                >
-                  <i className="ph ph-x text-sm" />
-                </button>
-              </div>
-
-              <div className="flex flex-col gap-3 overflow-y-auto flex-1 pr-1">
-                {activeCitations.length > 0 ? (
-                  activeCitations.map((cite, idx) => (
-                    <div
-                      key={cite.chunk_id || idx}
-                      className="card-surface p-3 flex flex-col gap-1.5"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="mono text-[10px] font-semibold text-[var(--accent-midnight)] uppercase">
-                          Source #{idx + 1}
-                        </span>
-                        <span className="mono text-[9.5px] text-[var(--accent-terracotta)]">
-                          {(cite.score * 100).toFixed(0)}% Match
-                        </span>
-                      </div>
-                      <div className="font-semibold text-xs text-[var(--ink-primary)]">
-                        {cite.title}
-                      </div>
-                      <p className="text-[11.5px] text-[var(--ink-secondary)] leading-relaxed line-clamp-4">
-                        &ldquo;{cite.excerpt}&rdquo;
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-4 text-center text-xs text-[var(--ink-tertiary)] italic">
-                    Submit an inquiry to inspect retrieved source passages and citations.
+                <div className="flex items-center justify-between border-b border-[var(--border-parchment)] pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <i className="ph ph-book-bookmark text-sm text-[var(--accent-terracotta)]" />
+                    <span className="serif-italic text-sm font-medium text-[var(--ink-secondary)]">
+                      Sources in Context
+                    </span>
                   </div>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => setIsEvidenceOpen(false)}
+                    aria-label="Close Sources Panel"
+                    className="w-6 h-6 rounded flex items-center justify-center text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
+                    title="Close Sources Panel"
+                  >
+                    <i className="ph ph-x text-sm" />
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-3 overflow-y-auto flex-1 pr-1">
+                  {activeCitations.length > 0 ? (
+                    activeCitations.map((cite, idx) => {
+                      const targetNoteId = (cite as any).note_id || (cite as any).source_id;
+                      return (
+                        <div
+                          key={cite.chunk_id || idx}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => {
+                            if (targetNoteId && onNavigateToNote) {
+                              onNavigateToNote(targetNoteId);
+                            } else if (onNavigateToLibrary) {
+                              onNavigateToLibrary();
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              if (targetNoteId && onNavigateToNote) {
+                                onNavigateToNote(targetNoteId);
+                              } else if (onNavigateToLibrary) {
+                                onNavigateToLibrary();
+                              }
+                            }
+                          }}
+                          className="card-surface p-3 flex flex-col gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] group"
+                          title={`Open "${cite.title}" in Library`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="mono text-[10px] font-semibold text-[var(--accent-midnight)] uppercase">
+                              Source #{idx + 1}
+                            </span>
+                            <span className="mono text-[9.5px] text-[var(--accent-terracotta)]">
+                              {(cite.score * 100).toFixed(0)}% Match
+                            </span>
+                          </div>
+                          <div className="font-semibold text-xs text-[var(--ink-primary)] group-hover:text-[var(--accent-midnight)] flex items-center justify-between gap-1">
+                            <span className="truncate">{cite.title}</span>
+                            <i className="ph ph-arrow-up-right text-[11px] text-[var(--ink-tertiary)] group-hover:text-[var(--accent-terracotta)] shrink-0" />
+                          </div>
+                          <p className="text-[11.5px] text-[var(--ink-secondary)] leading-relaxed line-clamp-4">
+                            &ldquo;{cite.excerpt}&rdquo;
+                          </p>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="p-4 text-center text-xs text-[var(--ink-tertiary)] italic">
+                      Submit an inquiry to inspect retrieved source passages and citations.
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          </aside>
+            </aside>
+          )
         )}
       </main>
     </div>
