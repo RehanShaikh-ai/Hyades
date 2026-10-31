@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { InChatFlashcardDeckCard } from './InChatFlashcardDeckCard';
 import { FlashcardDeckData } from '@/types/commands';
@@ -39,7 +39,12 @@ describe('InChatFlashcardDeckCard Component', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
-    window.confirm = vi.fn(() => true);
+    vi.stubGlobal('confirm', vi.fn(() => true));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    document.body.style.overflow = '';
   });
 
   it('renders deck header, initial card question, and navigation controls', () => {
@@ -135,10 +140,11 @@ describe('InChatFlashcardDeckCard Component', () => {
     expect(screen.getByText('1 / 3')).toBeInTheDocument();
   });
 
-  it('opens and closes focused preview overlay with three separate bottom pills', () => {
+  it('opens and closes focused full-viewport preview overlay via portal to document.body and locks scroll', () => {
     render(<InChatFlashcardDeckCard deck={mockDeck} />);
 
     expect(screen.queryByTestId('flashcard-study-mode-modal')).not.toBeInTheDocument();
+    expect(document.body.style.overflow).toBe('');
 
     const studyModeBtn = screen.getByRole('button', { name: /Open in Study Mode/i });
     fireEvent.click(studyModeBtn);
@@ -146,14 +152,39 @@ describe('InChatFlashcardDeckCard Component', () => {
     const overlay = screen.getByTestId('flashcard-study-mode-modal');
     expect(overlay).toBeInTheDocument();
 
+    // Verify overlay is mounted directly into document.body (true full-screen portal escaping chat container)
+    expect(overlay.parentElement).toBe(document.body);
+    expect(overlay).toHaveClass('fixed', 'inset-0', 'w-screen', 'h-screen');
+
+    // Verify background scrolling is locked while overlay is open
+    expect(document.body.style.overflow).toBe('hidden');
+
     // Verify progress pill format (e.g. "1 of 3")
     expect(screen.getByText('1 of 3')).toBeInTheDocument();
 
-    // Close preview overlay
+    // Close preview overlay via close button
     const closeBtn = screen.getByLabelText(/Close study mode/i);
     fireEvent.click(closeBtn);
 
     expect(screen.queryByTestId('flashcard-study-mode-modal')).not.toBeInTheDocument();
+    // Verify background scrolling is restored upon closing
+    expect(document.body.style.overflow).toBe('');
+  });
+
+  it('closes full-viewport overlay when clicking outside on the backdrop', () => {
+    render(<InChatFlashcardDeckCard deck={mockDeck} />);
+
+    const studyModeBtn = screen.getByRole('button', { name: /Open in Study Mode/i });
+    fireEvent.click(studyModeBtn);
+
+    const overlay = screen.getByTestId('flashcard-study-mode-modal');
+    expect(overlay).toBeInTheDocument();
+
+    // Click backdrop
+    fireEvent.click(overlay);
+
+    expect(screen.queryByTestId('flashcard-study-mode-modal')).not.toBeInTheDocument();
+    expect(document.body.style.overflow).toBe('');
   });
 
   it('restores review state and current index from localStorage upon remount', () => {

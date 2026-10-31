@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { FlashcardDeckData, FlashcardItem } from '@/types/commands';
 import {
   Layers,
@@ -196,6 +197,16 @@ export const InChatFlashcardDeckCard: React.FC<InChatFlashcardDeckCardProps> = (
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleFlip, handlePrev, handleNext, handleMarkReview, isPreviewOpen]);
 
+  // Prevent background scrolling while preview overlay is open
+  useEffect(() => {
+    if (!isPreviewOpen || typeof document === 'undefined') return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isPreviewOpen]);
+
   if (!cards.length) {
     return (
       <div className="my-3 p-4 rounded-xl border border-[var(--border-parchment)] bg-[var(--bg-panel-subtle)] text-[var(--ink-secondary)] text-sm font-sans">
@@ -321,7 +332,7 @@ export const InChatFlashcardDeckCard: React.FC<InChatFlashcardDeckCardProps> = (
 
   // Render Three Bottom Pills
   const renderBottomPills = () => (
-    <div className="flex flex-wrap items-center justify-center gap-3 md:gap-5 mt-5 md:mt-7 z-10 w-full max-w-4xl px-2">
+    <div className="flex flex-wrap items-center justify-center gap-3 md:gap-5 z-10 w-full max-w-4xl px-2">
       {/* 1. Left Pill: Restart Deck */}
       <div className="rounded-full bg-[#FAF8F3] border border-[#E0D8C8] shadow-md px-5 py-2 flex items-center gap-2 hover:bg-white transition-colors">
         <button
@@ -598,75 +609,88 @@ export const InChatFlashcardDeckCard: React.FC<InChatFlashcardDeckCardProps> = (
         </div>
       </div>
 
-      {/* -- Focused Preview Overlay (Matches Reference Screenshot) -- */}
-      {isPreviewOpen && (
-        <div
-          className="fixed inset-0 z-50 flex flex-col items-center justify-between p-4 md:p-8 bg-stone-900/60 backdrop-blur-xs animate-fadeIn font-sans"
-          data-testid="flashcard-study-mode-modal"
-        >
-          {/* Top-Right Floating Circular Close Button */}
-          <button
-            type="button"
-            onClick={() => setIsPreviewOpen(false)}
-            className="fixed top-6 right-6 w-11 h-11 rounded-full bg-[#FAF8F3] border border-[#E0D8C8] shadow-md flex items-center justify-center text-[#5C5449] hover:text-[#1C1917] hover:scale-105 active:scale-95 transition-all z-50 cursor-pointer"
-            aria-label="Close study mode"
-            title="Close preview (Esc)"
+      {/* -- Focused Full-Viewport Preview Overlay (Portal to document.body) -- */}
+      {isPreviewOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] w-screen h-screen flex flex-col items-center justify-between p-4 md:p-8 bg-stone-900/65 backdrop-blur-xs animate-fadeIn font-sans select-none overflow-hidden"
+            data-testid="flashcard-study-mode-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Flashcard preview overlay"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setIsPreviewOpen(false);
+              }
+            }}
           >
-            <X size={20} />
-          </button>
-
-          {/* Central Card with External Side Chevron Navigation */}
-          <div className="flex items-center justify-center gap-3 md:gap-7 w-full max-w-5xl my-auto px-2">
-            {/* Left Chevron Button */}
+            {/* Top-Right Floating Circular Close Button */}
             <button
               type="button"
-              onClick={handlePrev}
-              disabled={currentIndex === 0}
-              className={`w-11 md:w-13 h-11 md:h-13 rounded-full bg-[#FAF8F3] border border-[#E0D8C8] shadow-md flex items-center justify-center text-[#5C5449] hover:text-[#1C1917] hover:scale-105 active:scale-95 transition-all shrink-0 cursor-pointer ${
-                currentIndex === 0 ? 'opacity-30 cursor-not-allowed hover:scale-100' : ''
-              }`}
-              aria-label="Previous flashcard"
+              onClick={() => setIsPreviewOpen(false)}
+              className="fixed top-6 right-6 md:top-8 md:right-8 w-11 h-11 rounded-full bg-[#FAF8F3] border border-[#E0D8C8] shadow-md flex items-center justify-center text-[#5C5449] hover:text-[#1C1917] hover:scale-105 active:scale-95 transition-all z-[110] cursor-pointer"
+              aria-label="Close study mode"
+              title="Close preview (Esc)"
             >
-              <ChevronLeft size={24} />
+              <X size={20} />
             </button>
 
-            {/* Central Stack & Main Large Ivory Card */}
-            <div className="relative flex-1 max-w-2xl md:max-w-3xl flex flex-col items-center">
-              {/* Stack Depth Layer 2 */}
-              <div className="w-[94%] h-3 bg-[#EAE4D7] rounded-3xl border border-[#D5CEBF] -mb-1 shadow-2xs" />
-              {/* Stack Depth Layer 1 */}
-              <div className="w-[97%] h-3 bg-[#F4EFE4] rounded-3xl border border-[#DDD6C7] -mb-1 shadow-2xs" />
-
-              {/* Main Large Card */}
-              <div
-                onClick={handleFlip}
-                className="w-full relative min-h-[360px] md:min-h-[420px] rounded-3xl border border-[#E0D8C8] bg-[#FAF8F3] p-8 md:p-12 shadow-xl cursor-pointer select-none flex flex-col justify-between transition-all group"
-                role="button"
-                tabIndex={0}
-                aria-label="Flashcard - click to flip"
+            {/* Central Card with External Side Chevron Navigation */}
+            <div className="flex items-center justify-center gap-3 md:gap-7 w-full max-w-5xl my-auto px-2">
+              {/* Left Chevron Button */}
+              <button
+                type="button"
+                onClick={handlePrev}
+                disabled={currentIndex === 0}
+                className={`w-11 md:w-13 h-11 md:h-13 rounded-full bg-[#FAF8F3] border border-[#E0D8C8] shadow-md flex items-center justify-center text-[#5C5449] hover:text-[#1C1917] hover:scale-105 active:scale-95 transition-all shrink-0 cursor-pointer ${
+                  currentIndex === 0 ? 'opacity-30 cursor-not-allowed hover:scale-100' : ''
+                }`}
+                aria-label="Previous flashcard"
               >
-                {renderCardContent(true)}
+                <ChevronLeft size={24} />
+              </button>
+
+              {/* Central Stack & Main Large Ivory Card */}
+              <div className="relative flex-1 max-w-2xl md:max-w-3xl flex flex-col items-center">
+                {/* Stack Depth Layer 2 */}
+                <div className="w-[94%] h-3 bg-[#EAE4D7] rounded-3xl border border-[#D5CEBF] -mb-1 shadow-2xs" />
+                {/* Stack Depth Layer 1 */}
+                <div className="w-[97%] h-3 bg-[#F4EFE4] rounded-3xl border border-[#DDD6C7] -mb-1 shadow-2xs" />
+
+                {/* Main Large Card */}
+                <div
+                  onClick={handleFlip}
+                  className="w-full relative min-h-[360px] md:min-h-[420px] rounded-3xl border border-[#E0D8C8] bg-[#FAF8F3] p-8 md:p-12 shadow-xl cursor-pointer select-none flex flex-col justify-between transition-all group"
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Flashcard - click to flip"
+                >
+                  {renderCardContent(true)}
+                </div>
               </div>
+
+              {/* Right Chevron Button */}
+              <button
+                type="button"
+                onClick={handleNext}
+                disabled={currentIndex === cards.length - 1}
+                className={`w-11 md:w-13 h-11 md:h-13 rounded-full bg-[#FAF8F3] border border-[#E0D8C8] shadow-md flex items-center justify-center text-[#5C5449] hover:text-[#1C1917] hover:scale-105 active:scale-95 transition-all shrink-0 cursor-pointer ${
+                  currentIndex === cards.length - 1 ? 'opacity-30 cursor-not-allowed hover:scale-100' : ''
+                }`}
+                aria-label="Next flashcard"
+              >
+                <ChevronRight size={24} />
+              </button>
             </div>
 
-            {/* Right Chevron Button */}
-            <button
-              type="button"
-              onClick={handleNext}
-              disabled={currentIndex === cards.length - 1}
-              className={`w-11 md:w-13 h-11 md:h-13 rounded-full bg-[#FAF8F3] border border-[#E0D8C8] shadow-md flex items-center justify-center text-[#5C5449] hover:text-[#1C1917] hover:scale-105 active:scale-95 transition-all shrink-0 cursor-pointer ${
-                currentIndex === cards.length - 1 ? 'opacity-30 cursor-not-allowed hover:scale-100' : ''
-              }`}
-              aria-label="Next flashcard"
-            >
-              <ChevronRight size={24} />
-            </button>
-          </div>
-
-          {/* Bottom Section: Three Separate Pill Groups */}
-          {renderBottomPills()}
-        </div>
-      )}
+            {/* Bottom Section: Three Separate Pill Groups */}
+            <div className="w-full flex justify-center pb-2 md:pb-6 z-10">
+              {renderBottomPills()}
+            </div>
+          </div>,
+          document.body
+        )}
     </>
   );
 };
