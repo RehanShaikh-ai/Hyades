@@ -147,6 +147,57 @@ def search_semantic(
                     is_archived=False,
                 )
             )
+        elif payload.get("entity_id"):
+            e_id = uuid.UUID(payload["entity_id"])
+            ent = db.get(GraphEntity, e_id)
+            if ent and ent.workspace_id == workspace_id:
+                results.append(
+                    SearchResultItem(
+                        item_type="entity",
+                        item_id=ent.id,
+                        entity_id=ent.id,
+                        title=ent.name,
+                        excerpt=ent.description or f"Graph entity of type {ent.entity_type}",
+                        score=round(float(pt.get("score", 0.0)), 4),
+                        score_meaning="cosine_similarity",
+                        search_mode="semantic",
+                        is_archived=False,
+                    )
+                )
+        elif payload.get("collection_id"):
+            col_id = uuid.UUID(payload["collection_id"])
+            coll = db.get(Collection, col_id)
+            if coll and coll.workspace_id == workspace_id:
+                results.append(
+                    SearchResultItem(
+                        item_type="collection",
+                        item_id=coll.id,
+                        collection_id=coll.id,
+                        title=coll.name,
+                        excerpt=coll.description or "Knowledge collection",
+                        score=round(float(pt.get("score", 0.0)), 4),
+                        score_meaning="cosine_similarity",
+                        search_mode="semantic",
+                        is_archived=False,
+                    )
+                )
+        elif payload.get("thread_id"):
+            thr_id = uuid.UUID(payload["thread_id"])
+            thr = db.get(Thread, thr_id)
+            if thr and thr.workspace_id == workspace_id:
+                results.append(
+                    SearchResultItem(
+                        item_type="thread",
+                        item_id=thr.id,
+                        thread_id=thr.id,
+                        title=thr.title,
+                        excerpt=thr.question or "Investigation research thread",
+                        score=round(float(pt.get("score", 0.0)), 4),
+                        score_meaning="cosine_similarity",
+                        search_mode="semantic",
+                        is_archived=False,
+                    )
+                )
 
         if len(results) >= limit:
             break

@@ -4,14 +4,17 @@ Canonical service per CONTRACT v0.4.1 §4.3, §6.3-§6.5, §8, §9.1-§9.4, §12
 Provides build_assistant_context, run_assistant, stream_assistant_response.
 """
 
+import hashlib
 import json
 import logging
+import re
 import time
 import uuid
 from collections.abc import Generator
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -38,14 +41,122 @@ from app.services import (
 logger = logging.getLogger("app.services.assistant_service")
 
 
+def _get_or_create_chunk_for_note(db: Session, note: Note) -> ContentChunk:
+    """Ensure at least one ContentChunk exists for a note so citation FK is guaranteed."""
+    chunk = db.scalars(
+        select(ContentChunk)
+        .where(ContentChunk.note_id == note.id)
+        .order_by(ContentChunk.chunk_index.asc())
+    ).first()
+    if not chunk:
+        chunk = ContentChunk(
+            id=uuid.uuid4(),
+            note_id=note.id,
+            workspace_id=note.workspace_id,
+            chunk_index=0,
+            content=note.content or "",
+            content_hash=hashlib.sha256((note.content or "").encode("utf-8")).hexdigest(),
+            token_count=len((note.content or "").split()),
+            embedding_model=settings.EMBEDDING_MODEL,
+            embedding_dimension=settings.EMBEDDING_DIMENSION,
+            created_at=datetime.now(UTC),
+        )
+        db.add(chunk)
+        db.commit()
+        db.refresh(chunk)
+    return chunk
+
+
 def build_assistant_context(
     db: Session,
     workspace_id: uuid.UUID,
     query: str,
     token_limit: int = 4096,
 ) -> tuple[str, list[dict[str, Any]], Any | None]:
-    """Assemble context combining vector and graph retrieval per CONTRACT §9.3."""
-    # 1. Vector retrieval (searches notes & sources in workspace)
+    """Assemble context combining vector, direct target lookup, and graph retrieval."""
+    context_parts: list[str] = []
+    accumulated_chars = 0
+    char_limit = token_limit * 4
+    candidate_citations_data: list[dict[str, Any]] = []
+    seen_note_ids: set[uuid.UUID] = set()
+
+    # 1. Direct Target Resolution (e.g. /summarize <target>, /ask-about <target>)
+    clean_target = query.strip()
+    for prefix in [
+        "/summarize",
+        "/ask-about",
+        "/analyze",
+        "/create-note",
+        "/link-notes",
+        "/generate-flashcards",
+        "summarize",
+        "analyze",
+        "explain",
+    ]:
+        if clean_target.lower().startswith(prefix):
+            clean_target = clean_target[len(prefix) :].strip()
+            break
+    clean_target = clean_target.strip("\"' ")
+
+    target_note: Note | None = None
+    if clean_target:
+        # Check if target is UUID
+        try:
+            target_uuid = uuid.UUID(clean_target)
+            target_note = db.scalars(
+                select(Note).where(
+                    Note.id == target_uuid,
+                    Note.workspace_id == workspace_id,
+                    Note.is_archived.is_(False),
+                )
+            ).first()
+        except ValueError:
+            target_note = None
+
+        # Check exact title match
+        if not target_note:
+            target_note = db.scalars(
+                select(Note).where(
+                    Note.workspace_id == workspace_id,
+                    Note.is_archived.is_(False),
+                    func.lower(Note.title) == clean_target.lower(),
+                )
+            ).first()
+
+        # Check substring title match if >= 3 chars
+        if not target_note and len(clean_target) >= 3:
+            target_note = db.scalars(
+                select(Note).where(
+                    Note.workspace_id == workspace_id,
+                    Note.is_archived.is_(False),
+                    func.lower(Note.title).contains(clean_target.lower()),
+                )
+            ).first()
+
+    if target_note:
+        seen_note_ids.add(target_note.id)
+        note_chunk = _get_or_create_chunk_for_note(db, target_note)
+        note_text = target_note.content or ""
+        part = f"=== TARGET NOTE: {target_note.title} (ID: {target_note.id}) ===\n{note_text}\n"
+        context_parts.append(part)
+        accumulated_chars += len(part)
+
+        candidate_citations_data.append(
+            {
+                "chunk_id": note_chunk.id,
+                "note_id": target_note.id,
+                "source_id": None,
+                "workspace_id": workspace_id,
+                "similarity_score": 1.0,
+                "rank": 1,
+                "source_title": target_note.title,
+                "note_title": target_note.title,
+                "excerpt": note_text[:300],
+                "page_number": None,
+            }
+        )
+
+    # 2. Vector retrieval (searches notes & sources in workspace)
     candidates = retrieval_service.search_semantic(
         db,
         workspace_id=workspace_id,
@@ -54,13 +165,28 @@ def build_assistant_context(
         include_archived=False,
     )
 
-    context_parts: list[str] = []
-    accumulated_chars = 0
-    char_limit = token_limit * 4
+    # 3. Fallback to lexical search if semantic candidates are empty or sparse
+    if len(candidates) < 3:
+        lexical_candidates = retrieval_service.search_lexical(
+            db,
+            workspace_id=workspace_id,
+            query=query,
+            limit=8,
+            include_archived=False,
+        )
+        existing_item_keys = {
+            f"{c.item_type}:{c.item_id or c.note_id or c.source_id}" for c in candidates
+        }
+        for lc in lexical_candidates:
+            key = f"{lc.item_type}:{lc.item_id or lc.note_id or lc.source_id}"
+            if key not in existing_item_keys:
+                candidates.append(lc)
+                existing_item_keys.add(key)
 
-    candidate_citations_data: list[dict[str, Any]] = []
+    for rank, item in enumerate(candidates, start=len(candidate_citations_data) + 1):
+        if item.note_id and item.note_id in seen_note_ids:
+            continue
 
-    for rank, item in enumerate(candidates, start=1):
         chunk_text = item.excerpt.strip()
         if not chunk_text:
             continue
@@ -69,7 +195,7 @@ def build_assistant_context(
         if accumulated_chars + item_chars > char_limit and context_parts:
             break
 
-        c_id = item.chunk_id or item.note_id or item.source_id or uuid.uuid4()
+        c_id = item.chunk_id or uuid.uuid4()
         score = max(0.0, min(1.0, float(item.score)))
 
         source_title = None
@@ -85,6 +211,10 @@ def build_assistant_context(
             note = db.get(Note, item.note_id)
             if note:
                 note_title = note.title
+                seen_note_ids.add(note.id)
+                # Ensure a valid ContentChunk exists for citation
+                db_chunk = _get_or_create_chunk_for_note(db, note)
+                c_id = db_chunk.id
 
         candidate_citations_data.append(
             {
@@ -101,15 +231,30 @@ def build_assistant_context(
             }
         )
 
-        source_type_label = "NOTE" if item.note_id else "SOURCE"
-        item_id_str = str(item.note_id or item.source_id)
+        source_type_label = (
+            "NOTE"
+            if item.note_id
+            else (
+                "SOURCE"
+                if item.source_id
+                else (item.item_type.upper() if item.item_type else "ITEM")
+            )
+        )
+        item_id_str = str(
+            item.note_id
+            or item.source_id
+            or item.entity_id
+            or item.collection_id
+            or item.thread_id
+            or item.item_id
+        )
         part = f"=== {source_type_label}: {item.title} (ID: {item_id_str}) ===\n{chunk_text}\n"
         context_parts.append(part)
         accumulated_chars += item_chars
 
     context_text = "\n\n".join(context_parts)
 
-    # 2. Graph retrieval
+    # 4. Graph retrieval
     candidate_chunk_ids = [c["chunk_id"] for c in candidate_citations_data if c.get("chunk_id")]
     graph_text, graph_ctx = rag_service.retrieve_graph_context(
         db, workspace_id, query, candidate_chunk_ids, max_hops=2
@@ -138,7 +283,9 @@ def _build_history_messages(
     history_payloads: list[dict[str, str]] = []
     for m in recent_messages:
         if m.role in ("user", "assistant") and m.content:
-            history_payloads.append({"role": m.role, "content": m.content})
+            clean_content = re.sub(r"<!--hyades-action-result:[\s\S]*?-->", "", m.content).strip()
+            if clean_content:
+                history_payloads.append({"role": m.role, "content": clean_content})
     return history_payloads
 
 

@@ -116,6 +116,27 @@ def test_global_search_returns_all_five_domains(client: TestClient, db_session: 
     assert "collection" in item_types_hyb
     assert "thread" in item_types_hyb
 
+    # Test semantic mode directly by mocking vector points
+    from unittest.mock import patch
+
+    mock_points = [
+        {"score": 0.95, "payload": {"note_id": str(note.id)}},
+        {"score": 0.90, "payload": {"source_id": str(source.id)}},
+        {"score": 0.85, "payload": {"entity_id": str(entity.id)}},
+        {"score": 0.80, "payload": {"collection_id": str(collection.id)}},
+        {"score": 0.75, "payload": {"thread_id": str(thread.id)}},
+    ]
+    with patch("app.services.vector_service.search_vectors", return_value=mock_points):
+        res_sem = client.post(
+            f"/api/v1/workspaces/{workspace.id}/search",
+            json={"query": "astronomy", "mode": "semantic", "limit": 20},
+        )
+        assert res_sem.status_code == 200, res_sem.text
+        data_sem = res_sem.json()
+        assert data_sem["total"] == 5
+        types_sem = {item["item_type"] for item in data_sem["items"]}
+        assert types_sem == {"note", "source", "entity", "collection", "thread"}
+
 
 def test_global_search_workspace_isolation(client: TestClient, db_session: Session):
     """Verify that records in workspace B are never returned in search for workspace A."""
