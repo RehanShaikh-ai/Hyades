@@ -2073,3 +2073,197 @@ def test_create_source_proposal_persistence_no_conversation_splitting(client: Te
     assert source_row is not None
     assert "Evaluating" in (source_row.source_identifier or str(source_row.raw_metadata))
 
+
+def _setup_test_workspace(db_session):
+    user = User(display_name="Flashcard Tester")
+    db_session.add(user)
+    db_session.commit()
+    workspace = Workspace(name="Flashcard WS", owner_id=user.id)
+    db_session.add(workspace)
+    db_session.commit()
+    return workspace, user
+
+
+def test_generate_flashcards_on_note_success(client, db_session):
+    """Test /generate-flashcards produces an interactive visual flashcard deck without propose error."""
+    workspace, user = _setup_test_workspace(db_session)
+    # Create test note
+    note = Note(
+        workspace_id=workspace.id,
+        created_by=user.id,
+        title="OSI Model",
+        content=(
+            "# The OSI Model\n\n"
+            "The Open Systems Interconnection model is a conceptual framework that standardizes "
+            "network communication into seven layers.\n\n"
+            "## Layer 7: Application\n"
+            "Provides network services directly to end-user applications.\n\n"
+            "## Layer 4: Transport\n"
+            "Manages end-to-end communication, flow control, and error detection using TCP and UDP.\n\n"
+            "## Layer 3: Network\n"
+            "Handles routing, logical addressing (IP), and packet forwarding.\n\n"
+            "## Layer 2: Data Link\n"
+            "Transfers frames between adjacent network nodes using MAC addresses.\n\n"
+            "## Layer 1: Physical\n"
+            "Transmits raw unstructured bit streams over physical network cables."
+        ),
+    )
+    db_session.add(note)
+    conv = Conversation(workspace_id=workspace.id, title="Flashcard Test")
+    db_session.add(conv)
+    db_session.commit()
+
+    res = client.post(
+        f"/api/v1/workspaces/{workspace.id}/stella/commands/execute",
+        json={
+            "command": '/generate-flashcards "OSI Model"',
+            "conversation_id": str(conv.id),
+        },
+    )
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["status"] == "completed"
+    assert data["requires_confirmation"] is False
+    deck = data["data"]
+    assert deck["deck_id"].startswith("deck-")
+    assert "OSI Model" in deck["title"]
+    assert deck["source_type"] == "note"
+    assert deck["source_id"] == str(note.id)
+    assert deck["cards_count"] == 10
+    assert len(deck["cards"]) == 10
+
+    # Verify first card structure
+    first_card = deck["cards"][0]
+    assert "id" in first_card
+    assert "question" in first_card
+    assert "answer" in first_card
+    assert "explanation" in first_card
+    assert "concept" in first_card
+    assert "OSI model" in first_card["question"]
+
+    # Verify persistence in conversation history with action_result comment
+    import json
+    import re
+    from app.models.message import Message
+
+    stmt = select(Message).where(Message.conversation_id == conv.id).order_by(Message.created_at.asc())
+    msgs = db_session.scalars(stmt).all()
+    assert len(msgs) == 2
+    assert msgs[0].role == "user"
+    assert msgs[1].role == "assistant"
+    assert "<!--hyades-action-result:" in msgs[1].content
+    match = re.search(r"<!--hyades-action-result:([\s\S]*?)-->", msgs[1].content)
+    assert match is not None
+    action_res = json.loads(match.group(1))
+    assert action_res["card_type"] == "flashcards"
+    assert "flashcardDeck" in action_res
+    assert action_res["flashcardDeck"]["deck_id"] == deck["deck_id"]
+
+
+def test_generate_flashcards_conversational_phrase_and_count(client, db_session):
+    """Test /generate-flashcards handles conversational filler and custom card count."""
+    workspace, user = _setup_test_workspace(db_session)
+    note = Note(
+        workspace_id=workspace.id,
+        created_by=user.id,
+        title="OSI Model",
+        content="The OSI model standardizes communication into 7 distinct protocol layers across computer systems.",
+    )
+    db_session.add(note)
+    conv = Conversation(workspace_id=workspace.id, title="Conversational Test")
+    db_session.add(conv)
+    db_session.commit()
+
+    # User passes conversational phrase: /generate-flashcards "OSI model" from my notes 5 cards
+    res = client.post(
+        f"/api/v1/workspaces/{workspace.id}/stella/commands/execute",
+        json={
+            "command": '/generate-flashcards "OSI model" from my notes 5 cards',
+            "conversation_id": str(conv.id),
+        },
+    )
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["status"] == "completed"
+    deck = data["data"]
+    assert deck["cards_count"] == 5
+    assert len(deck["cards"]) == 5
+
+
+def test_generate_flashcards_missing_material_404(client, db_session):
+    """Test /generate-flashcards returns 404 MATERIAL_NOT_FOUND when note does not exist."""
+    workspace, _ = _setup_test_workspace(db_session)
+    res = client.post(
+        f"/api/v1/workspaces/{workspace.id}/stella/commands/execute",
+        json={
+            "command": '/generate-flashcards "Nonexistent Subject XYZ"',
+        },
+    )
+    assert res.status_code == 404, res.text
+    err = res.json()
+    assert err["error"]["code"] == "MATERIAL_NOT_FOUND"
+
+
+def test_generate_flashcards_insufficient_content_400(client, db_session):
+    """Test /generate-flashcards returns 400 when note content is too sparse."""
+    workspace, user = _setup_test_workspace(db_session)
+    note = Note(
+        workspace_id=workspace.id,
+        created_by=user.id,
+        title="Empty Note",
+        content="too short",
+    )
+    db_session.add(note)
+    db_session.commit()
+
+    res = client.post(
+        f"/api/v1/workspaces/{workspace.id}/stella/commands/execute",
+        json={
+            "command": '/generate-flashcards "Empty Note"',
+        },
+    )
+    assert res.status_code == 400, res.text
+    err = res.json()
+    assert err["error"]["code"] == "INSUFFICIENT_CONTENT"
+
+
+def test_generate_flashcards_deduplication(client, db_session):
+    """Test /generate-flashcards reuses existing deck in same conversation."""
+    workspace, user = _setup_test_workspace(db_session)
+    note = Note(
+        workspace_id=workspace.id,
+        created_by=user.id,
+        title="OSI Model",
+        content="The OSI model standardizes network communication into seven layers for interoperability.",
+    )
+    db_session.add(note)
+    conv = Conversation(workspace_id=workspace.id, title="Deduplication Test")
+    db_session.add(conv)
+    db_session.commit()
+
+    # First call
+    res1 = client.post(
+        f"/api/v1/workspaces/{workspace.id}/stella/commands/execute",
+        json={
+            "command": '/generate-flashcards "OSI Model"',
+            "conversation_id": str(conv.id),
+        },
+    )
+    assert res1.status_code == 200
+    deck1 = res1.json()["data"]
+
+    # Second call in same conversation
+    res2 = client.post(
+        f"/api/v1/workspaces/{workspace.id}/stella/commands/execute",
+        json={
+            "command": '/generate-flashcards "OSI Model"',
+            "conversation_id": str(conv.id),
+        },
+    )
+    assert res2.status_code == 200
+    deck2 = res2.json()["data"]
+    # Must reuse the same deck_id
+    assert deck1["deck_id"] == deck2["deck_id"]
+
+
+
