@@ -1039,6 +1039,12 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       // Find connections from valid non-self edges only
       const connections: Array<{ id: string; name: string; type: string; corr: string }> = [];
       validEdges.forEach((e) => {
+        const edgeConf =
+          typeof e.confidence === 'number'
+            ? e.confidence
+            : typeof (e as any).weight === 'number'
+            ? (e as any).weight
+            : 0.85;
         if (e.source_entity_id === n.id) {
           const target = nodesMap.get(e.target_entity_id);
           if (target) {
@@ -1046,7 +1052,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
               id: target.id,
               name: target.name,
               type: e.relationship_type,
-              corr: e.confidence.toFixed(2),
+              corr: edgeConf.toFixed(2),
             });
           }
         } else if (e.target_entity_id === n.id) {
@@ -1056,7 +1062,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
               id: source.id,
               name: source.name,
               type: e.relationship_type,
-              corr: e.confidence.toFixed(2),
+              corr: edgeConf.toFixed(2),
             });
           }
         }
@@ -1098,6 +1104,12 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
     const linkMap = new Map<string, CelestialLink>();
     validEdges.forEach((e) => {
       if (!validNodeIds.has(e.source_entity_id) || !validNodeIds.has(e.target_entity_id)) return;
+      const edgeConf =
+        typeof e.confidence === 'number'
+          ? e.confidence
+          : typeof (e as any).weight === 'number'
+          ? (e as any).weight
+          : 0.85;
       const pairKey =
         e.source_entity_id < e.target_entity_id
           ? `${e.source_entity_id}__${e.target_entity_id}`
@@ -1107,12 +1119,12 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
         linkMap.set(pairKey, {
           source: e.source_entity_id,
           target: e.target_entity_id,
-          weight: e.confidence,
+          weight: edgeConf,
           type: e.relationship_type || '',
           types: e.relationship_type ? [e.relationship_type] : [],
         });
       } else {
-        existing.weight = Math.max(existing.weight, e.confidence);
+        existing.weight = Math.max(existing.weight, edgeConf);
         if (e.relationship_type && !existing.types?.includes(e.relationship_type)) {
           existing.types?.push(e.relationship_type);
           existing.type = existing.types?.join(', ') || existing.type;
@@ -1664,7 +1676,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       .attr('width', width)
       .attr('height', height)
       .attr('viewBox', [0, 0, width, height])
-      .attr('class', 'celestial-svg select-none cursor-grab active:cursor-grabbing');
+      .attr('class', 'celestial-svg select-none touch-none cursor-grab active:cursor-grabbing');
 
     svgRef.current = svg;
 
@@ -3107,7 +3119,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       {isLeftSidebarOpen && (
         <aside
           id="left-sidebar"
-          className="sidebar-transition absolute top-4 left-6 w-[280px] max-h-[calc(100vh-100px)] z-20 flex flex-col pointer-events-none"
+          className="sidebar-transition absolute top-4 left-4 sm:left-6 w-[280px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-100px)] z-20 flex flex-col pointer-events-none"
         >
           <div className="instrument-panel flex-1 flex flex-col pointer-events-auto overflow-hidden">
             <div className="panel-bracket-tl" />
@@ -3269,7 +3281,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       <div
         id="graph-controls"
         className={`absolute bottom-6 z-20 pointer-events-auto flex flex-col items-center gap-1 bg-[var(--bg-panel)]/95 backdrop-blur-md border border-[var(--border-strong)] rounded-xl p-1 shadow-sm w-9 transition-all duration-300 ${
-          isRightSidebarOpen && selectedNode ? 'right-[420px]' : 'right-6'
+          isRightSidebarOpen && selectedNode ? 'right-4 lg:right-[420px]' : 'right-6'
         }`}
       >
         <button
@@ -3373,7 +3385,7 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
       {isRightSidebarOpen && selectedNode && (
         <aside
           id="right-sidebar"
-          className="sidebar-transition absolute top-4 right-6 bottom-6 w-[390px] z-20 flex flex-col pointer-events-none"
+          className="sidebar-transition absolute top-4 right-4 sm:right-6 bottom-6 w-[390px] max-w-[calc(100vw-2rem)] z-20 flex flex-col pointer-events-none"
         >
           <div className="instrument-panel flex-1 flex flex-col pointer-events-auto overflow-hidden shadow-lg border border-[var(--border-strong)] bg-white/95">
             <div className="panel-bracket-tl" />
@@ -3460,11 +3472,20 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                     selectedNode.connections.map((conn) => (
                       <div
                         key={conn.id}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => {
                           const target = celestialNodes.find((n) => n.id === conn.id);
                           if (target) setSelectedNode(target);
                         }}
-                        className="card-surface p-2.5 flex items-center justify-between cursor-pointer group"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            const target = celestialNodes.find((n) => n.id === conn.id);
+                            if (target) setSelectedNode(target);
+                          }
+                        }}
+                        className="card-surface p-2.5 flex items-center justify-between cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)]"
                       >
                         <div className="flex items-center gap-2">
                           <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-terracotta)]" />
@@ -3477,8 +3498,8 @@ export const HyadesObservatory: React.FC<HyadesObservatoryProps> = ({
                             </div>
                           </div>
                         </div>
-                        <span className="mono text-[10px] text-[var(--ink-secondary)]">
-                          {(parseFloat(conn.corr) * 100).toFixed(0)}%
+                        <span className="mono text-[10px] text-[var(--ink-secondary)]" title="Relationship weight">
+                          {(parseFloat(conn.corr) * 100).toFixed(0)}% weight
                         </span>
                       </div>
                     ))

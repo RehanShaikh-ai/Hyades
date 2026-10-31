@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Collection,
   KnowledgeItem,
@@ -203,7 +203,7 @@ export const HyadesCollections: React.FC<HyadesCollectionsProps> = ({
 
   return (
     <div
-      className="relative flex-1 h-[calc(100vh-57px)] flex flex-col md:flex-row overflow-x-hidden overflow-y-auto w-full select-none text-[13px] leading-relaxed bg-[var(--bg-base)] text-[var(--ink-primary)]"
+      className="relative flex-1 h-[calc(100vh-57px)] flex flex-col md:flex-row overflow-x-hidden overflow-y-auto w-full text-[13px] leading-relaxed bg-[var(--bg-base)] text-[var(--ink-primary)]"
       data-testid="hyades-collections"
     >
       {/* Paper grain and ambient observatory atmosphere */}
@@ -319,8 +319,16 @@ export const HyadesCollections: React.FC<HyadesCollectionsProps> = ({
               return (
                 <div
                   key={coll.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedCollection(coll)}
-                  className={`group relative p-3 rounded-xl border transition-all cursor-pointer ${
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedCollection(coll);
+                    }
+                  }}
+                  className={`group relative p-3 rounded-xl border transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] ${
                     isSelected
                       ? 'bg-white shadow-sm border-[var(--border-strong)] ring-1 ring-[var(--accent-midnight)]/10'
                       : 'bg-transparent border-transparent hover:bg-white/60 hover:border-[var(--border-parchment)]'

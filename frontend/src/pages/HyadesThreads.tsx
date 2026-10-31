@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Thread,
   ThreadQuestion,
@@ -319,7 +319,7 @@ export const HyadesThreads: React.FC<HyadesThreadsProps> = ({
   };
   return (
     <div
-      className="relative flex-1 h-[calc(100vh-57px)] flex flex-col md:flex-row overflow-x-hidden overflow-y-auto w-full select-none text-[13px] leading-relaxed bg-[var(--bg-base)] text-[var(--ink-primary)]"
+      className="relative flex-1 h-[calc(100vh-57px)] flex flex-col md:flex-row overflow-x-hidden overflow-y-auto w-full text-[13px] leading-relaxed bg-[var(--bg-base)] text-[var(--ink-primary)]"
       data-testid="hyades-threads"
     >
       <div className="paper-grain" />
@@ -436,8 +436,16 @@ export const HyadesThreads: React.FC<HyadesThreadsProps> = ({
               return (
                 <div
                   key={thread.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedThread(thread)}
-                  className={`group relative p-3 rounded-xl border transition-all cursor-pointer ${
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedThread(thread);
+                    }
+                  }}
+                  className={`group relative p-3 rounded-xl border transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] ${
                     isSelected
                       ? 'bg-white shadow-sm border-[var(--border-strong)] ring-1 ring-[var(--accent-midnight)]/10'
                       : 'bg-transparent border-transparent hover:bg-white/60 hover:border-[var(--border-parchment)]'

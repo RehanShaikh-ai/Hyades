@@ -75,6 +75,8 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
   const [clusters, setClusters] = useState<GraphClusterSummary[]>([]);
   const [graphData, setGraphData] = useState<GraphResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadError, setHasLoadError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   const activePlate = PLATES[environmentIndex % PLATES.length];
 
@@ -82,6 +84,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
     if (!workspaceId) return;
     let mounted = true;
     setIsLoading(true);
+    setHasLoadError(false);
 
     Promise.allSettled([
       getWorkspaceDashboard(workspaceId),
@@ -91,6 +94,13 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
       getWorkspaceGraph(workspaceId),
     ]).then(([dashRes, pinnedRes, recentRes, clusterRes, graphRes]) => {
       if (!mounted) return;
+
+      const allRejected = [dashRes, pinnedRes, recentRes, clusterRes, graphRes].every(
+        (r) => r.status === 'rejected'
+      );
+      if (allRejected) {
+        setHasLoadError(true);
+      }
 
       if (dashRes.status === 'fulfilled') setStats(dashRes.value);
       if (pinnedRes.status === 'fulfilled') setPinnedNotes(pinnedRes.value.items || []);
@@ -113,7 +123,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
     return () => {
       mounted = false;
     };
-  }, [workspaceId]);
+  }, [workspaceId, retryCount]);
 
   // Real workspace metrics directly from database & graph service
   const totalNotes = stats?.total_notes ?? (recentNotes.length || 0);
@@ -238,7 +248,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
   }
 
   return (
-    <div className="relative flex-1 h-full overflow-y-auto w-full select-none text-[13px] leading-relaxed pb-28">
+    <div className="relative flex-1 h-full overflow-y-auto w-full text-[13px] leading-relaxed pb-28">
       {/* Paper grain */}
       <div className="paper-grain" />
 
@@ -253,6 +263,21 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
 
       {/* Main Content */}
       <main className="relative z-10 max-w-[1460px] mx-auto px-6 sm:px-8 pt-8">
+        {hasLoadError && (
+          <div className="mb-6 p-3.5 rounded-xl bg-amber-50/90 border border-[var(--accent-terracotta)] text-xs text-[var(--ink-primary)] flex items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <i className="ph ph-warning-circle text-base text-[var(--accent-terracotta)]" />
+              <span>Workspace telemetry could not be reached. Displaying cached or empty state.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRetryCount((c) => c + 1)}
+              className="px-3 py-1 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] font-medium cursor-pointer transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        )}
         
         {/* 1. OVERALL KNOWLEDGE SUMMARY (Clean, Visual, Direct) */}
         <div className="instrument-panel p-6 sm:p-7 mb-8 overflow-hidden reveal" style={{ '--i': 0 } as React.CSSProperties}>
@@ -349,12 +374,12 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
               <div className="flex flex-col gap-1.5 text-xs min-w-[210px]">
                 {topicDistribution.length > 0 ? (
                   topicDistribution.map((t) => (
-                    <div key={t.id} className="flex items-center justify-between py-0.5 border-b border-[var(--border-parchment)] last:border-b-0">
+                    <div key={t.id} className="flex items-center justify-between gap-3 py-0.5 border-b border-[var(--border-parchment)] last:border-b-0">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="w-2.5 h-2.5 rounded-xs shrink-0" style={{ backgroundColor: t.color }} />
                         <span className="font-medium text-[var(--ink-primary)] truncate max-w-[170px] sm:max-w-[200px]" title={t.label}>{t.label}</span>
                       </div>
-                      <span className="mono text-[11px] text-[var(--ink-secondary)]">
+                      <span className="mono text-[11px] text-[var(--ink-secondary)] shrink-0">
                         {t.percentage}% ({t.count})
                       </span>
                     </div>
@@ -395,8 +420,17 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                       </div>
 
                       <h2
+                        role="button"
+                        tabIndex={0}
                         onClick={() => onNavigateToNote ? onNavigateToNote(activeNote.id) : onNavigateToDestination('library')}
-                        className="serif text-2xl sm:text-3xl font-semibold text-[var(--ink-primary)] tracking-tight leading-snug hover:text-[var(--accent-midnight)] transition-colors cursor-pointer"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            if (onNavigateToNote) onNavigateToNote(activeNote.id);
+                            else onNavigateToDestination('library');
+                          }
+                        }}
+                        className="serif text-2xl sm:text-3xl font-semibold text-[var(--ink-primary)] tracking-tight leading-snug hover:text-[var(--accent-midnight)] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] rounded-xs"
                       >
                         {activeNote.title || 'Untitled Note'}
                       </h2>
@@ -530,13 +564,27 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
 
                       {/* Real Concept 1 */}
                       <g
-                        className="cursor-pointer group"
+                        role="button"
+                        tabIndex={0}
+                        aria-label={graphData?.nodes?.[0]?.name || 'Open Observatory'}
+                        className="cursor-pointer group focus:outline-none"
                         onClick={() => {
                           const n = graphData?.nodes?.[0];
                           if (n && onNavigateToObservatory) {
                             onNavigateToObservatory({ entityId: n.id, entityName: n.name });
                           } else {
                             onNavigateToDestination('observatory');
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            const n = graphData?.nodes?.[0];
+                            if (n && onNavigateToObservatory) {
+                              onNavigateToObservatory({ entityId: n.id, entityName: n.name });
+                            } else {
+                              onNavigateToDestination('observatory');
+                            }
                           }
                         }}
                       >
@@ -550,13 +598,27 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                       {/* Real Concept 2 */}
                       {graphData?.nodes?.[1] && (
                         <g
-                          className="cursor-pointer group"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={graphData.nodes[1].name}
+                          className="cursor-pointer group focus:outline-none"
                           onClick={() => {
                             const n = graphData.nodes[1];
                             if (onNavigateToObservatory) {
                               onNavigateToObservatory({ entityId: n.id, entityName: n.name });
                             } else {
                               onNavigateToDestination('observatory');
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              const n = graphData.nodes[1];
+                              if (onNavigateToObservatory) {
+                                onNavigateToObservatory({ entityId: n.id, entityName: n.name });
+                              } else {
+                                onNavigateToDestination('observatory');
+                              }
                             }
                           }}
                         >
@@ -570,13 +632,27 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                       {/* Real Concept 3 */}
                       {graphData?.nodes?.[2] && (
                         <g
-                          className="cursor-pointer group"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={graphData.nodes[2].name}
+                          className="cursor-pointer group focus:outline-none"
                           onClick={() => {
                             const n = graphData.nodes[2];
                             if (onNavigateToObservatory) {
                               onNavigateToObservatory({ entityId: n.id, entityName: n.name });
                             } else {
                               onNavigateToDestination('observatory');
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              const n = graphData.nodes[2];
+                              if (onNavigateToObservatory) {
+                                onNavigateToObservatory({ entityId: n.id, entityName: n.name });
+                              } else {
+                                onNavigateToDestination('observatory');
+                              }
                             }
                           }}
                         >
@@ -590,13 +666,27 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                       {/* Real Concept 4 */}
                       {graphData?.nodes?.[3] && (
                         <g
-                          className="cursor-pointer group"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={graphData.nodes[3].name}
+                          className="cursor-pointer group focus:outline-none"
                           onClick={() => {
                             const n = graphData.nodes[3];
                             if (onNavigateToObservatory) {
                               onNavigateToObservatory({ entityId: n.id, entityName: n.name });
                             } else {
                               onNavigateToDestination('observatory');
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              const n = graphData.nodes[3];
+                              if (onNavigateToObservatory) {
+                                onNavigateToObservatory({ entityId: n.id, entityName: n.name });
+                              } else {
+                                onNavigateToDestination('observatory');
+                              }
                             }
                           }}
                         >
@@ -669,7 +759,13 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                   graphData.edges.slice(0, 3).map((edge) => {
                     const sourceName = nodeMap.get(edge.source_entity_id) || 'Concept A';
                     const targetName = nodeMap.get(edge.target_entity_id) || 'Concept B';
-                    const confidencePct = Math.round(edge.confidence * 100);
+                    const edgeScore =
+                      typeof edge.confidence === 'number'
+                        ? edge.confidence
+                        : typeof (edge as any).weight === 'number'
+                        ? (edge as any).weight
+                        : 0.85;
+                    const scorePct = Math.round(edgeScore * 100);
 
                     return (
                       <div key={edge.id} className="p-4 rounded-xl border border-[var(--border-parchment)] bg-white hover:border-[var(--border-strong)] transition-all lift group">
@@ -680,7 +776,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                             <span className="truncate max-w-[120px]">{targetName}</span>
                           </div>
                           <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                            {confidencePct}% Match
+                            {scorePct}% Match
                           </span>
                         </div>
                         <p className="text-[12px] text-[var(--ink-secondary)] leading-relaxed">
@@ -688,7 +784,7 @@ export const HyadesOverview: React.FC<HyadesOverviewProps> = ({
                         </p>
                         <div className="mt-3 pt-2.5 border-t border-[var(--border-parchment)] flex items-center justify-between">
                           <span className="text-[11px] text-[var(--ink-tertiary)] mono">
-                            Confidence: {edge.confidence.toFixed(2)}
+                            Strength: {edgeScore.toFixed(2)}
                           </span>
                           <div className="flex items-center gap-3">
                             <button

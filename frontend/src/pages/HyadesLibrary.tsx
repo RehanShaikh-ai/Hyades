@@ -25,6 +25,7 @@ interface HyadesLibraryProps {
   onClearInitialAction?: () => void;
   onNavigateToObservatory?: (target?: ObservatoryTarget) => void;
   onNavigateToStella?: (context?: StellaContext) => void;
+  onNavigateToInbox?: () => void;
   environmentIndex?: number;
 }
 
@@ -62,6 +63,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   onClearInitialAction,
   onNavigateToObservatory,
   onNavigateToStella,
+  onNavigateToInbox,
   environmentIndex = 0,
 }) => {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -123,15 +125,19 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
   // Selection & Actions
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [isStarred, setIsStarred] = useState(false);
+  const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
   const [isReindexing, setIsReindexing] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [showInboxLinkInFeedback, setShowInboxLinkInFeedback] = useState(false);
 
   // Note Editor Modal
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
+  const [initialEditTitle, setInitialEditTitle] = useState('');
+  const [initialEditContent, setInitialEditContent] = useState('');
+  const [confirmDiscardNote, setConfirmDiscardNote] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingItemType, setEditingItemType] = useState<'note' | 'source'>('note');
   const [importReviewMode, setImportReviewMode] = useState<'direct' | 'inbox'>('direct');
@@ -146,6 +152,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const isNoteDirty = editingItemType === 'note' && (editTitle !== initialEditTitle || editContent !== initialEditContent);
+
   // Handle Escape key to close note editor or import dialogs
   useEffect(() => {
     if (!isEditingNote && !isImportModalOpen) return;
@@ -154,7 +162,13 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
         e.preventDefault();
         e.stopPropagation();
         if (isEditingNote && !isSavingNote) {
-          setIsEditingNote(false);
+          if (isNoteDirty && !confirmDiscardNote) {
+            setConfirmDiscardNote(true);
+            setSaveNoteError('Unsaved changes detected. Press Escape again or click Cancel to discard.');
+          } else {
+            setConfirmDiscardNote(false);
+            setIsEditingNote(false);
+          }
         }
         if (isImportModalOpen && !isUploadingSource) {
           setIsImportModalOpen(false);
@@ -163,7 +177,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [isEditingNote, isImportModalOpen, isSavingNote, isUploadingSource]);
+  }, [isEditingNote, isImportModalOpen, isSavingNote, isUploadingSource, isNoteDirty, confirmDiscardNote]);
 
   const activePlate = LIBRARY_PLATES[environmentIndex % LIBRARY_PLATES.length];
 
@@ -301,8 +315,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
         topicColor: 'var(--accent-terracotta)',
         status: 'Indexed Source',
         statusColor: 'text-emerald-700',
-        conceptCount: 0,
-        linkCount: 0,
+        conceptCount: s.processing_status === 'READY' || statusMap.get(s.id)?.status === 'extracted' ? 1 : 0,
+        linkCount: s.processing_status === 'READY' ? 1 : 0,
         dateStr: s.created_at ? new Date(s.created_at).toLocaleDateString() : 'Recent',
         rawSource: s,
         extract_knowledge: s.extract_knowledge !== false,
@@ -322,6 +336,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
           : null;
       const topicLabel = clusterInfo?.label || firstTag || 'General';
       const tagLabels = n.tags?.map((t) => (typeof t === 'string' ? t : t.name)).join(', ') || '';
+      const tagCount = n.tags?.length || 0;
+      const clusterLinks = clusterInfo ? 1 : 0;
       list.push({
         id: n.id,
         type: 'note',
@@ -334,8 +350,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
         clusterId: clusterInfo?.id,
         status: (n.tags && n.tags.length > 0) ? `${n.tags.length} Tags Attached` : (clusterInfo ? 'Clustered' : 'Unclustered'),
         statusColor: 'text-[var(--ink-secondary)]',
-        conceptCount: 0,
-        linkCount: 0,
+        conceptCount: tagCount + clusterLinks,
+        linkCount: tagCount + clusterLinks,
         dateStr: n.updated_at ? new Date(n.updated_at).toLocaleDateString() : 'Recent',
         rawNote: n,
         extract_knowledge: n.extract_knowledge !== false,
@@ -380,7 +396,12 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
       }
 
       // Attention filter
-      if (activeAttention === 'unconnected' && item.linkCount > 0) return false;
+      if (
+        activeAttention === 'unconnected' &&
+        (item.type !== 'note' || (item.rawNote?.tags && item.rawNote.tags.length > 0))
+      ) {
+        return false;
+      }
       if (activeAttention === 'citations' && !item.status.toLowerCase().includes('citation')) return false;
 
       // Search query
@@ -608,6 +629,9 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
     setEditingNoteId(null);
     setEditTitle('');
     setEditContent('');
+    setInitialEditTitle('');
+    setInitialEditContent('');
+    setConfirmDiscardNote(false);
     setSaveNoteError(null);
     setIsSavingNote(false);
     setIsEditingNote(true);
@@ -622,14 +646,18 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   }, [initialAction, handleCreateNewNote, onClearInitialAction]);
 
   const handleOpenEditNote = (item: UnifiedItem) => {
-    setEditingItemType(item.type);
-    setEditingNoteId(item.type === 'note' && item.id && !item.id.startsWith('canon-') ? item.id : null);
-    setEditTitle(item.title || '');
-    setEditContent(
+    const resolvedTitle = item.title || '';
+    const resolvedContent =
       item.type === 'note'
         ? (item.rawNote?.content || item.excerpt || '')
-        : (item.rawSource?.extracted_text || item.excerpt || 'No extracted text content available.')
-    );
+        : (item.rawSource?.extracted_text || item.excerpt || 'No extracted text content available.');
+    setEditingItemType(item.type);
+    setEditingNoteId(item.type === 'note' && item.id && !item.id.startsWith('canon-') ? item.id : null);
+    setEditTitle(resolvedTitle);
+    setEditContent(resolvedContent);
+    setInitialEditTitle(resolvedTitle);
+    setInitialEditContent(resolvedContent);
+    setConfirmDiscardNote(false);
     setSaveNoteError(null);
     setIsSavingNote(false);
     setIsEditingNote(true);
@@ -729,8 +757,10 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
       const uploadedName = uploaded.title || uploaded.file_name || (uploaded as { filename?: string }).filename || importFile.name;
       if (importReviewMode === 'inbox') {
         setActionFeedback(`Source "${uploadedName}" queued for review in Knowledge Inbox.`);
+        setShowInboxLinkInFeedback(true);
       } else {
         setActionFeedback(`Source "${uploadedName}" imported and queued for indexing.`);
+        setShowInboxLinkInFeedback(false);
       }
       setImportFile(null);
       setIsImportModalOpen(false);
@@ -749,7 +779,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
   if (isLoading) {
     return (
-      <div className="relative min-h-[calc(100vh-57px)] flex items-center justify-center select-none text-[13px] leading-relaxed">
+      <div className="relative min-h-[calc(100vh-57px)] flex items-center justify-center text-[13px] leading-relaxed">
         <div className="paper-grain" />
         <div className="classical-environment">
           <div className="architectural-plate" style={{ backgroundImage: `url(${activePlate})` }} />
@@ -764,7 +794,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   }
 
   return (
-    <div data-testid="hyades-library" className="relative flex-1 h-[calc(100vh-57px)] flex flex-col overflow-hidden w-full select-none text-[13px] leading-relaxed">
+    <div data-testid="hyades-library" className="relative flex-1 h-[calc(100vh-57px)] max-lg:h-auto max-lg:min-h-[calc(100vh-57px)] flex flex-col overflow-hidden max-lg:overflow-y-auto w-full text-[13px] leading-relaxed">
       {/* Archival paper grain texture */}
       <div className="paper-grain" />
 
@@ -834,7 +864,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
       )}
 
       {/* Main Library Layout */}
-      <main className="relative z-10 max-w-[1560px] w-full mx-auto px-6 sm:px-8 pt-5 pb-5 flex-1 min-h-0 flex flex-col overflow-hidden">
+      <main className="relative z-10 max-w-[1560px] w-full mx-auto px-6 sm:px-8 pt-5 pb-5 flex-1 min-h-0 flex flex-col overflow-hidden max-lg:overflow-visible">
         
         {/* Top Archive Header */}
         <div className="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border-parchment)] mb-4">
@@ -874,14 +904,25 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
         {/* Action feedback toast */}
         {actionFeedback && (
-          <div className="shrink-0 mb-3 p-3 rounded-xl bg-white border border-[var(--accent-brass)] text-xs font-medium text-[var(--ink-primary)] shadow-sm flex items-center gap-2 animate-fade-in">
-            <i className="ph ph-info text-[var(--accent-terracotta)] text-sm" />
-            <span>{actionFeedback}</span>
+          <div className="shrink-0 mb-3 p-3 rounded-xl bg-white border border-[var(--accent-brass)] text-xs font-medium text-[var(--ink-primary)] shadow-sm flex items-center justify-between gap-3 animate-fade-in">
+            <div className="flex items-center gap-2">
+              <i className="ph ph-info text-[var(--accent-terracotta)] text-sm" />
+              <span>{actionFeedback}</span>
+            </div>
+            {showInboxLinkInFeedback && onNavigateToInbox && (
+              <button
+                type="button"
+                onClick={onNavigateToInbox}
+                className="px-2.5 py-1 rounded-lg bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] text-[11px] font-medium cursor-pointer transition-colors shrink-0"
+              >
+                Open Knowledge Inbox →
+              </button>
+            )}
           </div>
         )}
 
         {/* 3-Column Working Grid */}
-        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch overflow-hidden">
+        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch overflow-hidden max-lg:overflow-visible">
           
           {/* ================= LEFT FLANK: THE CATALOG SHELVES & TOPICS (COLUMNS 1–3) ================= */}
           {isLeftShelfOpen && (
@@ -1227,7 +1268,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                 : !isLeftShelfOpen && !isRightDossierOpen
                 ? 'lg:col-span-12'
                 : 'lg:col-span-8'
-            } flex flex-col h-full min-h-0 gap-3 transition-all duration-300`}
+            } flex flex-col h-full min-h-0 max-lg:min-h-[380px] gap-3 transition-all duration-300`}
           >
             {/* Filter & Search Toolbar */}
             <div className="shrink-0 instrument-panel p-3 flex flex-col gap-2 relative z-20">
@@ -1466,15 +1507,28 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                   </div>
                 </div>
               ) : (
-                <div data-testid="library-ledger-scroll-container" className="flex-1 min-h-0 overflow-y-auto divide-y divide-[var(--border-parchment)]">
+                <div data-testid="library-ledger-scroll-container" className="flex-1 min-h-0 max-lg:min-h-[260px] overflow-y-auto divide-y divide-[var(--border-parchment)]">
                   {filteredItems.map((item, index) => {
                     const isSelected = selectedIndex === index;
+                    const displayConceptCount =
+                      isSelected && connectedConcepts.length > 0
+                        ? connectedConcepts.length
+                        : item.conceptCount;
                     return (
                       <div
                         key={item.id}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => {
                           setSelectedIndex(index);
                           if (!isRightDossierOpen) setIsRightDossierOpen(true);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedIndex(index);
+                            if (!isRightDossierOpen) setIsRightDossierOpen(true);
+                          }
                         }}
                         className={`catalog-row px-5 py-3.5 flex items-start justify-between gap-4 cursor-pointer stagger-row ${
                           isSelected ? 'selected' : ''
@@ -1548,7 +1602,7 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
                         <div className="w-24 text-right hidden sm:flex flex-col items-end shrink-0">
                           <span className="mono text-[11px] font-semibold text-[var(--accent-midnight)]">
-                            {item.conceptCount} concepts
+                            {displayConceptCount} concepts
                           </span>
                           <span className="text-[10px] text-[var(--ink-tertiary)] mono">{item.linkCount} links</span>
                         </div>
@@ -1570,14 +1624,17 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    disabled
-                    className="px-2.5 py-1 rounded border border-[var(--border-strong)] bg-white text-[11px] font-medium disabled:opacity-50"
+                    disabled={selectedIndex <= 0}
+                    onClick={() => setSelectedIndex((prev) => Math.max(0, prev - 1))}
+                    className="px-2.5 py-1 rounded border border-[var(--border-strong)] bg-white text-[11px] font-medium hover:bg-[var(--bg-panel)] disabled:opacity-50 cursor-pointer disabled:cursor-default"
                   >
                     Previous
                   </button>
                   <button
                     type="button"
-                    className="px-2.5 py-1 rounded border border-[var(--border-strong)] bg-white text-[11px] font-medium hover:bg-[var(--bg-panel)]"
+                    disabled={selectedIndex >= filteredItems.length - 1}
+                    onClick={() => setSelectedIndex((prev) => Math.min(filteredItems.length - 1, prev + 1))}
+                    className="px-2.5 py-1 rounded border border-[var(--border-strong)] bg-white text-[11px] font-medium hover:bg-[var(--bg-panel)] disabled:opacity-50 cursor-pointer disabled:cursor-default"
                   >
                     Next
                   </button>
@@ -1639,11 +1696,37 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => setIsStarred((prev) => !prev)}
-                    className="p-1.5 rounded-lg border border-[var(--border-strong)] text-[var(--ink-secondary)] hover:text-[var(--accent-brass)] hover:bg-white transition-colors"
+                    aria-pressed={Boolean(selectedItem.rawNote?.is_pinned || starredIds.has(selectedItem.id))}
+                    onClick={async () => {
+                      const currentlyPinned = Boolean(selectedItem.rawNote?.is_pinned || starredIds.has(selectedItem.id));
+                      const nextPinned = !currentlyPinned;
+                      setStarredIds((prev) => {
+                        const next = new Set(prev);
+                        if (nextPinned) next.add(selectedItem.id);
+                        else next.delete(selectedItem.id);
+                        return next;
+                      });
+                      if (selectedItem.type === 'note') {
+                        try {
+                          await updateNote(selectedItem.id, { is_pinned: nextPinned });
+                          setNotes((prev) =>
+                            prev.map((n) => (n.id === selectedItem.id ? { ...n, is_pinned: nextPinned } : n))
+                          );
+                        } catch {
+                          // Keep optimistic UI state if backend update fails
+                        }
+                      }
+                    }}
+                    className="p-1.5 rounded-lg border border-[var(--border-strong)] text-[var(--ink-secondary)] hover:text-[var(--accent-brass)] hover:bg-white transition-colors cursor-pointer"
                     title="Star item"
                   >
-                    <i className={`ph-bold ph-star text-sm ${isStarred ? 'text-[var(--accent-brass)]' : ''}`} />
+                    <i
+                      className={`ph-bold ph-star text-sm ${
+                        selectedItem.rawNote?.is_pinned || starredIds.has(selectedItem.id)
+                          ? 'text-[var(--accent-brass)]'
+                          : ''
+                      }`}
+                    />
                   </button>
                 </div>
 

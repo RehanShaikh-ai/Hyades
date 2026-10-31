@@ -181,6 +181,13 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setIsSearchOpen((prev) => !prev);
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        navigateTo('stella');
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        setLibraryInitialAction('create-note');
+        navigateTo('library');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -205,7 +212,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
 
   return (
     <StellaSessionProvider>
-      <div className="flex flex-col h-screen w-full overflow-hidden bg-[var(--bg-base)] text-[var(--ink-primary)] select-none">
+      <div className="flex flex-col h-screen w-full overflow-hidden bg-[var(--bg-base)] text-[var(--ink-primary)]">
       {/* Subtle paper grain texture */}
       <div className="paper-grain" />
 
@@ -263,6 +270,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
             onClearInitialAction={() => setLibraryInitialAction(null)}
             onNavigateToObservatory={handleNavigateToObservatory}
             onNavigateToStella={handleNavigateToStella}
+            onNavigateToInbox={() => navigateTo('inbox')}
             environmentIndex={environmentIndex}
           />
         )}
@@ -284,6 +292,8 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
           <HyadesStella
             workspaceId={effectiveWorkspaceId}
             initialContext={stellaContext}
+            onNavigateToCollections={() => navigateTo('collections')}
+            onNavigateToThreads={() => navigateTo('threads')}
             onNavigateToObservatory={handleNavigateToObservatory}
             onNavigateToLibrary={() => setCurrentDestination('library')}
             onNavigateToNote={handleNavigateToNote}
@@ -301,7 +311,7 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
           />
         )}
 
-                {(currentDestination === 'collections' ||
+        {(currentDestination === 'collections' ||
           currentDestination === 'threads' ||
           currentDestination === 'inbox') && (
           <WorkspaceShell
