@@ -46,6 +46,8 @@ htmlcov/
 # Agents & AI Tooling
 .agents/
 skills-lock.json
+.impeccable/
+.mcp.json
 
 # Backups
 docs/backups/
