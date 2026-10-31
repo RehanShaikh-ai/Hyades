@@ -39,6 +39,7 @@ describe('InChatFlashcardDeckCard Component', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
+    window.confirm = vi.fn(() => true);
   });
 
   it('renders deck header, initial card question, and navigation controls', () => {
@@ -134,7 +135,7 @@ describe('InChatFlashcardDeckCard Component', () => {
     expect(screen.getByText('1 / 3')).toBeInTheDocument();
   });
 
-  it('opens and closes Study Mode modal', () => {
+  it('opens and closes focused preview overlay with three separate bottom pills', () => {
     render(<InChatFlashcardDeckCard deck={mockDeck} />);
 
     expect(screen.queryByTestId('flashcard-study-mode-modal')).not.toBeInTheDocument();
@@ -142,10 +143,13 @@ describe('InChatFlashcardDeckCard Component', () => {
     const studyModeBtn = screen.getByRole('button', { name: /Open in Study Mode/i });
     fireEvent.click(studyModeBtn);
 
-    expect(screen.getByTestId('flashcard-study-mode-modal')).toBeInTheDocument();
-    expect(screen.getByText(/Study Session · 3 Cards/)).toBeInTheDocument();
+    const overlay = screen.getByTestId('flashcard-study-mode-modal');
+    expect(overlay).toBeInTheDocument();
 
-    // Close study mode
+    // Verify progress pill format (e.g. "1 of 3")
+    expect(screen.getByText('1 of 3')).toBeInTheDocument();
+
+    // Close preview overlay
     const closeBtn = screen.getByLabelText(/Close study mode/i);
     fireEvent.click(closeBtn);
 
@@ -169,6 +173,44 @@ describe('InChatFlashcardDeckCard Component', () => {
     expect(
       screen.getByText('Which layer is responsible for end-to-end data transfer?')
     ).toBeInTheDocument();
+  });
+
+  it('renders three separate bottom pill containers in preview overlay and updates progress', () => {
+    render(<InChatFlashcardDeckCard deck={mockDeck} />);
+
+    // Open preview overlay
+    const studyModeBtn = screen.getByRole('button', { name: /Open in Study Mode/i });
+    fireEvent.click(studyModeBtn);
+
+    const overlay = screen.getByTestId('flashcard-study-mode-modal');
+    expect(overlay).toBeInTheDocument();
+
+    // Verify 3 distinct pill groups are rendered in the overlay
+    const restartPill = screen.getAllByRole('button', { name: /Restart Deck/i })[1];
+    expect(restartPill).toBeInTheDocument();
+
+    const progressLabel = screen.getByText('1 of 3');
+    expect(progressLabel).toBeInTheDocument();
+
+    const againBtns = screen.getAllByRole('button', { name: /Again/i });
+    expect(againBtns.length).toBeGreaterThanOrEqual(2);
+
+    const gotItBtns = screen.getAllByRole('button', { name: /Got it/i });
+    expect(gotItBtns.length).toBeGreaterThanOrEqual(2);
+
+    // Mark current card as Got it from preview pill
+    fireEvent.click(gotItBtns[1]);
+
+    // Should have advanced to card 2 in progress pill
+    expect(screen.getByText('2 of 3')).toBeInTheDocument();
+
+    // Close preview overlay
+    const closeBtn = screen.getByLabelText(/Close study mode/i);
+    fireEvent.click(closeBtn);
+    expect(screen.queryByTestId('flashcard-study-mode-modal')).not.toBeInTheDocument();
+
+    // Deck position in chat remains on card 2
+    expect(screen.getByText('2 / 3')).toBeInTheDocument();
   });
 });
 
