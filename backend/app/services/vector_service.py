@@ -238,6 +238,25 @@ def delete_source_vectors(source_id: uuid.UUID, workspace_id: uuid.UUID) -> None
         logger.warning("Error deleting vectors for source %s: %s", source_id, e)
 
 
+def delete_workspace_vectors(workspace_id: uuid.UUID) -> None:
+    """Delete all vectors and drop the collection for workspace_id."""
+    c_name = collection_name(workspace_id)
+    if c_name in _in_memory_collections:
+        _in_memory_collections.pop(c_name, None)
+
+    client = _get_qdrant_client()
+    if client is None:
+        return
+
+    try:
+        collections = client.get_collections().collections
+        exists = any(c.name == c_name for c in collections)
+        if exists:
+            client.delete_collection(collection_name=c_name)
+    except Exception as e:
+        logger.warning("Error deleting vector collection %s: %s", c_name, e)
+
+
 def search_vectors(
     workspace_id: uuid.UUID,
     query_vector: list[float],
@@ -300,6 +319,16 @@ def search_vectors(
                     )
                 )
 
+        # Ensure collection exists before querying to avoid 404 errors on unindexed workspaces
+        try:
+            collections = client.get_collections().collections
+            exists = any(c.name == c_name for c in collections)
+            if not exists:
+                _ensure_collection(client, c_name, settings.EMBEDDING_DIMENSION)
+                return []
+        except Exception as col_err:
+            logger.warning("Error checking Qdrant collection %s: %s", c_name, col_err)
+
         qfilter = qmodels.Filter(must=must_filters, must_not=must_not_filters)
         try:
             url = f"{settings.QDRANT_URL.rstrip('/')}/collections/{c_name}/points/search"
@@ -335,31 +364,49 @@ def search_vectors(
                         }
                     )
                 return out
+            elif res.status_code == 404:
+                logger.info("Collection %s returned 404 via HTTP, ensuring collection and returning empty", c_name)
+                try:
+                    _ensure_collection(client, c_name, settings.EMBEDDING_DIMENSION)
+                except Exception:
+                    pass
+                return []
         except Exception as e:
             logger.warning("Direct Qdrant search HTTP request failed: %s", e)
 
-        query_res = client.query_points(
-            collection_name=c_name,
-            query=query_vector,
-            query_filter=qfilter,
-            limit=limit,
-        )
-        points_list = query_res.points
-        out = []
-        for r in points_list:
-            pl = r.payload or {}
-            pl.setdefault("entity_ids", [])
-            pl.setdefault("cluster_id", None)
-            pl.setdefault("source_id", None)
-            pl.setdefault("note_id", None)
-            out.append(
-                {
-                    "id": str(r.id),
-                    "score": float(r.score),
-                    "payload": pl,
-                }
+        try:
+            query_res = client.query_points(
+                collection_name=c_name,
+                query=query_vector,
+                query_filter=qfilter,
+                limit=limit,
             )
-        return out
+            points_list = query_res.points
+            out = []
+            for r in points_list:
+                pl = r.payload or {}
+                pl.setdefault("entity_ids", [])
+                pl.setdefault("cluster_id", None)
+                pl.setdefault("source_id", None)
+                pl.setdefault("note_id", None)
+                out.append(
+                    {
+                        "id": str(r.id),
+                        "score": float(r.score),
+                        "payload": pl,
+                    }
+                )
+            return out
+        except Exception as q_err:
+            err_str = str(q_err).lower()
+            if "404" in err_str or "not found" in err_str or "doesn't exist" in err_str:
+                logger.info("Collection %s not found in query_points, ensuring collection and returning empty", c_name)
+                try:
+                    _ensure_collection(client, c_name, settings.EMBEDDING_DIMENSION)
+                except Exception:
+                    pass
+                return []
+            raise
     except Exception as e:
         logger.error("Vector search failed on %s: %s", c_name, e)
         raise VectorStoreUnavailableError(f"Vector search failed: {e}") from e

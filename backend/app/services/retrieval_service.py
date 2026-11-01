@@ -45,13 +45,17 @@ def search_semantic(
         ).all()
         excluded_note_ids = list(archived_ids)
 
-    # Search vectors
-    points = vector_service.search_vectors(
-        workspace_id=workspace_id,
-        query_vector=query_vector,
-        limit=max(limit * 3, 20),
-        excluded_note_ids=excluded_note_ids,
-    )
+    # Search vectors with resilient fallback
+    try:
+        points = vector_service.search_vectors(
+            workspace_id=workspace_id,
+            query_vector=query_vector,
+            limit=max(limit * 3, 20),
+            excluded_note_ids=excluded_note_ids,
+        )
+    except Exception as e:
+        logger.warning("Vector search in search_semantic failed for workspace %s: %s; falling back to lexical", workspace_id, e)
+        points = []
 
     threshold = min_score
     seen_notes: set[uuid.UUID] = set()
