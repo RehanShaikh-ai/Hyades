@@ -149,4 +149,62 @@ describe('NoteEditor', () => {
       expect(saveButton).toBeEnabled();
     });
   });
+
+
+  it('opens styled confirmation modal when delete is clicked and cancels safely', async () => {
+    const existingNote = {
+      id: 'note-del-1',
+      workspace_id: 'ws-1',
+      title: 'Note To Cancel Delete',
+      content: 'Content',
+      tags: [],
+      created_by: 'user-1',
+      is_pinned: false,
+      is_archived: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const onDeleted = vi.fn();
+    render(<NoteEditor workspaceId="ws-1" onClose={vi.fn()} onSaved={vi.fn()} onDeleted={onDeleted} initialNote={existingNote} />);
+
+    const deleteBtn = screen.getByTitle('Delete note');
+    await userEvent.click(deleteBtn);
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Delete Note' })).toBeInTheDocument();
+    expect(screen.getByText('Note To Cancel Delete')).toBeInTheDocument();
+
+    const cancelBtn = screen.getByTestId('cancel-delete-note-btn');
+    await userEvent.click(cancelBtn);
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(onDeleted).not.toHaveBeenCalled();
+  });
+
+  it('deletes note when confirmation is confirmed in modal', async () => {
+    const existingNote = {
+      id: 'note-del-2',
+      workspace_id: 'ws-1',
+      title: 'Note To Confirm Delete',
+      content: 'Content',
+      tags: [],
+      created_by: 'user-1',
+      is_pinned: false,
+      is_archived: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const onDeleted = vi.fn();
+    render(<NoteEditor workspaceId="ws-1" onClose={vi.fn()} onSaved={vi.fn()} onDeleted={onDeleted} initialNote={existingNote} />);
+
+    const deleteBtn = screen.getByTitle('Delete note');
+    await userEvent.click(deleteBtn);
+
+    const confirmBtn = screen.getByTestId('confirm-delete-note-btn');
+    await userEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(onDeleted).toHaveBeenCalledWith('note-del-2');
+    });
+  });
 });

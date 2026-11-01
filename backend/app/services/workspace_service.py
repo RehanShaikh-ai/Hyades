@@ -51,3 +51,50 @@ def list_workspaces(db: Session) -> tuple[Sequence[Workspace], int]:
     stmt = select(Workspace).order_by(Workspace.created_at.asc())
     workspaces = db.scalars(stmt).all()
     return workspaces, total
+
+def delete_workspace(
+    db: Session,
+    workspace_id: uuid.UUID,
+    requesting_user_id: uuid.UUID | None = None,
+) -> None:
+    """Delete a workspace and cascade-clean all associated database records, vectors, and git repo.
+
+    Verifies owner authorization if requesting_user_id is provided.
+    """
+    workspace = get_workspace(db, workspace_id)
+    if not workspace:
+        from app.core.exceptions import WorkspaceNotFoundError
+        raise WorkspaceNotFoundError(f"Workspace {workspace_id} not found.")
+
+    if requesting_user_id is not None and workspace.owner_id != requesting_user_id:
+        from app.core.exceptions import AppException
+        raise AppException(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Only the workspace owner can delete this workspace.",
+        )
+
+    # Clean vectors from Qdrant
+    try:
+        from app.services import vector_service
+        vector_service.delete_workspace_vectors(workspace_id)
+    except Exception as e:
+        import logging
+        logging.getLogger("app.services.workspace_service").warning(
+            "Failed to delete vectors for workspace %s: %s", workspace_id, e
+        )
+
+    # Clean Git repository on disk
+    try:
+        from app.services import git_service
+        git_service.delete_workspace_repo(workspace_id)
+    except Exception as e:
+        import logging
+        logging.getLogger("app.services.workspace_service").warning(
+            "Failed to delete git repo for workspace %s: %s", workspace_id, e
+        )
+
+    # Delete workspace; foreign key cascades remove all workspace-scoped tables in PostgreSQL
+    db.delete(workspace)
+    db.commit()
+

@@ -382,6 +382,15 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
           setWorkspaces((prev) => [...prev, w]);
           setSelectedWorkspace(w);
         }}
+        onWorkspaceDeleted={(deletedId) => {
+          setWorkspaces((prev) => {
+            const remaining = prev.filter((w) => w.id !== deletedId);
+            if (selectedWorkspace?.id === deletedId) {
+              setSelectedWorkspace(remaining.length > 0 ? remaining[0] : null);
+            }
+            return remaining;
+          });
+        }}
         onSelectUser={setSelectedUser}
         onSelectWorkspace={handleSelectWorkspace}
         onRefreshUsers={refreshUsers}

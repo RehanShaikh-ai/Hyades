@@ -204,6 +204,21 @@ describe('Workstream A Component Test Suite (§18, §22.2)', () => {
       expect(screen.getByText('Algorithm Research')).toBeInTheDocument();
       expect(screen.getByText('Foundational research notes')).toBeInTheDocument();
     });
+
+    it('calls onDeleteWorkspace when delete button is clicked', () => {
+      const onDeleteWorkspace = vi.fn();
+      render(
+        <WorkspaceList
+          workspaces={mockWorkspaces}
+          loading={false}
+          error={null}
+          onDeleteWorkspace={onDeleteWorkspace}
+        />
+      );
+      const deleteBtn = screen.getByTestId(`delete-workspace-${mockWorkspaces[0].id}`);
+      fireEvent.click(deleteBtn);
+      expect(onDeleteWorkspace).toHaveBeenCalledWith(mockWorkspaces[0]);
+    });
   });
 
   describe('WorkspaceCreateForm', () => {

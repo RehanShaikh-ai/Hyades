@@ -378,7 +378,7 @@ def delete_note_graph(db: Session, note_id: uuid.UUID) -> None:
 
     # Delete entity_chunk provenance rows
     db.execute(delete(EntityChunk).where(EntityChunk.note_id == note_id))
-    db.commit()
+    db.flush()
 
 
 def is_entity_referenced_in_memberships(db: Session, entity_id: uuid.UUID) -> bool:

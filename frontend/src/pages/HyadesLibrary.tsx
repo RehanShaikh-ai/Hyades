@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { listNotes, createNote, updateNote } from '@/api/notes';
+import { listNotes, createNote, updateNote, deleteNote } from '@/api/notes';
+import { DeleteNoteConfirmationModal } from '@/components/library/DeleteNoteConfirmationModal';
 import { listSources, uploadSource, getSourcePreview, SourceDocumentPreview } from '@/api/sources';
 import { DocumentPreviewModal } from '@/components/library/DocumentPreviewModal';
 import { listClusters } from '@/api/clusters';
@@ -89,6 +90,28 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
   const [isTagsExpanded, setIsTagsExpanded] = useState(false);
 
   // Document preview state
+  // Delete note state
+  const [isDeleteNoteModalOpen, setIsDeleteNoteModalOpen] = useState(false);
+  const [isDeletingNote, setIsDeletingNote] = useState(false);
+  const [deleteNoteError, setDeleteNoteError] = useState<string | null>(null);
+
+  const handleConfirmDeleteNote = async () => {
+    if (!selectedItem || selectedItem.type !== 'note') return;
+    setIsDeletingNote(true);
+    setDeleteNoteError(null);
+    try {
+      await deleteNote(selectedItem.id);
+      setIsDeleteNoteModalOpen(false);
+      setActionFeedback(`Note "${selectedItem.title}" deleted.`);
+      await fetchData();
+      setSelectedIndex(0);
+    } catch (err) {
+      setDeleteNoteError(err instanceof Error ? err.message : 'Failed to delete note');
+    } finally {
+      setIsDeletingNote(false);
+    }
+  };
+
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewTarget, setPreviewTarget] = useState<{ id: string; title: string; type: 'note' | 'source'; format?: string } | null>(null);
   const [previewData, setPreviewData] = useState<SourceDocumentPreview | null>(null);
@@ -1652,6 +1675,18 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
         isLoading={isPreviewLoading}
         error={previewError}
       />
+
+      {/* Delete Note Confirmation Modal */}
+      <DeleteNoteConfirmationModal
+        isOpen={isDeleteNoteModalOpen}
+        noteTitle={selectedItem?.title || ''}
+        isDeleting={isDeletingNote}
+        error={deleteNoteError}
+        onConfirm={handleConfirmDeleteNote}
+        onCancel={() => {
+          if (!isDeletingNote) setIsDeleteNoteModalOpen(false);
+        }}
+      />
     </section>
 
           {/* ================= RIGHT FLANK: ITEM INSPECTOR & READING DOSSIER (COLUMNS 9–12) ================= */}
@@ -1872,14 +1907,32 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                     <span>Preview Document</span>
                   </button>
                   {selectedItem.type === 'note' && (
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEditNote(selectedItem)}
-                      className="w-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-colors py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
-                    >
-                      <i className="ph ph-note-pencil" />
-                      <span>Edit Note in Scriptorium</span>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditNote(selectedItem)}
+                        className="w-full bg-[var(--accent-midnight)] text-[#FAF8F2] hover:bg-[var(--accent-midnight-light)] transition-colors py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
+                      >
+                        <i className="ph ph-note-pencil" />
+                        <span>Edit Note in Scriptorium</span>
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="dossier-delete-note-btn"
+                        onClick={() => {
+                          setDeleteNoteError(null);
+                          setIsDeleteNoteModalOpen(true);
+                        }}
+                        className="w-full py-2 px-3 rounded-lg border border-red-200 bg-red-50/70 hover:bg-red-50 text-red-700 hover:text-red-800 text-xs font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        title="Permanently delete this note"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 6h18" />
+                          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                        </svg>
+                        <span>Delete Note</span>
+                      </button>
+                    </>
                   )}
 
                   <div className="grid grid-cols-2 gap-2">

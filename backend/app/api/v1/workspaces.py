@@ -6,7 +6,7 @@ Canonical module per contract §12, §14.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Header, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import WorkspaceNotFoundError
@@ -80,3 +80,24 @@ def list_workspaces(
         items=[WorkspaceResponse.model_validate(w) for w in workspaces],
         total=total,
     )
+
+@router.delete(
+    "/workspaces/{workspace_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    name="delete_workspace",
+)
+def delete_workspace(
+    workspace_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    requesting_user_id: Annotated[uuid.UUID | None, Header(alias="X-User-Id")] = None,
+    user_id: Annotated[uuid.UUID | None, Query(alias="user_id")] = None,
+) -> Response:
+    """Delete a workspace and cascade-clean all associated data."""
+    effective_user_id = requesting_user_id or user_id
+    workspace_service.delete_workspace(
+        db=db,
+        workspace_id=workspace_id,
+        requesting_user_id=effective_user_id,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+

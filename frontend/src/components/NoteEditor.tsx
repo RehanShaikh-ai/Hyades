@@ -1,3 +1,4 @@
+import { DeleteNoteConfirmationModal } from '@/components/library/DeleteNoteConfirmationModal';
 import React, { useState, useEffect } from 'react';
 import { Note } from '@/types/note';
 import { Tag } from '@/types/tag';
@@ -45,6 +46,7 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
   
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -127,19 +129,22 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!isEditing || !currentNote) return;
-    
-    if (window.confirm("Are you sure you want to delete this note? This cannot be undone.")) {
-      setIsDeleting(true);
-      setError(null);
-      try {
-        await deleteNote(currentNote.id);
-        onDeleted(currentNote.id);
-      } catch (err) {
-        setError(err instanceof Error ? err : new Error("Failed to delete note"));
-        setIsDeleting(false);
-      }
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!isEditing || !currentNote) return;
+    setIsDeleting(true);
+    setError(null);
+    try {
+      await deleteNote(currentNote.id);
+      setIsDeleteModalOpen(false);
+      onDeleted(currentNote.id);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error("Failed to delete note"));
+      setIsDeleting(false);
     }
   };
 
@@ -438,6 +443,17 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
             )}
         </div>
       </footer>
+
+      <DeleteNoteConfirmationModal
+        isOpen={isDeleteModalOpen}
+        noteTitle={title || currentNote?.title || "Untitled Note"}
+        isDeleting={isDeleting}
+        error={error?.message}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          if (!isDeleting) setIsDeleteModalOpen(false);
+        }}
+      />
     </div>
   );
 };

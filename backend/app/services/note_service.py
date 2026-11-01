@@ -136,10 +136,24 @@ def update_note(db: Session, note_id: uuid.UUID, note_in: NoteUpdate) -> Note:
 
 
 def delete_note(db: Session, note_id: uuid.UUID) -> None:
-    """Delete a note and clean up orphaned tags; FK cascades remove links."""
+    """Delete a note, vectors, graph provenance, and clean up orphaned tags; FK cascades remove links."""
     note = get_note_or_raise(db, note_id)
+    workspace_id = note.workspace_id
     # Collect associated tag IDs before deletion
     tag_ids = [t.id for t in note.tags] if note.tags else []
+
+    # Clean up graph index provenance and vector store
+    try:
+        from app.services import graph_index_service
+        graph_index_service.delete_note_graph(db, note_id)
+    except Exception as e:
+        logger.warning("Failed to clean up graph provenance for note %s: %s", note_id, e)
+
+    try:
+        from app.services import vector_service
+        vector_service.delete_note_vectors(note_id, workspace_id)
+    except Exception as e:
+        logger.warning("Failed to clean up vectors for note %s: %s", note_id, e)
 
     db.delete(note)
     db.flush()

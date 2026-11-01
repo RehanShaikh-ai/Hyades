@@ -17,3 +17,7 @@ export async function getWorkspace(workspaceId: string): Promise<Workspace> {
 export async function getWorkspaces(): Promise<WorkspaceListResponse> {
   return apiClient.get<WorkspaceListResponse>('/workspaces');
 }
+
+export async function deleteWorkspace(workspaceId: string): Promise<void> {
+  return apiClient.delete<void>(`/workspaces/${encodeURIComponent(workspaceId)}`);
+}

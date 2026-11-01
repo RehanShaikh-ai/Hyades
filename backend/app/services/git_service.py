@@ -40,6 +40,25 @@ def _get_repo_dir(workspace_id: uuid.UUID) -> Path:
     return repo_dir
 
 
+def delete_workspace_repo(workspace_id: uuid.UUID) -> None:
+    """Safely remove the workspace's Git repository and directory on disk."""
+    import shutil
+    base = Path(settings.GIT_REPOSITORY_ROOT).resolve()
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+    except (PermissionError, OSError):
+        base = (Path.home() / ".knowledge-atlas" / "workspaces").resolve()
+    ws_dir = (base / str(workspace_id)).resolve()
+    if ws_dir.exists():
+        try:
+            shutil.rmtree(ws_dir, ignore_errors=True)
+        except Exception as e:
+            logger.warning("Failed removing git directory for workspace %s: %s", workspace_id, e)
+    ws_key = str(workspace_id)
+    with _locks_lock:
+        _repo_locks.pop(ws_key, None)
+
+
 def _get_note_path(workspace_id: uuid.UUID, note_id: uuid.UUID) -> Path:
     """Resolve note file path and strictly enforce path containment per CONTRACT §11.2, §18.1."""
     repo_dir = _get_repo_dir(workspace_id)

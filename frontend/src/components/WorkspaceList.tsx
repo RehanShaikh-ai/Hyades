@@ -4,7 +4,7 @@ import { ApiError } from '@/types/api';
 import { LoadingState } from './LoadingState';
 import { EmptyState } from './EmptyState';
 import { ErrorState } from './ErrorState';
-import { Check, ArrowRight } from 'lucide-react';
+import { Check, ArrowRight, Trash2 } from 'lucide-react';
 
 interface WorkspaceListProps {
   workspaces: Workspace[];
@@ -12,6 +12,7 @@ interface WorkspaceListProps {
   error: ApiError | string | null;
   onRefresh?: () => void;
   onSelectWorkspace?: (workspace: Workspace) => void;
+  onDeleteWorkspace?: (workspace: Workspace) => void;
   selectedWorkspaceId?: string;
 }
 
@@ -21,6 +22,7 @@ export const WorkspaceList: React.FC<WorkspaceListProps> = ({
   error,
   onRefresh,
   onSelectWorkspace,
+  onDeleteWorkspace,
   selectedWorkspaceId,
 }) => {
   return (
@@ -93,21 +95,35 @@ export const WorkspaceList: React.FC<WorkspaceListProps> = ({
                     </span>
                   </div>
 
-                  {onSelectWorkspace && (
-                    <button
-                      type="button"
-                      data-testid={`open-workspace-${workspace.id}`}
-                      onClick={() => onSelectWorkspace(workspace)}
-                      className={`whitespace-nowrap inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 cursor-pointer ${
-                        isSelected
-                          ? 'bg-[#162135] text-[#FAF8F2] hover:bg-[#233350] border border-[#162135]'
-                          : 'bg-[#EFECE4] hover:bg-[#E5E0D4] text-[#1C1917] border border-[#DCD6C8]'
-                      }`}
-                    >
-                      <span>Open Workspace</span>
-                      <ArrowRight size={13} strokeWidth={2} />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {onDeleteWorkspace && (
+                      <button
+                        type="button"
+                        data-testid={`delete-workspace-${workspace.id}`}
+                        onClick={() => onDeleteWorkspace(workspace)}
+                        className="p-1.5 rounded-lg border border-[#DCD6C8] hover:border-red-300 text-[#878074] hover:text-red-700 bg-white hover:bg-red-50/60 transition-colors cursor-pointer"
+                        title="Delete workspace"
+                        aria-label={`Delete workspace ${workspace.name}`}
+                      >
+                        <Trash2 size={13} strokeWidth={2} />
+                      </button>
+                    )}
+                    {onSelectWorkspace && (
+                      <button
+                        type="button"
+                        data-testid={`open-workspace-${workspace.id}`}
+                        onClick={() => onSelectWorkspace(workspace)}
+                        className={`whitespace-nowrap inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#162135] text-[#FAF8F2] hover:bg-[#233350] border border-[#162135]'
+                            : 'bg-[#EFECE4] hover:bg-[#E5E0D4] text-[#1C1917] border border-[#DCD6C8]'
+                        }`}
+                      >
+                        <span>Open Workspace</span>
+                        <ArrowRight size={13} strokeWidth={2} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </li>
             );

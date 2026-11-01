@@ -7,6 +7,8 @@ import { UserCreateForm } from '@/components/UserCreateForm';
 import { UserList } from '@/components/UserList';
 import { WorkspaceCreateForm } from '@/components/WorkspaceCreateForm';
 import { WorkspaceList } from '@/components/WorkspaceList';
+import { deleteWorkspace } from '@/api/workspaces';
+import { DeleteWorkspaceConfirmationModal } from '@/components/workspace/DeleteWorkspaceConfirmationModal';
 import { FreeLLMAPIRuntimePanel } from '@/components/runtime/FreeLLMAPIRuntimePanel';
 
 interface HyadesAccountModalProps {
@@ -22,6 +24,7 @@ interface HyadesAccountModalProps {
   workspaceError: ApiError | null;
   onUserCreated: (user: User) => void;
   onWorkspaceCreated: (workspace: Workspace) => void;
+  onWorkspaceDeleted?: (workspaceId: string) => void;
   onSelectUser: (user: User) => void;
   onSelectWorkspace: (workspace: Workspace) => void;
   onRefreshUsers: () => void;
@@ -41,11 +44,31 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
   workspaceError,
   onUserCreated,
   onWorkspaceCreated,
+  onWorkspaceDeleted,
   onSelectUser,
   onSelectWorkspace,
   onRefreshUsers,
   onRefreshWorkspaces,
 }) => {
+  const [workspaceToDelete, setWorkspaceToDelete] = useState<Workspace | null>(null);
+  const [isDeletingWorkspace, setIsDeletingWorkspace] = useState(false);
+  const [deleteWorkspaceError, setDeleteWorkspaceError] = useState<string | null>(null);
+
+  const handleConfirmDeleteWorkspace = async () => {
+    if (!workspaceToDelete) return;
+    setIsDeletingWorkspace(true);
+    setDeleteWorkspaceError(null);
+    try {
+      await deleteWorkspace(workspaceToDelete.id);
+      onWorkspaceDeleted?.(workspaceToDelete.id);
+      onRefreshWorkspaces();
+      setWorkspaceToDelete(null);
+    } catch (err) {
+      setDeleteWorkspaceError(err instanceof Error ? err.message : 'Failed to delete workspace');
+    } finally {
+      setIsDeletingWorkspace(false);
+    }
+  };
   const [activeTab, setActiveTab] = useState<'workspaces' | 'users' | 'local_ai'>('workspaces');
 
   if (!isOpen) return null;
@@ -179,6 +202,10 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
                       onSelectWorkspace(ws);
                       onClose();
                     }}
+                    onDeleteWorkspace={(ws) => {
+                      setDeleteWorkspaceError(null);
+                      setWorkspaceToDelete(ws);
+                    }}
                   />
                 </div>
               </div>
@@ -234,6 +261,17 @@ export const HyadesAccountModal: React.FC<HyadesAccountModalProps> = ({
           </button>
         </div>
       </div>
+
+      <DeleteWorkspaceConfirmationModal
+        isOpen={Boolean(workspaceToDelete)}
+        workspace={workspaceToDelete}
+        isDeleting={isDeletingWorkspace}
+        error={deleteWorkspaceError}
+        onConfirm={handleConfirmDeleteWorkspace}
+        onCancel={() => {
+          if (!isDeletingWorkspace) setWorkspaceToDelete(null);
+        }}
+      />
     </div>
   );
 };
