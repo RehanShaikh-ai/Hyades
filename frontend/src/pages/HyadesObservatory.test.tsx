@@ -992,5 +992,164 @@ describe('HyadesObservatory Spatial Navigation & Search', () => {
       expect(shouldShowNodeLabel(minorRelated, 1.5, false)).toBe(true);
     });
   });
+
+  describe('Constellation Regions, Stale Cache Migration & Cross-Constellation Controls', () => {
+    it('automatically invalidates stale pre-cluster v6_celestial and mismatched-signature v7_celestial caches', async () => {
+      const wsId = 'ws-stale-migration';
+      localStorage.setItem(
+        `hyades_graph_positions_v6_celestial_${wsId}`,
+        JSON.stringify({
+          n1: { x: 500, y: 350 },
+          n2: { x: 505, y: 352 },
+          n3: { x: 503, y: 349 },
+        }),
+      );
+      localStorage.setItem(
+        `hyades_graph_positions_v7_celestial_${wsId}`,
+        JSON.stringify({
+          signature: 'v7_celestial|stale-pre-cluster-signature',
+          positions: {
+            n1: { x: 500, y: 350 },
+            n2: { x: 505, y: 352 },
+            n3: { x: 503, y: 349 },
+          },
+        }),
+      );
+
+      const { container } = render(<HyadesObservatory workspaceId={wsId} />);
+
+      await waitFor(() => {
+        expect(container.querySelectorAll('.celestial-node').length).toBe(3);
+      });
+
+      // Legacy v6 cache should be purged automatically
+      expect(localStorage.getItem(`hyades_graph_positions_v6_celestial_${wsId}`)).toBeNull();
+
+      // Nodes n1 (cl-1) and n3 (cl-2) must now be spatially separated instead of stuck ~4px apart
+      const getTransformXY = (id: string) => {
+        const el = container.querySelector(`.celestial-node[data-id="${id}"]`);
+        const tf = el?.getAttribute('transform') ?? '';
+        const match = tf.match(/translate\(([-\d.]+),\s*([-\d.]+)\)/);
+        return match ? { x: Number(match[1]), y: Number(match[2]) } : { x: 0, y: 0 };
+      };
+
+      const p1 = getTransformXY('n1');
+      const p3 = getTransformXY('n3');
+      expect(Math.hypot(p1.x - p3.x, p1.y - p3.y)).toBeGreaterThan(200);
+    });
+
+    it('renders constellation region contours/titles, unique node IDs, minimap stars, and toggles Cross-Constellation Links', async () => {
+      const { container } = render(<HyadesObservatory workspaceId="ws-regions-toggle" />);
+
+      await waitFor(() => {
+        expect(container.querySelectorAll('.celestial-node').length).toBe(3);
+      });
+
+      // Distinct constellation region groups rendered for cl-1 and cl-2
+      const regionGroups = container.querySelectorAll('.constellation-region-group');
+      expect(regionGroups.length).toBe(2);
+
+      // Unique node DOM identities (no duplication)
+      const nodeIds = Array.from(container.querySelectorAll('.celestial-node')).map((el) =>
+        el.getAttribute('data-id'),
+      );
+      expect(new Set(nodeIds).size).toBe(3);
+
+      // Minimap inset reflects all 3 stars
+      const minimap = container.querySelector('#celestial-orientation-inset');
+      expect(minimap).not.toBeNull();
+      expect(minimap!.querySelectorAll('.minimap-star-dot').length).toBe(3);
+
+      // Cross-Constellation Links filter checkbox hides cross-cluster edge e2 while keeping intra-cluster edge e1
+      const crossCheckbox = screen.getByTestId('filter-cross-links-checkbox') as HTMLInputElement;
+      expect(crossCheckbox.checked).toBe(true);
+
+      const crossLink = container.querySelector('.celestial-link[data-tier="cross_cluster"]') as SVGPathElement;
+      const intraLink = container.querySelector('.celestial-link:not([data-tier="cross_cluster"])') as SVGPathElement;
+      expect(crossLink).not.toBeNull();
+      expect(intraLink).not.toBeNull();
+
+      fireEvent.click(crossCheckbox);
+      await waitFor(() => {
+        expect(crossCheckbox.checked).toBe(false);
+        expect(crossLink.style.display).toBe('none');
+      });
+      expect(intraLink.style.display).not.toBe('none');
+
+      // Re-enabling restores cross-constellation link visibility
+      fireEvent.click(crossCheckbox);
+      await waitFor(() => {
+        expect(crossCheckbox.checked).toBe(true);
+        expect(crossLink.style.display).not.toBe('none');
+      });
+    });
+
+    it('preserves deterministic coordinates across workspace switches and updates cleanly when graph topology changes', async () => {
+      const graphB = {
+        ...mockGraphData,
+        nodes: [
+          {
+            id: 'b1',
+            name: 'Operating System Kernel',
+            entity_type: 'concept',
+            degree: 3,
+            note_count: 2,
+            cluster_id: 'cl-os',
+            description: 'Kernel space management.',
+          },
+          {
+            id: 'b2',
+            name: 'Virtual Memory',
+            entity_type: 'concept',
+            degree: 2,
+            note_count: 1,
+            cluster_id: 'cl-os',
+            description: 'Page tables and isolation.',
+          },
+        ],
+        edges: [
+          {
+            id: 'eb1',
+            source_entity_id: 'b1',
+            target_entity_id: 'b2',
+            relationship_type: 'manages',
+            confidence: 0.92,
+          },
+        ],
+      };
+      const clustersB = [{ id: 'cl-os', label: 'Operating Systems', member_count: 2, summary: 'OS' }];
+
+      vi.mocked(graphApi.getWorkspaceGraph).mockImplementation(async (wsId: string) =>
+        wsId === 'ws-B' ? (graphB as any) : (mockGraphData as any),
+      );
+      vi.mocked(clusterApi.listClusters).mockImplementation(async (wsId: string) =>
+        wsId === 'ws-B' ? (clustersB as any) : (mockClusters as any),
+      );
+
+      const { container, rerender } = render(<HyadesObservatory workspaceId="ws-A" />);
+      await waitFor(() => {
+        expect(container.querySelector('.celestial-node[data-id="n1"]')).not.toBeNull();
+      });
+      const initialN1Transform = container
+        .querySelector('.celestial-node[data-id="n1"]')
+        ?.getAttribute('transform');
+
+      // Switch to ws-B
+      rerender(<HyadesObservatory workspaceId="ws-B" />);
+      await waitFor(() => {
+        expect(container.querySelector('.celestial-node[data-id="b1"]')).not.toBeNull();
+      });
+      expect(container.querySelector('.celestial-node[data-id="n1"]')).toBeNull();
+
+      // Switch back to ws-A -> exact same deterministic position
+      rerender(<HyadesObservatory workspaceId="ws-A" />);
+      await waitFor(() => {
+        expect(container.querySelector('.celestial-node[data-id="n1"]')).not.toBeNull();
+      });
+      expect(container.querySelector('.celestial-node[data-id="n1"]')?.getAttribute('transform')).toBe(
+        initialN1Transform,
+      );
+    });
+  });
 });
 
