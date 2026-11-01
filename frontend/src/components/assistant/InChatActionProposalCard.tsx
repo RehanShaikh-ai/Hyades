@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { GenericActionProposalData } from '@/types/commands';
+import { InChatEnrichmentProposalReview } from './InChatEnrichmentProposalReview';
 import {
   CheckCircle2,
   XCircle,
@@ -96,6 +97,7 @@ export const InChatActionProposalCard: React.FC<InChatActionProposalCardProps> =
 
   const [selectedCandidateMap, setSelectedCandidateMap] = useState<Record<string, boolean>>({});
   const [editedName, setEditedName] = useState<string>('');
+  const [enrichmentOverrides, setEnrichmentOverrides] = useState<Record<string, any>>({});
 
   useEffect(() => {
     const init: Record<string, boolean> = {};
@@ -136,6 +138,10 @@ export const InChatActionProposalCard: React.FC<InChatActionProposalCardProps> =
         overrides.title = editedName.trim();
       }
       onConfirm(overrides);
+      return;
+    }
+    if (cmd === '/enrich-note' || workflow === 'enrich_note') {
+      onConfirm(enrichmentOverrides);
       return;
     }
     onConfirm();
@@ -354,49 +360,22 @@ export const InChatActionProposalCard: React.FC<InChatActionProposalCardProps> =
       );
     }
 
-    // 3. /enrich-note
+    // 3. /enrich-note (Evidence-Based Knowledge Enrichment Review)
     if (cmd === '/enrich-note' || workflow === 'enrich_note' || details.enrichment_addition) {
-      const relatedItems = Array.isArray(details.related_items) ? details.related_items : [];
       return (
-        <div className="flex flex-col gap-2.5">
-          <div className="p-2.5 rounded-lg bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] flex flex-col gap-1">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--ink-tertiary)]">
-              Target Note
-            </span>
-            <span className="text-xs font-serif font-bold text-[var(--ink-primary)]">
-              {details.title}
-            </span>
-          </div>
-
-          {relatedItems.length > 0 && (
-            <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--ink-tertiary)]">
-                Context Drawn From ({relatedItems.length})
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {relatedItems.map((ri: any, idx: number) => (
-                  <span
-                    key={ri.id || idx}
-                    className="text-[11px] px-2 py-0.5 rounded bg-amber-50/70 text-amber-900 border border-amber-200 font-medium"
-                  >
-                    {ri.title}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {details.enrichment_addition && (
-            <div className="p-2.5 rounded-lg bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] flex flex-col gap-1">
-              <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--ink-tertiary)]">
-                Proposed Enrichment Section
-              </span>
-              <p className="text-[11.5px] text-[var(--ink-secondary)] whitespace-pre-line line-clamp-6">
-                {details.enrichment_addition}
-              </p>
-            </div>
-          )}
-        </div>
+        <InChatEnrichmentProposalReview
+          details={details}
+          isCommitted={isCommitted}
+          isCancelled={isCancelled}
+          onNavigateToItem={onNavigateToItem}
+          onPreviewArtifact={onPreviewArtifact}
+          onSelectionChange={(selectedIds, editedMap) => {
+            setEnrichmentOverrides({
+              selected_proposal_ids: selectedIds,
+              edited_proposals: editedMap,
+            });
+          }}
+        />
       );
     }
 
