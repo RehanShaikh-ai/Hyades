@@ -5626,6 +5626,25 @@ def execute_stella_action_command(
         commit_action_id = (
             proposal_obj.action_id if proposal_obj else (action_id or "notes.create")
         )
+        # Dynamic content recomputation for enrichment with selective proposals
+        if proposal_obj and proposal_obj.proposal_payload:
+            wflow = proposal_obj.proposal_payload.get("workflow")
+            if wflow == "enrich_note":
+                orig_c = proposal_obj.proposal_payload.get("original_content", "")
+                all_props = proposal_obj.proposal_payload.get("proposals", [])
+                sel_ids = parameters.get("selected_proposal_ids")
+                edited_map = parameters.get("edited_proposals", {})
+                if sel_ids is not None or edited_map:
+                    sel_set = set(sel_ids) if sel_ids is not None else None
+                    updated_props = []
+                    for p in all_props:
+                        p_copy = dict(p)
+                        if p_copy.get("id") in edited_map:
+                            p_copy["proposed_text"] = edited_map[p_copy["id"]]
+                        updated_props.append(p_copy)
+                    from app.services.note_enrichment_service import apply_proposals_to_content
+                    new_content = apply_proposals_to_content(orig_c, updated_props, selected_ids=sel_set)
+                    parameters["content"] = new_content
         res_envelope = action_execution_service.execute_action(
             db=db,
             workspace_id=workspace_id,
@@ -5711,74 +5730,57 @@ def execute_stella_action_command(
                 404, "NOTE_NOT_FOUND", f"Could not find note '{raw_note_ident}' in this workspace."
             )
 
-        from app.services import retrieval_service
+        from app.services.note_enrichment_service import enrich_note_workflow
 
-        hits = retrieval_service.search_hybrid(db, workspace_id, target_note.title, limit=6)
-        related_items: list[dict[str, str]] = []
-        seen_rel_ids: set[str] = {str(target_note.id)}
-        for h in hits:
-            if str(h.item_id) in seen_rel_ids:
-                continue
-            seen_rel_ids.add(str(h.item_id))
-            related_items.append(
-                {
-                    "id": str(h.item_id),
-                    "title": h.title,
-                    "item_type": h.item_type,
-                    "excerpt": (h.excerpt or "")[:180],
-                }
-            )
-            if len(related_items) >= 4:
-                break
+        enrich_result = enrich_note_workflow(db, workspace_id, target_note)
 
-        # Fallback lexical discovery if hybrid search returned fewer than 2 items
-        if len(related_items) < 2:
-            other_notes = list(
-                db.scalars(
-                    select(Note)
-                    .where(
-                        Note.workspace_id == workspace_id,
-                        Note.is_archived.is_(False),
-                        Note.id != target_note.id,
-                    )
-                    .order_by(Note.updated_at.desc())
-                    .limit(4)
-                ).all()
-            )
-            for on in other_notes:
-                if str(on.id) not in seen_rel_ids:
-                    seen_rel_ids.add(str(on.id))
-                    related_items.append(
-                        {
-                            "id": str(on.id),
-                            "title": on.title,
-                            "item_type": "note",
-                            "excerpt": (on.content or "")[:180],
-                        }
-                    )
-                if len(related_items) >= 3:
-                    break
+        enrichment_data = {
+            "proposed_action": "notes.update",
+            "workflow": "enrich_note",
+            "outcome": enrich_result.outcome,
+            "note_id": str(target_note.id),
+            "title": target_note.title,
+            "original_content": enrich_result.original_content,
+            "enrichment_addition": enrich_result.enrichment_addition,
+            "proposed_content": enrich_result.proposed_content,
+            "summary": enrich_result.summary,
+            "proposals": [p.model_dump() for p in enrich_result.proposals],
+            "unresolved_gaps": enrich_result.unresolved_gaps,
+            "research_directions": enrich_result.research_directions,
+            "rejected_evidence": enrich_result.rejected_evidence,
+            "suggested_connections": enrich_result.suggested_connections,
+            "related_items": enrich_result.related_items,
+            "status": "awaiting_confirmation" if enrich_result.proposals else "completed",
+        }
 
-        related_titles = [r["title"] for r in related_items]
-        connections_md = (
-            "\n".join(
-                f"- **{r['title']}** ({r['item_type']}): {r['excerpt'] or 'Related workspace item'}"
-                for r in related_items
+        # If no changes are suggested or no reliable proposals could be constructed
+        if not enrich_result.proposals or enrich_result.outcome in ("no_changes_suggested", "insufficient_information"):
+            outcome_msg = enrich_result.summary
+            completed_res = {
+                "command": command,
+                "action_id": "notes.update",
+                "status": "completed",
+                "message": outcome_msg,
+                "data": enrichment_data,
+                "proposal_id": None,
+                "confirmation_token": None,
+                "requires_confirmation": False,
+                "affected_item_ids": [str(target_note.id)],
+            }
+            _record_conversation_exchange(
+                db, conversation_id, user_cmd_content, outcome_msg, action_result=completed_res
             )
-            if related_items
-            else f"- Related concepts and supporting context connected to **{target_note.title}**."
-        )
-        enrichment_addition = (
-            f"## Contextual Enrichment\n\n"
-            f"### Related Workspace Context\n{connections_md}\n\n"
-            f"### Key Practical Connections\n"
-            f"- Connects the concepts in **{target_note.title}** to supporting workspace evidence.\n"
-            f"- Identifies {len(related_items)} related workspace item(s) to explore for deeper context."
-        )
-        existing_body = (target_note.content or "").rstrip()
-        proposed_content = (
-            f"{existing_body}\n\n{enrichment_addition}" if existing_body else enrichment_addition
-        )
+            return StellaCommandExecuteResponse(
+                command=command,
+                action_id="notes.update",
+                status="completed",
+                message=outcome_msg,
+                data=enrichment_data,
+                proposal_id=None,
+                confirmation_token=None,
+                requires_confirmation=False,
+                affected_item_ids=[str(target_note.id)],
+            )
 
         envelope = action_execution_service.execute_action(
             db=db,
@@ -5789,40 +5791,27 @@ def execute_stella_action_command(
                 input={
                     "note_id": str(target_note.id),
                     "title": target_note.title,
-                    "content": proposed_content,
-                    "append_content": enrichment_addition,
+                    "content": enrich_result.proposed_content,
+                    "append_content": enrich_result.enrichment_addition,
                 },
                 idempotency_key=str(uuid.uuid4()),
             ),
         )
         prop = envelope.proposals[0] if envelope.proposals else None
-        enrichment_data = {
-            "proposed_action": "notes.update",
-            "workflow": "enrich_note",
-            "note_id": str(target_note.id),
-            "title": target_note.title,
-            "original_content": existing_body,
-            "enrichment_addition": enrichment_addition,
-            "proposed_content": proposed_content,
-            "suggested_connections": related_titles,
-            "related_items": related_items,
-            "status": "awaiting_confirmation",
-            "summary": (
-                f"Prepared contextual enrichment for '{target_note.title}' using "
-                f"{len(related_items)} related workspace item(s). Confirm to save changes to the note."
-            ),
-        }
         if prop:
             prop_row = db.get(ActionProposal, prop.proposal_id)
             if prop_row:
                 prop_row.proposal_payload = {
                     **(prop_row.proposal_payload or {}),
                     **enrichment_data,
-                    "content": proposed_content,
+                    "content": enrich_result.proposed_content,
                 }
                 db.commit()
 
-        outcome_msg = f"Prepared enrichment proposal for '{target_note.title}'. Review and confirm to apply."
+        outcome_msg = (
+            f"Prepared {len(enrich_result.proposals)} enrichment proposal(s) for '{target_note.title}'. "
+            f"Review additions and confirm to apply."
+        )
         enrich_res = {
             "command": command,
             "action_id": "notes.update",
@@ -5834,6 +5823,20 @@ def execute_stella_action_command(
             "requires_confirmation": True,
             "affected_item_ids": [str(target_note.id)],
         }
+        _record_conversation_exchange(
+            db, conversation_id, user_cmd_content, outcome_msg, action_result=enrich_res
+        )
+        return StellaCommandExecuteResponse(
+            command=command,
+            action_id="notes.update",
+            status="proposed",
+            message=outcome_msg,
+            data=enrichment_data,
+            proposal_id=str(prop.proposal_id) if prop else None,
+            confirmation_token=prop.confirmation_token if prop else None,
+            requires_confirmation=True,
+            affected_item_ids=[str(target_note.id)],
+        )
         _record_conversation_exchange(
             db, conversation_id, user_cmd_content, outcome_msg, action_result=enrich_res
         )
