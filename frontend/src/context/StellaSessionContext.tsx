@@ -69,6 +69,32 @@ interface StellaSessionContextValue {
 
 const StellaSessionContext = createContext<StellaSessionContextValue | null>(null);
 
+// Helper to normalize flashcard deck structure across seeded and dynamic payloads
+function normalizeFlashcardDeck(raw: any) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const deck = raw.flashcardDeck || (raw.cards ? raw : raw.data?.flashcardDeck || raw.data);
+  if (!deck || (!Array.isArray(deck.cards) && !Array.isArray(raw.cards))) return undefined;
+  const rawCards = Array.isArray(deck.cards) ? deck.cards : (Array.isArray(raw.cards) ? raw.cards : []);
+  const cards = rawCards.map((c: any, idx: number) => ({
+    id: c.id || c.card_id || `card-${idx + 1}`,
+    question: c.question || '',
+    answer: c.answer || '',
+    explanation: c.explanation || null,
+    concept: c.concept || c.category || null,
+  }));
+  return {
+    deck_id: deck.deck_id || (deck.source_id ? `deck-${deck.source_id}` : `deck-gen-${Date.now()}`),
+    title: deck.title || raw.title || 'Flashcards',
+    source_title: deck.source_title || raw.source_title || 'Workspace Note',
+    source_id: deck.source_id ?? raw.source_id ?? null,
+    source_type: deck.source_type || raw.source_type || 'note',
+    cards_count: deck.cards_count ?? deck.total_cards ?? raw.total_cards ?? cards.length,
+    cards,
+    current_index: deck.current_index ?? 0,
+    review_state: deck.review_state || {},
+  };
+}
+
 export const StellaSessionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -259,8 +285,9 @@ export const StellaSessionProvider: React.FC<{ children: React.ReactNode }> = ({
                   affectedItemIds:
                     parsed.affected_item_ids || parsed.affectedItemIds || [],
                 };
-              } else if (cardType === 'flashcards' || parsed.flashcardDeck || parsed.data?.flashcardDeck) {
-                flashcardDeck = parsed.flashcardDeck || parsed.data?.flashcardDeck || parsed.data || parsed;
+              } else if (cardType === 'flashcards' || parsed.flashcardDeck || parsed.data?.flashcardDeck || parsed.cards) {
+                flashcardDeck = normalizeFlashcardDeck(parsed);
+                cleanContent = parsed.message || (flashcardDeck?.title ? `Flashcard deck: ${flashcardDeck.title}` : cleanContent);
               } else {
                 genericResult = {
                   command: parsed.command || '',
@@ -274,6 +301,19 @@ export const StellaSessionProvider: React.FC<{ children: React.ReactNode }> = ({
               console.warn('Failed to parse hyades-action-result payload', err);
             }
           } else {
+            // Check if raw content is a serialized action or flashcard JSON payload
+            const trimmed = cleanContent.trim();
+            if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+              try {
+                const parsed = JSON.parse(trimmed);
+                if (parsed.card_type === 'flashcards' || parsed.flashcardDeck || parsed.cards) {
+                  flashcardDeck = normalizeFlashcardDeck(parsed);
+                  cleanContent = parsed.message || (flashcardDeck?.title ? `Flashcard deck: ${flashcardDeck.title}` : '');
+                }
+              } catch {
+                // not JSON, keep as raw text
+              }
+            }
             // Resilient fallback for legacy /reconcile-duplicates messages without metadata tag
             const dupMatch = /Duplicate reconciliation check complete:\s*(\d+)\s*duplicate pairs? identified/i.exec(cleanContent);
             if (dupMatch) {
@@ -971,7 +1011,7 @@ export const StellaSessionProvider: React.FC<{ children: React.ReactNode }> = ({
             res.data?.cards ||
             res.data?.deck_id;
           const flashcardDeck = isFlashcards
-            ? res.data?.flashcardDeck || res.data
+            ? normalizeFlashcardDeck(res.data)
             : undefined;
 
           setMessages((prev) =>

@@ -25,8 +25,11 @@ export const InChatFlashcardDeckCard: React.FC<InChatFlashcardDeckCardProps> = (
   deck,
   onNavigateToItem,
 }) => {
-  const cards: FlashcardItem[] = useMemo(() => deck.cards || [], [deck.cards]);
-  const storageKey = `hyades_flashcard_deck_${deck.deck_id}`;
+  const cards: FlashcardItem[] = useMemo(
+    () => (deck.cards || []).map((c, idx) => ({ ...c, id: c.id || `card-${idx + 1}` })),
+    [deck.cards]
+  );
+  const storageKey = `hyades_flashcard_deck_${deck.deck_id || deck.source_id || 'default'}`;
 
   // Initialize state with localStorage persistence
   const [currentIndex, setCurrentIndex] = useState<number>(() => {

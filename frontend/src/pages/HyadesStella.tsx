@@ -36,6 +36,46 @@ interface HyadesStellaProps {
   environmentIndex?: number;
 }
 
+// Helper to parse flashcards if content was stored as raw JSON
+function extractFlashcardDeckFromRawContent(content?: string): { deck: any; message?: string } | null {
+  if (!content) return null;
+  const trimmed = content.trim();
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null;
+  try {
+    const p = JSON.parse(trimmed);
+    if (p.card_type === 'flashcards' || p.flashcardDeck || p.cards) {
+      const rawDeck = p.flashcardDeck || (p.cards ? p : p.data);
+      if (rawDeck) {
+        const rawCards = Array.isArray(rawDeck.cards) ? rawDeck.cards : [];
+        const cards = rawCards.map((c: any, idx: number) => ({
+          id: c.id || c.card_id || `card-${idx + 1}`,
+          question: c.question || '',
+          answer: c.answer || '',
+          explanation: c.explanation || null,
+          concept: c.concept || c.category || null,
+        }));
+        return {
+          deck: {
+            deck_id: rawDeck.deck_id || (rawDeck.source_id ? `deck-${rawDeck.source_id}` : `deck-gen-${Date.now()}`),
+            title: rawDeck.title || p.title || 'Flashcards',
+            source_title: rawDeck.source_title || p.source_title || 'Workspace Note',
+            source_id: rawDeck.source_id ?? p.source_id ?? null,
+            source_type: rawDeck.source_type || p.source_type || 'note',
+            cards_count: rawDeck.cards_count ?? rawDeck.total_cards ?? p.total_cards ?? cards.length,
+            cards,
+            current_index: rawDeck.current_index ?? 0,
+            review_state: rawDeck.review_state || {},
+          },
+          message: p.message || (rawDeck.title ? `Flashcard deck: ${rawDeck.title}` : undefined),
+        };
+      }
+    }
+  } catch {
+    // not JSON
+  }
+  return null;
+}
+
 export const HyadesStella: React.FC<HyadesStellaProps> = ({
   workspaceId,
   initialQuery,
@@ -267,7 +307,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
           workspaceId,
           parsedArgState.command,
           parsedArgState.query,
-          8,
+          50,
           parsedArgState.argIndex
         );
         const priorSelected = new Set(
@@ -1001,12 +1041,16 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                               Retry Inquiry
                             </button>
                           </div>
-                        ) : (
+                        ) : (() => {
+                          const rawExtracted = msg.role === 'assistant' && !msg.flashcardDeck ? extractFlashcardDeckFromRawContent(msg.content) : null;
+                          const effectiveDeck = msg.flashcardDeck || rawExtracted?.deck;
+                          const displayContent = rawExtracted ? rawExtracted.message : msg.content;
+                          return (
                           <>
-                            {msg.content && (
+                            {displayContent && (
                               <div
                                 className="markdown-body serif text-[15px] leading-relaxed text-[var(--ink-primary)]"
-                                dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                                dangerouslySetInnerHTML={{ __html: renderMarkdown(displayContent) }}
                               />
                             )}
 
@@ -1159,9 +1203,9 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                             )}
 
                             {/* In-Chat Interactive Flashcard Deck Card */}
-                            {msg.flashcardDeck && (
+                            {effectiveDeck && (
                               <InChatFlashcardDeckCard
-                                deck={msg.flashcardDeck}
+                                deck={effectiveDeck}
                                 onNavigateToItem={(id, itemType) => {
                                   if (itemType === 'note' && onNavigateToNote) {
                                     onNavigateToNote(id);
@@ -1172,7 +1216,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                               />
                             )}
 
-                            {!msg.content && (
+                            {!displayContent && !effectiveDeck && (
                               <div className="text-[var(--ink-secondary)] flex items-center gap-2.5 py-2">
                                 <span className="relative flex h-2 w-2">
                                   <span className="pulse-dot absolute inline-flex h-full w-full rounded-full bg-[var(--accent-terracotta)] opacity-75" />
@@ -1182,7 +1226,8 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                               </div>
                             )}
                           </>
-                        )}
+                          );
+                        })()}
 
                         {/* Restrained Grounded Concepts and Citations footer */}
                         {((relevantConcepts && relevantConcepts.length > 0) ||
