@@ -20,6 +20,7 @@ from typing import Any
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.exceptions import (
     AppException,
     ConflictError,
@@ -1359,6 +1360,32 @@ DETERMINISTIC_OPERATIONS: list[StellaCommandInfo] = [
             )
         ],
     ),
+    StellaCommandInfo(
+        command="/dev-seed-demo",
+        name="Developer Seed Demo Data",
+        description="Populate workspace with rich demonstration knowledge data (dev/test only)",
+        syntax="/dev-seed-demo [--cleanup]",
+        example="/dev-seed-demo",
+        examples=[
+            "/dev-seed-demo",
+            "/dev-seed-demo --cleanup",
+        ],
+        category="utility",
+        action_id="workspace.dev_seed_demo",
+        execution_type="action",
+        availability="internal",
+        requires_confirmation=False,
+        arguments=[
+            StellaArgumentDef(
+                name="flags",
+                label="Flags",
+                arg_type="free_text",
+                required=False,
+                placeholder="--cleanup to remove seed data",
+                description="Optional flags such as --cleanup",
+            )
+        ],
+    ),
 ]
 
 PLACEHOLDER_COMMANDS: set[str] = {
@@ -1373,6 +1400,7 @@ PLACEHOLDER_COMMANDS: set[str] = {
 INTERNAL_AGENT_COMMANDS: set[str] = {
     "/add-to-collection",
     "/search",
+    "/dev-seed-demo",
 }
 
 ALL_OPERATIONS: list[StellaCommandInfo] = AVAILABLE_COMMANDS + DETERMINISTIC_OPERATIONS
@@ -1390,6 +1418,7 @@ def get_command_suggestions(
     query: str = "",
     limit: int = 10,
     arg_index: int = 0,
+    offset: int = 0,
 ) -> StellaSuggestionsResponse:
     """Return matching workspace items for argument-aware slash commands."""
     ws = db.get(Workspace, workspace_id)
@@ -1473,7 +1502,7 @@ def get_command_suggestions(
                     func.lower(Note.content).contains(clean_q),
                 )
             )
-        note_stmt = note_stmt.order_by(Note.updated_at.desc()).limit(limit)
+        note_stmt = note_stmt.order_by(Note.updated_at.desc()).limit(max(limit * 2, 100))
         notes = list(db.scalars(note_stmt).all())
 
         for n in notes:
@@ -1502,7 +1531,7 @@ def get_command_suggestions(
                     func.lower(Source.source_identifier).contains(clean_q),
                 )
             )
-        src_stmt = src_stmt.order_by(Source.imported_at.desc()).limit(limit)
+        src_stmt = src_stmt.order_by(Source.imported_at.desc()).limit(max(limit * 2, 100))
         sources = list(db.scalars(src_stmt).all())
         for src in sources:
             src_title = (
@@ -1530,7 +1559,7 @@ def get_command_suggestions(
                     func.lower(Collection.description).contains(clean_q),
                 )
             )
-        col_stmt = col_stmt.order_by(Collection.updated_at.desc()).limit(limit)
+        col_stmt = col_stmt.order_by(Collection.updated_at.desc()).limit(max(limit * 2, 100))
         collections = list(db.scalars(col_stmt).all())
         for col in collections:
             items.append(
@@ -1554,7 +1583,7 @@ def get_command_suggestions(
                     func.lower(GraphEntity.description).contains(clean_q),
                 )
             )
-        ent_stmt = ent_stmt.order_by(GraphEntity.name.asc()).limit(limit)
+        ent_stmt = ent_stmt.order_by(GraphEntity.name.asc()).limit(max(limit * 2, 100))
         entities = list(db.scalars(ent_stmt).all())
         for ent in entities:
             items.append(
@@ -1567,12 +1596,15 @@ def get_command_suggestions(
                 )
             )
 
+    total_count = len(items)
+    sliced_items = items[offset : offset + limit]
+
     return StellaSuggestionsResponse(
-        items=items[:limit],
+        items=sliced_items,
         command=command,
         query=query,
         arg_index=arg_index,
-        total=len(items[:limit]),
+        total=total_count,
     )
 
 
@@ -3158,15 +3190,22 @@ def _find_existing_deck_for_source(
         messages = db.scalars(stmt).all()
         for msg in messages:
             match = re.search(r"<!--hyades-action-result:([\s\S]*?)(?:-->|$)", msg.content)
-            if not match:
-                continue
-            try:
-                data = json.loads(match.group(1))
-                deck = data.get("flashcardDeck")
+            data = None
+            if match:
+                try:
+                    data = json.loads(match.group(1))
+                except Exception:
+                    data = None
+            elif msg.content and msg.content.strip().startswith("{") and msg.content.strip().endswith("}"):
+                try:
+                    data = json.loads(msg.content.strip())
+                except Exception:
+                    data = None
+
+            if data:
+                deck = data.get("flashcardDeck") or (data if data.get("cards") else None)
                 if deck and str(deck.get("source_id")) == str(source_id):
                     return deck
-            except Exception:
-                continue
     except Exception as exc:
         logger.warning("Could not check existing decks in conversation %s: %s", conversation_id, exc)
     return None
@@ -6973,6 +7012,13 @@ def execute_stella_action_command(
                 "flashcardDeck": existing_deck,
                 "requires_confirmation": False,
             }
+            _record_conversation_exchange(
+                db=db,
+                conversation_id=conversation_id,
+                user_content=user_cmd_content,
+                assistant_content=outcome_msg,
+                action_result=deck_res,
+            )
             return StellaCommandExecuteResponse(
                 command=command,
                 action_id="notes.get",
@@ -7017,6 +7063,61 @@ def execute_stella_action_command(
             status="completed",
             message=outcome_msg,
             data=deck_dict,
+            requires_confirmation=False,
+        )
+
+    elif clean_cmd == "/dev-seed-demo" or action_id == "workspace.dev_seed_demo":
+        if settings.APP_ENV not in ("development", "testing"):
+            raise ValidationError("The /dev-seed-demo command is only available in development or testing environments.")
+
+        from app.services import dev_seed_service
+        is_cleanup = (
+            any(a in ("--cleanup", "cleanup", "-c") for a in args)
+            or bool(parameters.get("cleanup"))
+        )
+
+        if is_cleanup:
+            summary = dev_seed_service.cleanup_demo_seed_data(db, workspace_id)
+            res_msg = (
+                f"Cleaned up demo seed data in workspace: "
+                f"{summary['notes_deleted']} notes, {summary['sources_deleted']} sources, "
+                f"{summary['collections_deleted']} collections, {summary['threads_deleted']} threads removed."
+            )
+        else:
+            creator_id = ws.owner_id
+            summary = dev_seed_service.seed_demo_workspace(db, workspace_id, creator_id)
+            res_msg = (
+                f"Successfully seeded demo workspace: "
+                f"{summary['notes_created']} new notes (500-600 words each), {summary['notes_reused']} reused; "
+                f"{summary['sources_created']} sources, {summary['collections_created']} collections, "
+                f"{summary['threads_created']} threads, {summary['flashcard_decks_created']} flashcard decks, "
+                f"{summary['links_created']} note links."
+            )
+
+        action_result = {
+            "card_type": "dev_seed_demo",
+            "command": "/dev-seed-demo",
+            "action_id": "workspace.dev_seed_demo",
+            "status": "success",
+            "message": res_msg,
+            "data": summary,
+            "requires_confirmation": False,
+        }
+
+        _record_conversation_exchange(
+            db=db,
+            conversation_id=conversation_id,
+            user_content=user_cmd_content,
+            assistant_content=res_msg,
+            action_result=action_result,
+        )
+
+        return StellaCommandExecuteResponse(
+            command="/dev-seed-demo",
+            action_id="workspace.dev_seed_demo",
+            status="completed",
+            message=res_msg,
+            data=summary,
             requires_confirmation=False,
         )
 

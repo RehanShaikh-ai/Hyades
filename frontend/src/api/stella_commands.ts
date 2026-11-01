@@ -1383,8 +1383,9 @@ export async function getCommandSuggestions(
   workspaceId: string,
   command: string,
   query: string = '',
-  limit: number = 10,
-  argIndex: number = 0
+  limit: number = 50,
+  argIndex: number = 0,
+  offset: number = 0
 ): Promise<CommandSuggestionItem[]> {
   if (PLACEHOLDER_COMMANDS.has(command.trim().toLowerCase())) {
     return [];
@@ -1395,6 +1396,7 @@ export async function getCommandSuggestions(
       q: query,
       limit: String(limit),
       arg_index: String(argIndex),
+      offset: String(offset),
     });
     const res = await apiClient.get<StellaSuggestionsResponse>(
       `/workspaces/${encodeURIComponent(workspaceId)}/stella/suggestions?${params.toString()}`

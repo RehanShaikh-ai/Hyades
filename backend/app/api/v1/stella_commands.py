@@ -49,8 +49,9 @@ def get_stella_command_suggestions(
     db: Annotated[Session, Depends(get_db)],
     command: Annotated[str, Query(description="Command identifier, e.g. /summarize")],
     q: Annotated[str, Query(description="Query filter for target items")] = "",
-    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
     arg_index: Annotated[int, Query(ge=0, le=5, description="Active argument index")] = 0,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> StellaSuggestionsResponse:
     """Return matching workspace items for argument-aware slash commands."""
     return stella_command_service.get_command_suggestions(
@@ -60,6 +61,7 @@ def get_stella_command_suggestions(
         query=q,
         limit=limit,
         arg_index=arg_index,
+        offset=offset,
     )
 
 
