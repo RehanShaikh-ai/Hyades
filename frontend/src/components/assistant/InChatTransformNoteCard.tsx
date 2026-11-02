@@ -21,6 +21,8 @@ import {
   Loader2,
   Edit3,
   Search,
+  ArrowRight,
+  ArrowLeft,
 } from 'lucide-react';
 
 export interface TransformProposalItem {
@@ -69,6 +71,7 @@ export interface InChatTransformNoteCardProps {
   }) => void;
   onNavigateToItem?: (id: string, itemType: string) => void;
   onRunCommand?: (commandText: string) => void;
+  onOpenDocumentPanel?: (draftData: any) => void;
 }
 
 const OPERATION_ICONS: Record<string, React.ReactNode> = {
@@ -83,30 +86,88 @@ const OPERATION_ICONS: Record<string, React.ReactNode> = {
   audit: <ShieldCheck size={16} className="text-[var(--accent-terracotta)]" />,
 };
 
-function computeSimpleDiff(orig: string, proposed: string): string[] {
-  const origLines = orig.split('\n');
-  const propLines = proposed.split('\n');
-  const res: string[] = [];
-  let i = 0;
-  let j = 0;
-  while (i < origLines.length || j < propLines.length) {
-    if (i < origLines.length && j < propLines.length && origLines[i] === propLines[j]) {
-      res.push(`  ${origLines[i]}`);
-      i++;
-      j++;
-    } else if (i < origLines.length && !propLines.includes(origLines[i])) {
-      res.push(`- ${origLines[i]}`);
-      i++;
-    } else if (j < propLines.length && !origLines.includes(propLines[j])) {
-      res.push(`+ ${propLines[j]}`);
-      j++;
-    } else {
-      if (i < origLines.length) res.push(`- ${origLines[i++]}`);
-      if (j < propLines.length) res.push(`+ ${propLines[j++]}`);
-    }
-  }
-  return res.slice(0, 50);
-}
+/**
+ * 3-Step Progress Indicator matching visual specification:
+ * 1 Operation · 2 Note · 3 Result
+ */
+const WorkflowProgressIndicator: React.FC<{ step: 1 | 2 | 3 }> = ({ step }) => {
+  return (
+    <div
+      data-testid="workflow-progress-indicator"
+      className="flex items-center gap-2 sm:gap-2.5 text-xs shrink-0 select-none font-medium ml-auto"
+    >
+      {/* Step 1: Operation */}
+      <div
+        className={`flex items-center gap-1.5 ${
+          step === 1
+            ? 'text-[#C85A32] font-bold'
+            : step > 1
+            ? 'text-[#8B5E3C]'
+            : 'text-stone-400'
+        }`}
+      >
+        <div
+          className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-[10px] sm:text-[11px] font-mono ${
+            step === 1
+              ? 'bg-[#C85A32] text-white font-bold'
+              : step > 1
+              ? 'bg-[#FBF0EA] text-[#C85A32] border border-[#F0D5C7]'
+              : 'border border-stone-300 text-stone-400'
+          }`}
+        >
+          {step > 1 ? <Check size={11} strokeWidth={3} /> : '1'}
+        </div>
+        <span className="hidden xs:inline sm:inline">Operation</span>
+      </div>
+
+      <span className="text-stone-300">·</span>
+
+      {/* Step 2: Note */}
+      <div
+        className={`flex items-center gap-1.5 ${
+          step === 2
+            ? 'text-[#C85A32] font-bold'
+            : step > 2
+            ? 'text-[#8B5E3C]'
+            : 'text-stone-400'
+        }`}
+      >
+        <div
+          className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-[10px] sm:text-[11px] font-mono ${
+            step === 2
+              ? 'bg-[#C85A32] text-white font-bold'
+              : step > 2
+              ? 'bg-[#FBF0EA] text-[#C85A32] border border-[#F0D5C7]'
+              : 'border border-stone-300 text-stone-400'
+          }`}
+        >
+          {step > 2 ? <Check size={11} strokeWidth={3} /> : '2'}
+        </div>
+        <span className="hidden xs:inline sm:inline">Note</span>
+      </div>
+
+      <span className="text-stone-300">·</span>
+
+      {/* Step 3: Result */}
+      <div
+        className={`flex items-center gap-1.5 ${
+          step === 3 ? 'text-[#C85A32] font-bold' : 'text-stone-400'
+        }`}
+      >
+        <div
+          className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-[10px] sm:text-[11px] font-mono ${
+            step === 3
+              ? 'bg-[#C85A32] text-white font-bold'
+              : 'border border-stone-300 text-stone-400'
+          }`}
+        >
+          3
+        </div>
+        <span className="hidden xs:inline sm:inline">Result</span>
+      </div>
+    </div>
+  );
+};
 
 export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = ({
   proposal,
@@ -117,6 +178,7 @@ export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = (
   onPreviewArtifact,
   onNavigateToItem,
   onRunCommand,
+  onOpenDocumentPanel,
 }) => {
   const data = proposal?.data || result?.data || {};
   const operation = (data.operation || 'enrich').toLowerCase();
@@ -124,10 +186,15 @@ export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = (
   const isCommitted = proposal?.status === 'committed';
   const isCancelled = proposal?.status === 'cancelled';
 
-  // Proposal items list (for enrich)
-  const rawProposals: TransformProposalItem[] = Array.isArray(data.proposals) ? data.proposals : [];
+  // Step 1: Operation Selection State
+  const [selectedOperation, setSelectedOperation] = useState<string | null>(null);
 
-  // Track selection per proposal (for enrich)
+  // Step 2: Note Selection State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+
+  // Proposals list for enrich
+  const rawProposals: TransformProposalItem[] = Array.isArray(data.proposals) ? data.proposals : [];
   const [selectedMap, setSelectedMap] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {};
     rawProposals.forEach((p) => {
@@ -135,27 +202,9 @@ export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = (
     });
     return init;
   });
-
-  // Track expanded evidence cards (for enrich)
   const [expandedEvidenceMap, setExpandedEvidenceMap] = useState<Record<string, boolean>>({});
-
-  // Inline editing state (for enrich)
   const [isEditingInline, setIsEditingInline] = useState(false);
   const [editedTextMap, setEditedTextMap] = useState<Record<string, string>>({});
-
-  // Preview mode toggle for enrich: 'full' | 'changes' | null
-  const [previewMode, setPreviewMode] = useState<'full' | 'changes' | null>(null);
-
-  // Note selection state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
-
-  // Dedicated text transformation state (shorten, expand, simplify, restructure, improve)
-  const [textPreviewMode, setTextPreviewMode] = useState<'changes' | 'full'>('changes');
-  const [isEditingText, setIsEditingText] = useState(false);
-  const [editedProposedContent, setEditedProposedContent] = useState<string>(
-    data.proposed_content || ''
-  );
 
   const isTextTransform = ['shorten', 'expand', 'simplify', 'restructure', 'improve'].includes(
     operation
@@ -181,7 +230,7 @@ export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = (
     }));
   };
 
-  const handleApplyChanges = () => {
+  const handleApplyEnrichChanges = () => {
     if (!onConfirm) return;
     const selectedIds = Object.keys(selectedMap).filter((id) => selectedMap[id]);
     onConfirm({
@@ -190,87 +239,72 @@ export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = (
     });
   };
 
-  const handlePreviewFullNote = () => {
-    if (onPreviewArtifact) {
-      onPreviewArtifact({
-        title: data.title || 'Transformed Note',
-        content: data.proposed_content || data.original_content || '',
-        type: 'Note',
-        subtitle: `Full Transformed Note (${operation})`,
-      });
-    } else {
-      setPreviewMode((prev) => (prev === 'full' ? null : 'full'));
-    }
-  };
-
-  const handlePreviewChangesOnly = () => {
-    if (onPreviewArtifact) {
-      const additionText =
-        data.enrichment_addition ||
-        rawProposals.map((p) => `### ${p.title}\n${p.proposed_text}`).join('\n\n') ||
-        data.proposed_content ||
-        '';
-      onPreviewArtifact({
-        title: `Changes: ${data.title || 'Note'}`,
-        content: additionText,
-        type: 'Note Diff',
-        subtitle: `Proposed Additions (${operation})`,
-      });
-    } else {
-      setPreviewMode((prev) => (prev === 'changes' ? null : 'changes'));
-    }
-  };
-
   // ───────────────────────────────────────────────────────────────────────────
-  // Sub-view 1: Options Grid (/transform-note options or bare /transform-note)
+  // Step 1: Operations Grid (/transform-note options or bare /transform-note)
+  // Requires explicit operation selection + Confirm Operation button click!
   // ───────────────────────────────────────────────────────────────────────────
   if (cardType === 'transform_options' || operation === 'options') {
     const operationsList = Array.isArray(data.operations) ? data.operations : [];
+    const activeOpMeta = operationsList.find(
+      (op: any) => op.operation === selectedOperation
+    );
 
     return (
       <div
         data-testid="transform-note-options-card"
         className="card-surface mt-3 p-4 sm:p-5 rounded-2xl border border-[var(--border-parchment)] bg-[#FAF8F2] shadow-xs flex flex-col gap-4 max-w-4xl text-[var(--ink-primary)] animate-fade-in"
       >
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-white border border-[var(--border-parchment)] flex items-center justify-center shrink-0 shadow-2xs">
-            <Sliders size={17} className="text-[var(--accent-midnight)]" />
+        {/* Header with 3-Step Progress Indicator */}
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--border-parchment)] pb-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-white border border-[var(--border-parchment)] flex items-center justify-center shrink-0 shadow-2xs">
+              <Sliders size={17} className="text-[var(--accent-midnight)]" />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="font-serif font-bold text-sm sm:text-base text-[var(--ink-primary)] tracking-tight">
+                /transform-note — Intelligent note operations
+              </span>
+              <span className="text-xs text-[var(--ink-secondary)]">
+                Transform, improve, and develop your notes. Choose an operation to continue.
+              </span>
+            </div>
           </div>
-          <div className="flex flex-col min-w-0">
-            <span className="font-serif font-bold text-sm sm:text-base text-[var(--ink-primary)] tracking-tight">
-              /transform-note — Intelligent note operations
-            </span>
-            <span className="text-xs text-[var(--ink-secondary)]">
-              {data.description || 'Transform, improve, and develop your notes. Choose an operation to continue:'}
-            </span>
-          </div>
+
+          <WorkflowProgressIndicator step={1} />
         </div>
 
         {/* 9-Card Interactive Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
           {operationsList.map((op: any) => {
-            const isEnrich = op.operation === 'enrich';
+            const isSelected = selectedOperation === op.operation;
+
             return (
               <button
                 key={op.operation}
                 type="button"
                 data-testid={`transform-option-${op.operation}`}
-                onClick={() => {
-                  if (onRunCommand) {
-                    onRunCommand(`/transform-note ${op.operation}`);
-                  }
-                }}
-                className={`p-3 rounded-xl border transition-all text-left flex flex-col gap-1.5 cursor-pointer select-none group ${
-                  isEnrich
-                    ? 'bg-[#FBF0EA]/60 border-[#C85A32]/30 hover:border-[#C85A32] shadow-2xs'
-                    : 'bg-white/70 border-[var(--border-parchment)] hover:bg-[#FBF0EA]/40 hover:border-[#C85A32]/40 shadow-2xs'
+                onClick={() => setSelectedOperation(op.operation)}
+                className={`p-3 rounded-xl border transition-all text-left flex flex-col gap-1.5 cursor-pointer select-none relative group ${
+                  isSelected
+                    ? 'bg-[#FBF0EA] border-[#C85A32] shadow-2xs'
+                    : 'bg-white/80 border-[var(--border-parchment)] hover:bg-[#FBF0EA]/50 hover:border-[#C85A32]/40 shadow-2xs'
                 }`}
               >
+                {/* Checkmark badge when selected */}
+                {isSelected && (
+                  <div className="absolute top-2.5 right-2.5 w-4 h-4 rounded-full bg-[#C85A32] text-white flex items-center justify-center shadow-xs">
+                    <Check size={11} strokeWidth={3} />
+                  </div>
+                )}
+
                 <div className="w-6 h-6 rounded-md bg-white border border-[var(--border-parchment)] flex items-center justify-center shrink-0">
                   {OPERATION_ICONS[op.operation] || <Sparkles size={14} className="text-[var(--accent-terracotta)]" />}
                 </div>
-                <div className="font-bold text-xs text-[var(--ink-primary)] group-hover:text-[var(--accent-terracotta)] transition-colors">
+                <div
+                  className={`font-bold text-xs transition-colors ${
+                    isSelected ? 'text-[#C85A32]' : 'text-[var(--ink-primary)] group-hover:text-[var(--accent-terracotta)]'
+                  }`}
+                >
                   {op.title || op.name || op.operation}
                 </div>
                 <div className="text-[11px] text-[var(--ink-secondary)] leading-tight line-clamp-2">
@@ -281,44 +315,71 @@ export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = (
           })}
         </div>
 
-        {/* Usage & Example Pills Footer matching reference screenshot */}
-        <div className="pt-2 border-t border-[var(--border-parchment)] flex items-center gap-2.5 flex-wrap text-xs">
-          <div className="flex items-center gap-1.5">
+        {/* Confirmation Bar when operation is selected */}
+        {selectedOperation && activeOpMeta ? (
+          <div
+            data-testid="operation-confirmation-bar"
+            className="pt-3 border-t border-[var(--border-parchment)] flex items-center justify-between gap-3 flex-wrap animate-fade-in"
+          >
+            <div className="text-xs text-[var(--ink-primary)]">
+              <span className="font-bold text-[#C85A32]">
+                Selected: {activeOpMeta.title || activeOpMeta.operation}
+              </span>{' '}
+              ·{' '}
+              <span className="text-[var(--ink-secondary)]">
+                {activeOpMeta.description}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                data-testid="btn-cancel-operation"
+                onClick={() => {
+                  setSelectedOperation(null);
+                  onCancel?.();
+                }}
+                className="px-3 py-1.5 rounded-lg border border-[var(--border-parchment)] hover:bg-white text-xs font-medium text-[var(--ink-secondary)] transition-colors cursor-pointer shadow-2xs"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                data-testid="btn-confirm-operation"
+                onClick={() => {
+                  if (onRunCommand) {
+                    onRunCommand(`/transform-note ${selectedOperation}`);
+                  }
+                }}
+                className="px-4 py-1.5 rounded-lg bg-[#C85A32] text-white hover:bg-[#B34D28] text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
+              >
+                <span>Confirm Operation</span>
+                <ArrowRight size={13} strokeWidth={2.5} />
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Usage / Example Footer if no operation selected */
+          <div className="pt-2 border-t border-[var(--border-parchment)] flex items-center gap-2.5 flex-wrap text-xs">
             <span className="px-2 py-0.5 rounded-md bg-[#FAF5EE] border border-[#E8DFD3] text-[11px] font-semibold text-[#8B5E3C]">
               Usage
             </span>
             <span className="px-2.5 py-1 rounded-full bg-white border border-[var(--border-parchment)] text-[11.5px] font-mono text-[var(--ink-secondary)] shadow-2xs">
-              <code>{data.usage || '/transform-note <operation> "<note title>"'}</code>
+              <code>/transform-note &lt;operation&gt; "&lt;note title&gt;"</code>
+            </span>
+            <span className="text-xs text-[var(--ink-tertiary)] ml-auto italic">
+              Click an operation above and confirm to proceed.
             </span>
           </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="px-2 py-0.5 rounded-md bg-[#FAF5EE] border border-[#E8DFD3] text-[11px] font-semibold text-[#8B5E3C]">
-              Example
-            </span>
-            <button
-              type="button"
-              onClick={() =>
-                onRunCommand?.(
-                  data.example ||
-                    '/transform-note shorten "The OSI 7-Layer Reference Model and Modern Protocol Stacks"'
-                )
-              }
-              className="px-2.5 py-1 rounded-full bg-white hover:bg-[var(--bg-panel-subtle)] border border-[var(--border-parchment)] text-[11.5px] font-mono text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] transition-colors cursor-pointer shadow-2xs"
-            >
-              <code>
-                {data.example ||
-                  '/transform-note shorten "The OSI 7-Layer Reference Model..."'}
-              </code>
-            </button>
-          </div>
-        </div>
+        )}
       </div>
     );
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Sub-view 2: Interactive Note Selection (/transform-note <op> without note)
+  // Step 2: Interactive Note Selection (/transform-note <op>)
+  // Requires explicit note selection + Confirm Note button click!
   // ───────────────────────────────────────────────────────────────────────────
   if (cardType === 'select_note' || data.card_type === 'select_note') {
     const notesList: Array<{
@@ -333,25 +394,30 @@ export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = (
     );
 
     const targetOp = operation || data.operation || 'shorten';
+    const selectedNoteObj = notesList.find((n) => n.id === selectedNoteId);
 
     return (
       <div
         data-testid="transform-note-select-card"
         className="card-surface mt-3 p-4 sm:p-5 rounded-2xl border border-[var(--border-parchment)] bg-[#FAF8F2] shadow-xs flex flex-col gap-3.5 max-w-3xl text-[var(--ink-primary)] animate-fade-in"
       >
-        {/* Header matching middle screenshot */}
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#FAF5EE] border border-[#E8DFD3] flex items-center justify-center shrink-0 mt-0.5">
-            <FileText size={18} className="text-[#8B5E3C]" />
+        {/* Header with 3-Step Progress Indicator */}
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--border-parchment)] pb-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-[#FAF5EE] border border-[#E8DFD3] flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
+              <FileText size={18} className="text-[#8B5E3C]" />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="font-serif font-bold text-sm sm:text-base text-[var(--ink-primary)] tracking-tight">
+                Select a note to {targetOp}
+              </span>
+              <span className="text-xs text-[var(--ink-secondary)]">
+                Choose a note from your workspace.
+              </span>
+            </div>
           </div>
-          <div className="flex flex-col">
-            <span className="font-serif font-bold text-sm sm:text-base text-[var(--ink-primary)] tracking-tight">
-              Select a note to {targetOp}
-            </span>
-            <span className="text-xs text-[var(--ink-secondary)]">
-              {data.prompt || 'Choose a note from your workspace:'}
-            </span>
-          </div>
+
+          <WorkflowProgressIndicator step={2} />
         </div>
 
         {/* Search input + Note count pill */}
@@ -391,15 +457,10 @@ export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = (
                 <div
                   key={note.id}
                   data-testid={`select-note-item-${note.id}`}
-                  onClick={() => {
-                    setSelectedNoteId(note.id);
-                    if (onRunCommand) {
-                      onRunCommand(`/transform-note ${targetOp} "${note.title}"`);
-                    }
-                  }}
+                  onClick={() => setSelectedNoteId(note.id)}
                   className={`px-3.5 py-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 select-none ${
                     isSelected
-                      ? 'bg-[#FBF0EA] border-[#C85A32]/50 shadow-2xs'
+                      ? 'bg-[#FBF0EA] border-[#C85A32] shadow-2xs'
                       : 'bg-white/80 border-[var(--border-parchment)]/80 hover:bg-[#FBF0EA]/50 hover:border-[#C85A32]/40 shadow-2xs'
                   }`}
                 >
@@ -427,6 +488,53 @@ export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = (
               );
             })
           )}
+        </div>
+
+        {/* Note Confirmation Bar with Back and Confirm Note buttons */}
+        <div
+          data-testid="note-confirmation-bar"
+          className="pt-3 border-t border-[var(--border-parchment)] flex items-center justify-between gap-3 flex-wrap"
+        >
+          <div className="text-xs text-[var(--ink-secondary)]">
+            {selectedNoteObj ? (
+              <span className="font-medium text-[#C85A32]">
+                1 note selected: <strong>{selectedNoteObj.title}</strong>
+              </span>
+            ) : (
+              <span>Select a note to continue.</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              data-testid="btn-back-to-operations"
+              onClick={() => {
+                if (onRunCommand) {
+                  onRunCommand('/transform-note');
+                }
+              }}
+              className="px-3 py-1.5 rounded-lg border border-[var(--border-parchment)] hover:bg-white text-xs font-medium text-[var(--ink-secondary)] flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+            >
+              <ArrowLeft size={12} />
+              <span>Back</span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="btn-confirm-note"
+              disabled={!selectedNoteObj}
+              onClick={() => {
+                if (selectedNoteObj && onRunCommand) {
+                  onRunCommand(`/transform-note ${targetOp} "${selectedNoteObj.title}"`);
+                }
+              }}
+              className="px-4 py-1.5 rounded-lg bg-[#C85A32] text-white hover:bg-[#B34D28] text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <span>Confirm Note</span>
+              <ArrowRight size={13} strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -571,11 +679,7 @@ export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = (
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Sub-view 5: Dedicated Text Transformation Result (shorten, expand, simplify, restructure, improve)
-  // Matches bottom reference screenshot exactly:
-  // - Clean Header with Stat line (Original words → Proposed words)
-  // - Two-column layout: What changed (checkmarks) vs Preview (Changes Only diff / Full Note)
-  // - NO Workspace Evidence, NO citations, NO fragmented checkboxes
+  // Step 3 / Result: Text Transformation Summary Card with Document Panel Action
   // ───────────────────────────────────────────────────────────────────────────
   const opLabel = operation.charAt(0).toUpperCase() + operation.slice(1);
   const headerTitle = `Transform Note · ${opLabel}`;
@@ -635,27 +739,27 @@ export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = (
             'Preserved key concepts, definitions, and technical accuracy.',
           ];
 
-    const diffLines: string[] =
-      Array.isArray(data.diff_lines) && data.diff_lines.length > 0
-        ? data.diff_lines
-        : computeSimpleDiff(data.original_content || '', data.proposed_content || '');
-
-    const handleApplyTextChanges = () => {
-      if (!onConfirm) return;
-      onConfirm({
-        content: editedProposedContent || data.proposed_content,
-      });
+    const openPanelHandler = () => {
+      if (onOpenDocumentPanel) {
+        onOpenDocumentPanel({
+          ...data,
+          proposalId: proposal?.proposalId || data.proposal_id,
+          confirmationToken: proposal?.confirmationToken || data.confirmation_token,
+          actionId: proposal?.actionId || result?.actionId,
+          command: proposal?.command || result?.command,
+        });
+      }
     };
 
     return (
       <div
         data-testid="transform-note-proposal-card"
-        className="card-surface mt-3 p-4 sm:p-5 rounded-2xl border border-[var(--border-parchment)] bg-[#FAF8F2] shadow-xs flex flex-col gap-3.5 max-w-4xl text-[var(--ink-primary)] animate-fade-in"
+        className="card-surface mt-3 p-4 sm:p-5 rounded-2xl border border-[var(--border-parchment)] bg-[#FAF8F2] shadow-xs flex flex-col gap-3.5 max-w-2xl text-[var(--ink-primary)] animate-fade-in"
       >
-        {/* Header matching bottom reference screenshot */}
-        <div className="flex items-start justify-between gap-3">
+        {/* Header with Step 3 Progress Indicator */}
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--border-parchment)] pb-2.5">
           <div className="flex items-start gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#FBF0EA] border border-[#F0D5C7] flex items-center justify-center shrink-0 mt-0.5">
+            <div className="w-8 h-8 rounded-lg bg-[#FBF0EA] border border-[#F0D5C7] flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
               {OPERATION_ICONS[operation] || <Minimize2 size={16} className="text-[var(--accent-terracotta)]" />}
             </div>
             <div className="flex flex-col">
@@ -674,147 +778,60 @@ export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = (
             </div>
           </div>
 
-          {/* Status Pill */}
-          {isCommitted ? (
-            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0">
-              <CheckCircle2 size={12} /> Committed
-            </span>
-          ) : isCancelled ? (
-            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-stone-500 bg-stone-100 px-2.5 py-0.5 rounded-full border border-stone-200 shrink-0">
-              <XCircle size={12} /> Cancelled
-            </span>
-          ) : null}
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <WorkflowProgressIndicator step={3} />
+            {isCommitted ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0 mt-1">
+                <CheckCircle2 size={12} /> Committed
+              </span>
+            ) : isCancelled ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-mono font-medium text-stone-500 bg-stone-100 px-2.5 py-0.5 rounded-full border border-stone-200 shrink-0 mt-1">
+                <XCircle size={12} /> Cancelled
+              </span>
+            ) : null}
+          </div>
         </div>
 
-        {/* Two-column layout: What changed (Left) | Preview / Diff (Right) */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 pt-1">
-          {/* Left Column: What changed */}
-          <div className="md:col-span-5 flex flex-col gap-2.5">
-            <span className="font-bold text-xs text-[var(--ink-primary)]">
-              What changed
-            </span>
-            <div className="flex flex-col gap-2">
-              {whatChangedList.map((item, idx) => (
-                <div key={idx} className="flex items-start gap-2 text-xs text-[var(--ink-primary)] leading-snug">
-                  <Check size={14} className="text-emerald-600 shrink-0 mt-0.5" strokeWidth={2.5} />
-                  <span>{item}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Right Column: Preview tabs + Diff / Content Box */}
-          <div className="md:col-span-7 flex flex-col gap-2">
-            {/* Toolbar: Preview Mode Pills + Edit Button */}
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  data-testid="btn-preview-changes-only"
-                  onClick={() => setTextPreviewMode('changes')}
-                  className={`px-3 py-1 rounded-full text-xs transition-colors cursor-pointer ${
-                    textPreviewMode === 'changes'
-                      ? 'bg-[#FBF0EA] text-[#C85A32] border border-[#F0D5C7] font-semibold shadow-2xs'
-                      : 'bg-white hover:bg-[var(--bg-panel-subtle)] text-[var(--ink-secondary)] border border-[var(--border-parchment)] font-medium shadow-2xs'
-                  }`}
-                >
-                  Preview: Changes Only
-                </button>
-                <button
-                  type="button"
-                  data-testid="btn-preview-full-note"
-                  onClick={() => setTextPreviewMode('full')}
-                  className={`px-3 py-1 rounded-full text-xs transition-colors cursor-pointer ${
-                    textPreviewMode === 'full'
-                      ? 'bg-[#FBF0EA] text-[#C85A32] border border-[#F0D5C7] font-semibold shadow-2xs'
-                      : 'bg-white hover:bg-[var(--bg-panel-subtle)] text-[var(--ink-secondary)] border border-[var(--border-parchment)] font-medium shadow-2xs'
-                  }`}
-                >
-                  Preview: Full Note
-                </button>
+        {/* What Changed Points */}
+        <div className="flex flex-col gap-2">
+          <span className="font-bold text-xs text-[var(--ink-primary)]">
+            What changed
+          </span>
+          <div className="flex flex-col gap-1.5">
+            {whatChangedList.map((item, idx) => (
+              <div key={idx} className="flex items-start gap-2 text-xs text-[var(--ink-primary)] leading-snug">
+                <Check size={14} className="text-emerald-600 shrink-0 mt-0.5" strokeWidth={2.5} />
+                <span>{item}</span>
               </div>
-
-              {!isCommitted && !isCancelled && (
-                <button
-                  type="button"
-                  data-testid="btn-edit-proposals"
-                  onClick={() => setIsEditingText((prev) => !prev)}
-                  className={`px-2.5 py-1 rounded-lg border text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer shadow-2xs ${
-                    isEditingText
-                      ? 'bg-[var(--accent-midnight)] text-white border-[var(--accent-midnight)]'
-                      : 'bg-white hover:bg-[var(--bg-panel-subtle)] border-[var(--border-parchment)] text-[var(--ink-primary)]'
-                  }`}
-                >
-                  <Edit3 size={12} />
-                  <span>{isEditingText ? 'Done' : 'Edit'}</span>
-                </button>
-              )}
-            </div>
-
-            {/* Diff / Content Box */}
-            <div className="p-3 rounded-xl bg-white border border-[var(--border-parchment)] font-mono text-[11px] leading-relaxed max-h-64 sm:max-h-72 overflow-y-auto shadow-2xs">
-              {isEditingText ? (
-                <textarea
-                  data-testid="edit-transformed-content-textarea"
-                  value={editedProposedContent}
-                  onChange={(e) => setEditedProposedContent(e.target.value)}
-                  rows={9}
-                  className="w-full font-mono text-xs p-2 rounded border border-[var(--border-parchment)] bg-[#FAF8F2] text-[var(--ink-primary)] outline-none focus:border-[#C85A32]"
-                />
-              ) : textPreviewMode === 'changes' ? (
-                <div className="flex flex-col gap-0.5">
-                  {diffLines.map((line, idx) => {
-                    const isMinus = line.startsWith('-');
-                    const isPlus = line.startsWith('+');
-                    const isHunk = line.startsWith('@@');
-
-                    if (isMinus) {
-                      return (
-                        <div
-                          key={idx}
-                          className="bg-rose-50 text-rose-900 border-l-2 border-rose-400 px-2 py-0.5 my-0.5 rounded-sm whitespace-pre-wrap font-mono"
-                        >
-                          {line}
-                        </div>
-                      );
-                    }
-                    if (isPlus) {
-                      return (
-                        <div
-                          key={idx}
-                          className="bg-emerald-50 text-emerald-900 border-l-2 border-emerald-400 px-2 py-0.5 my-0.5 rounded-sm whitespace-pre-wrap font-mono"
-                        >
-                          {line}
-                        </div>
-                      );
-                    }
-                    if (isHunk) {
-                      return (
-                        <div key={idx} className="text-stone-400 text-[10px] px-2 py-0.5 italic font-mono">
-                          {line}
-                        </div>
-                      );
-                    }
-                    return (
-                      <div key={idx} className="text-stone-600 px-2 py-0.5 whitespace-pre-wrap font-mono">
-                        {line}
-                      </div>
-                    );
-                  })}
-                  <div className="text-stone-400 px-2 py-0.5 font-mono">...</div>
-                </div>
-              ) : (
-                <div className="whitespace-pre-wrap text-[var(--ink-primary)] font-mono text-xs leading-relaxed">
-                  {editedProposedContent || data.proposed_content}
-                </div>
-              )}
-            </div>
+            ))}
           </div>
         </div>
 
-        {/* Action Footer */}
+        {/* Document Panel Launch Banner */}
+        <div className="p-3.5 rounded-xl bg-white border border-[var(--border-parchment)] flex items-center justify-between gap-3 shadow-2xs">
+          <div className="flex flex-col min-w-0">
+            <span className="font-semibold text-xs text-[var(--ink-primary)]">
+              Document Preview &amp; Editor
+            </span>
+            <span className="text-[11px] text-[var(--ink-secondary)]">
+              Read formatted markdown, inspect unified changes, or edit before applying.
+            </span>
+          </div>
+
+          <button
+            type="button"
+            data-testid="btn-open-document-panel"
+            onClick={openPanelHandler}
+            className="px-3.5 py-1.5 rounded-lg bg-[#1B2A4A] text-white hover:bg-[#24365C] text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
+          >
+            <Eye size={13} />
+            <span>Open Document Panel</span>
+          </button>
+        </div>
+
+        {/* Inline Footer Controls */}
         {!isCommitted && !isCancelled && (
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-parchment)]">
+          <div className="flex items-center justify-between pt-1 border-t border-[var(--border-parchment)]">
             <button
               type="button"
               data-testid="btn-cancel-transformation"
@@ -828,7 +845,7 @@ export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = (
             <button
               type="button"
               data-testid="btn-apply-changes"
-              onClick={handleApplyTextChanges}
+              onClick={() => onConfirm?.({ content: data.proposed_content })}
               disabled={isCommitting}
               className="px-4 py-1.5 rounded-lg bg-[#1B2A4A] text-white hover:bg-[#24365C] text-xs font-medium flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
             >
@@ -866,7 +883,7 @@ export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = (
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-[#FBF0EA] border border-[#F0D5C7] flex items-center justify-center shrink-0 mt-0.5">
+          <div className="w-8 h-8 rounded-lg bg-[#FBF0EA] border border-[#F0D5C7] flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
             {OPERATION_ICONS[operation] || <Sparkles size={16} className="text-[var(--accent-terracotta)]" />}
           </div>
           <div className="flex flex-col">
@@ -993,51 +1010,41 @@ export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = (
         })}
       </div>
 
-      {/* Inline Preview Accordion */}
-      {previewMode && (
-        <div className="p-3 rounded-xl bg-white border border-[var(--border-parchment)] text-xs flex flex-col gap-2 max-h-60 overflow-y-auto">
-          <div className="font-semibold text-xs text-[var(--accent-midnight)] flex items-center justify-between">
-            <span>{previewMode === 'full' ? 'Preview: Full Note' : 'Preview: Changes Only'}</span>
-            <button
-              type="button"
-              onClick={() => setPreviewMode(null)}
-              className="text-[11px] text-[var(--ink-tertiary)] hover:underline"
-            >
-              Close
-            </button>
-          </div>
-          <pre className="font-mono text-[11px] whitespace-pre-wrap text-[var(--ink-primary)] leading-relaxed">
-            {previewMode === 'full'
-              ? data.proposed_content || data.original_content
-              : data.enrichment_addition || data.proposed_content}
-          </pre>
-        </div>
-      )}
-
       {/* Action Footer for Enrichment */}
       {!isCommitted && !isCancelled && (
         <div className="flex items-center justify-between pt-2 border-t border-[var(--border-parchment)] flex-wrap gap-2">
-          {/* Left: Preview buttons */}
+          {/* Left: Preview button */}
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              data-testid="btn-preview-full-note"
-              onClick={handlePreviewFullNote}
-              className="px-2.5 py-1.5 rounded-lg border border-[var(--border-parchment)] hover:bg-white bg-white/70 text-xs text-[var(--ink-primary)] font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-            >
-              <Eye size={13} className="text-[var(--accent-midnight)]" />
-              <span>Preview: Full Note</span>
-            </button>
-
-            <button
-              type="button"
-              data-testid="btn-preview-changes-only"
-              onClick={handlePreviewChangesOnly}
-              className="px-2.5 py-1.5 rounded-lg border border-[var(--border-parchment)] hover:bg-white bg-white/70 text-xs text-[var(--ink-primary)] font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-            >
-              <FileText size={13} className="text-[var(--accent-terracotta)]" />
-              <span>Preview: Changes Only</span>
-            </button>
+            {onOpenDocumentPanel ? (
+              <button
+                type="button"
+                data-testid="btn-open-document-panel"
+                onClick={() => onOpenDocumentPanel(data)}
+                className="px-2.5 py-1.5 rounded-lg border border-[var(--border-parchment)] hover:bg-white bg-white/70 text-xs text-[var(--ink-primary)] font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+              >
+                <Eye size={13} className="text-[var(--accent-midnight)]" />
+                <span>Open Document Panel</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                data-testid="btn-preview-full-note"
+                onClick={() => {
+                  if (onPreviewArtifact) {
+                    onPreviewArtifact({
+                      title: data.title || 'Transformed Note',
+                      content: data.proposed_content || data.original_content || '',
+                      type: 'Note',
+                      subtitle: `Full Transformed Note (${operation})`,
+                    });
+                  }
+                }}
+                className="px-2.5 py-1.5 rounded-lg border border-[var(--border-parchment)] hover:bg-white bg-white/70 text-xs text-[var(--ink-primary)] font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+              >
+                <Eye size={13} className="text-[var(--accent-midnight)]" />
+                <span>Preview: Full Note</span>
+              </button>
+            )}
           </div>
 
           {/* Right: Counter + Edit + Cancel + Apply Changes */}
@@ -1076,7 +1083,7 @@ export const InChatTransformNoteCard: React.FC<InChatTransformNoteCardProps> = (
             <button
               type="button"
               data-testid="btn-apply-changes"
-              onClick={handleApplyChanges}
+              onClick={handleApplyEnrichChanges}
               disabled={isCommitting || selectedCount === 0}
               className="px-4 py-1.5 rounded-lg bg-[#1B2A4A] text-white hover:bg-[#24365C] text-xs font-medium flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
             >

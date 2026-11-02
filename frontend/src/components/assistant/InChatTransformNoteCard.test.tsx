@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { InChatTransformNoteCard } from './InChatTransformNoteCard';
 
 describe('InChatTransformNoteCard', () => {
-  it('renders /transform-note options 9-card interactive grid and usage pills', () => {
+  it('requires explicit operation confirmation before advancing to note selection', () => {
     const onRunCommand = vi.fn();
     const resultData = {
       command: '/transform-note options',
@@ -33,28 +33,35 @@ describe('InChatTransformNoteCard', () => {
 
     expect(screen.getByTestId('transform-note-options-card')).toBeInTheDocument();
     expect(screen.getByText('/transform-note — Intelligent note operations')).toBeInTheDocument();
+    expect(screen.getByTestId('workflow-progress-indicator')).toBeInTheDocument();
 
-    // Verify all 9 tiles
+    // Verify tiles
     expect(screen.getByTestId('transform-option-enrich')).toBeInTheDocument();
     expect(screen.getByTestId('transform-option-shorten')).toBeInTheDocument();
     expect(screen.getByTestId('transform-option-expand')).toBeInTheDocument();
-    expect(screen.getByTestId('transform-option-simplify')).toBeInTheDocument();
-    expect(screen.getByTestId('transform-option-restructure')).toBeInTheDocument();
-    expect(screen.getByTestId('transform-option-improve')).toBeInTheDocument();
-    expect(screen.getByTestId('transform-option-connect')).toBeInTheDocument();
-    expect(screen.getByTestId('transform-option-study')).toBeInTheDocument();
-    expect(screen.getByTestId('transform-option-audit')).toBeInTheDocument();
 
-    // Clicking an operation tile runs the command to trigger note picker
+    // Clicking an operation tile selects it without advancing
+    fireEvent.click(screen.getByTestId('transform-option-shorten'));
+    expect(onRunCommand).not.toHaveBeenCalled();
+
+    // Confirmation bar appears with selected details
+    expect(screen.getByTestId('operation-confirmation-bar')).toBeInTheDocument();
+    expect(screen.getByText(/Selected: shorten/)).toBeInTheDocument();
+
+    // Clicking Confirm Operation button triggers command
+    const confirmBtn = screen.getByTestId('btn-confirm-operation');
+    expect(confirmBtn).toBeInTheDocument();
+    fireEvent.click(confirmBtn);
+    expect(onRunCommand).toHaveBeenCalledWith('/transform-note shorten');
+
+    // Cancel clears selection
     fireEvent.click(screen.getByTestId('transform-option-enrich'));
-    expect(onRunCommand).toHaveBeenCalledWith('/transform-note enrich');
-
-    // Clicking example pill
-    fireEvent.click(screen.getByText('/transform-note shorten "The OSI 7-Layer Reference Model..."'));
-    expect(onRunCommand).toHaveBeenCalledWith('/transform-note shorten "The OSI 7-Layer Reference Model..."');
+    expect(screen.getByTestId('operation-confirmation-bar')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('btn-cancel-operation'));
+    expect(screen.queryByTestId('operation-confirmation-bar')).not.toBeInTheDocument();
   });
 
-  it('renders interactive note selection card when operation is provided without note', () => {
+  it('requires explicit note confirmation before starting execution', () => {
     const onRunCommand = vi.fn();
     const resultData = {
       command: '/transform-note shorten',
@@ -65,7 +72,7 @@ describe('InChatTransformNoteCard', () => {
         card_type: 'select_note',
         operation: 'shorten',
         title: 'Select a note to shorten',
-        prompt: 'Choose a note from your workspace:',
+        prompt: 'Choose a note from your workspace.',
         notes: [
           {
             id: 'note-1',
@@ -94,40 +101,44 @@ describe('InChatTransformNoteCard', () => {
 
     expect(screen.getByTestId('transform-note-select-card')).toBeInTheDocument();
     expect(screen.getByText('Select a note to shorten')).toBeInTheDocument();
-    expect(screen.getByText('Choose a note from your workspace:')).toBeInTheDocument();
+    expect(screen.getByText('Choose a note from your workspace.')).toBeInTheDocument();
     expect(screen.getByTestId('select-note-count-pill')).toHaveTextContent('3 notes');
+    expect(screen.getByTestId('workflow-progress-indicator')).toBeInTheDocument();
 
-    // Verify all 3 notes rendered with word counts and relative times
+    // Verify notes listed
     expect(
       screen.getByText('The OSI 7-Layer Reference Model and Modern Protocol Stacks')
     ).toBeInTheDocument();
-    expect(screen.getByText('556 words · Updated 3 days ago')).toBeInTheDocument();
     expect(
       screen.getByText('Vector Embeddings and Approximate Nearest Neighbor Search')
     ).toBeInTheDocument();
-    expect(screen.getByText('1,842 words · Updated 3 days ago')).toBeInTheDocument();
 
-    // Search filter test
-    const searchInput = screen.getByTestId('select-note-search-input');
-    fireEvent.change(searchInput, { target: { value: 'CRDTs' } });
-    expect(screen.getByTestId('select-note-count-pill')).toHaveTextContent('1 note');
-    expect(
-      screen.getByText('Conflict-Free Replicated Data Types (CRDTs) in Distributed Systems')
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText('The OSI 7-Layer Reference Model and Modern Protocol Stacks')
-    ).not.toBeInTheDocument();
+    // Clicking a note selects it but does NOT execute immediately
+    fireEvent.click(screen.getByTestId('select-note-item-note-1'));
+    expect(onRunCommand).not.toHaveBeenCalled();
 
-    // Clicking note runs the full command immediately
-    fireEvent.click(screen.getByTestId('select-note-item-note-3'));
+    // Note confirmation bar is shown
+    expect(screen.getByTestId('note-confirmation-bar')).toBeInTheDocument();
+    expect(screen.getByText(/1 note selected/)).toBeInTheDocument();
+
+    // Back button returns to operation options
+    const backBtn = screen.getByTestId('btn-back-to-operations');
+    fireEvent.click(backBtn);
+    expect(onRunCommand).toHaveBeenCalledWith('/transform-note');
+
+    // Reselect note and confirm
+    fireEvent.click(screen.getByTestId('select-note-item-note-1'));
+    const confirmBtn = screen.getByTestId('btn-confirm-note');
+    fireEvent.click(confirmBtn);
     expect(onRunCommand).toHaveBeenCalledWith(
-      '/transform-note shorten "Conflict-Free Replicated Data Types (CRDTs) in Distributed Systems"'
+      '/transform-note shorten "The OSI 7-Layer Reference Model and Modern Protocol Stacks"'
     );
   });
 
-  it('renders dedicated Text Transformation Review for shorten with diffs and no Workspace Evidence', () => {
+  it('renders dedicated proposal card with Document Panel launch button and summary deltas', () => {
     const onConfirm = vi.fn();
     const onCancel = vi.fn();
+    const onOpenDocumentPanel = vi.fn();
 
     const proposalData = {
       command: '/transform-note shorten "The OSI 7-Layer Reference Model and Modern Protocol Stacks"',
@@ -139,8 +150,8 @@ describe('InChatTransformNoteCard', () => {
         workflow: 'transform_note',
         title: 'The OSI 7-Layer Reference Model and Modern Protocol Stacks',
         summary: 'Prepared a shortened version of "The OSI 7-Layer Reference Model and Modern Protocol Stacks".',
-        original_content: 'The Open Systems Interconnection (OSI) model, which was developed by ISO in 1984, provides a comprehensive framework...',
-        proposed_content: 'The OSI model (ISO, 1984) provides a standard framework for network communication...',
+        original_content: 'The Open Systems Interconnection (OSI) model, which was developed by ISO in 1984...',
+        proposed_content: 'The OSI model (ISO, 1984) provides a standard framework...',
         original_word_count: 556,
         proposed_word_count: 410,
         word_count_change_percent: -26,
@@ -151,48 +162,52 @@ describe('InChatTransformNoteCard', () => {
           'Preserved key concepts, definitions, and technical accuracy.',
         ],
         diff_lines: [
-          '- The Open Systems Interconnection (OSI) model, which was developed by ISO in 1984, provides a comprehensive framework...',
-          '+ The OSI model (ISO, 1984) provides a standard framework for network communication...',
+          '- The Open Systems Interconnection (OSI) model...',
+          '+ The OSI model (ISO, 1984)...',
         ],
       },
     };
 
-    render(<InChatTransformNoteCard proposal={proposalData} onConfirm={onConfirm} onCancel={onCancel} />);
+    render(
+      <InChatTransformNoteCard
+        proposal={proposalData}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+        onOpenDocumentPanel={onOpenDocumentPanel}
+      />
+    );
 
     expect(screen.getByTestId('transform-note-proposal-card')).toBeInTheDocument();
     expect(screen.getByText('Transform Note · Shorten')).toBeInTheDocument();
-    expect(
-      screen.getByText('Prepared a shortened version of "The OSI 7-Layer Reference Model and Modern Protocol Stacks".')
-    ).toBeInTheDocument();
+    expect(screen.getByTestId('workflow-progress-indicator')).toBeInTheDocument();
 
-    // Stat line verification
+    // Live word count stat line
     expect(screen.getByText(/Original: 556 words → Proposed: 410 words \(-26%\)/)).toBeInTheDocument();
 
     // What changed bullet points
     expect(screen.getByText('What changed')).toBeInTheDocument();
     expect(screen.getByText('Condensed verbose explanations and redundant details.')).toBeInTheDocument();
-    expect(screen.getByText('Reorganized content for clearer flow.')).toBeInTheDocument();
-    expect(screen.getByText('Preserved key concepts, definitions, and technical accuracy.')).toBeInTheDocument();
-
-    // Diff preview verification
-    expect(screen.getByTestId('btn-preview-changes-only')).toBeInTheDocument();
-    expect(screen.getByTestId('btn-preview-full-note')).toBeInTheDocument();
 
     // Critical assertion: NO Workspace Evidence indicator
     expect(screen.queryByText('Workspace Evidence')).not.toBeInTheDocument();
     expect(screen.queryByText('Supporting Passage')).not.toBeInTheDocument();
 
-    // Toggle Preview: Full Note
-    fireEvent.click(screen.getByTestId('btn-preview-full-note'));
-    expect(
-      screen.getByText('The OSI model (ISO, 1984) provides a standard framework for network communication...')
-    ).toBeInTheDocument();
+    // Document Panel launch button
+    const openPanelBtn = screen.getByTestId('btn-open-document-panel');
+    expect(openPanelBtn).toBeInTheDocument();
+    fireEvent.click(openPanelBtn);
+    expect(onOpenDocumentPanel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'shorten',
+        workflow: 'transform_note',
+      })
+    );
 
-    // Click Apply Changes
+    // Apply Changes button
     fireEvent.click(screen.getByTestId('btn-apply-changes'));
     expect(onConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: 'The OSI model (ISO, 1984) provides a standard framework for network communication...',
+        content: 'The OSI model (ISO, 1984) provides a standard framework...',
       })
     );
   });
@@ -200,7 +215,6 @@ describe('InChatTransformNoteCard', () => {
   it('renders Transform Note · Enrich proposal card with citations and supporting evidence', () => {
     const onConfirm = vi.fn();
     const onCancel = vi.fn();
-    const onPreviewArtifact = vi.fn();
 
     const proposalData = {
       command: '/transform-note enrich "Vector Embeddings"',
@@ -248,7 +262,6 @@ describe('InChatTransformNoteCard', () => {
         proposal={proposalData}
         onConfirm={onConfirm}
         onCancel={onCancel}
-        onPreviewArtifact={onPreviewArtifact}
       />
     );
 
@@ -264,23 +277,6 @@ describe('InChatTransformNoteCard', () => {
     // Toggle 3rd proposal to select it
     fireEvent.click(screen.getByTestId('proposal-item-p-3'));
     expect(screen.getByTestId('selected-count-label')).toHaveTextContent('3 selected');
-
-    // Click Preview: Full Note
-    fireEvent.click(screen.getByTestId('btn-preview-full-note'));
-    expect(onPreviewArtifact).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'Vector Embeddings and Approximate Nearest Neighbor Search',
-        type: 'Note',
-      })
-    );
-
-    // Click Preview: Changes Only
-    fireEvent.click(screen.getByTestId('btn-preview-changes-only'));
-    expect(onPreviewArtifact).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'Note Diff',
-      })
-    );
 
     // Click Apply Changes
     fireEvent.click(screen.getByTestId('btn-apply-changes'));
