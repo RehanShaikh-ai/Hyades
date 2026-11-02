@@ -9,7 +9,7 @@ describe('InChatTransformNoteCard', () => {
       command: '/transform-note options',
       actionId: 'notes.get',
       status: 'completed',
-      message: 'Transform, improve, and develop your notes. Use one of the operations below:',
+      message: 'Transform, improve, and develop your notes. Choose an operation to continue:',
       data: {
         card_type: 'transform_options',
         title: '/transform-note — Intelligent note operations',
@@ -24,11 +24,8 @@ describe('InChatTransformNoteCard', () => {
           { operation: 'study', title: 'study', description: 'Create summaries, questions, or flashcards' },
           { operation: 'audit', title: 'audit', description: 'Check claims, consistency, and uncertainty' },
         ],
-        usage_examples: [
-          '/transform-note enrich "<note title>"',
-          '/transform-note shorten "<note title>"',
-          '/transform-note expand "<note title>"',
-        ],
+        usage: '/transform-note <operation> "<note title>"',
+        example: '/transform-note shorten "The OSI 7-Layer Reference Model..."',
       },
     };
 
@@ -48,16 +45,159 @@ describe('InChatTransformNoteCard', () => {
     expect(screen.getByTestId('transform-option-study')).toBeInTheDocument();
     expect(screen.getByTestId('transform-option-audit')).toBeInTheDocument();
 
-    // Clicking an operation tile
+    // Clicking an operation tile runs the command to trigger note picker
     fireEvent.click(screen.getByTestId('transform-option-enrich'));
-    expect(onRunCommand).toHaveBeenCalledWith('/transform-note enrich ');
+    expect(onRunCommand).toHaveBeenCalledWith('/transform-note enrich');
 
-    // Clicking usage pill
-    fireEvent.click(screen.getByText('/transform-note shorten "<note title>"'));
-    expect(onRunCommand).toHaveBeenCalledWith('/transform-note shorten "<note title>"');
+    // Clicking example pill
+    fireEvent.click(screen.getByText('/transform-note shorten "The OSI 7-Layer Reference Model..."'));
+    expect(onRunCommand).toHaveBeenCalledWith('/transform-note shorten "The OSI 7-Layer Reference Model..."');
   });
 
-  it('renders Transform Note · Enrich proposal card matching reference specification', () => {
+  it('renders interactive note selection card when operation is provided without note', () => {
+    const onRunCommand = vi.fn();
+    const resultData = {
+      command: '/transform-note shorten',
+      actionId: 'notes.get',
+      status: 'completed',
+      message: 'Select a note to shorten',
+      data: {
+        card_type: 'select_note',
+        operation: 'shorten',
+        title: 'Select a note to shorten',
+        prompt: 'Choose a note from your workspace:',
+        notes: [
+          {
+            id: 'note-1',
+            title: 'The OSI 7-Layer Reference Model and Modern Protocol Stacks',
+            word_count: 556,
+            updated_at_relative: 'Updated 3 days ago',
+          },
+          {
+            id: 'note-2',
+            title: 'Vector Embeddings and Approximate Nearest Neighbor Search',
+            word_count: 1842,
+            updated_at_relative: 'Updated 3 days ago',
+          },
+          {
+            id: 'note-3',
+            title: 'Conflict-Free Replicated Data Types (CRDTs) in Distributed Systems',
+            word_count: 728,
+            updated_at_relative: 'Updated 5 days ago',
+          },
+        ],
+        total_notes: 3,
+      },
+    };
+
+    render(<InChatTransformNoteCard result={resultData} onRunCommand={onRunCommand} />);
+
+    expect(screen.getByTestId('transform-note-select-card')).toBeInTheDocument();
+    expect(screen.getByText('Select a note to shorten')).toBeInTheDocument();
+    expect(screen.getByText('Choose a note from your workspace:')).toBeInTheDocument();
+    expect(screen.getByTestId('select-note-count-pill')).toHaveTextContent('3 notes');
+
+    // Verify all 3 notes rendered with word counts and relative times
+    expect(
+      screen.getByText('The OSI 7-Layer Reference Model and Modern Protocol Stacks')
+    ).toBeInTheDocument();
+    expect(screen.getByText('556 words · Updated 3 days ago')).toBeInTheDocument();
+    expect(
+      screen.getByText('Vector Embeddings and Approximate Nearest Neighbor Search')
+    ).toBeInTheDocument();
+    expect(screen.getByText('1,842 words · Updated 3 days ago')).toBeInTheDocument();
+
+    // Search filter test
+    const searchInput = screen.getByTestId('select-note-search-input');
+    fireEvent.change(searchInput, { target: { value: 'CRDTs' } });
+    expect(screen.getByTestId('select-note-count-pill')).toHaveTextContent('1 note');
+    expect(
+      screen.getByText('Conflict-Free Replicated Data Types (CRDTs) in Distributed Systems')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('The OSI 7-Layer Reference Model and Modern Protocol Stacks')
+    ).not.toBeInTheDocument();
+
+    // Clicking note runs the full command immediately
+    fireEvent.click(screen.getByTestId('select-note-item-note-3'));
+    expect(onRunCommand).toHaveBeenCalledWith(
+      '/transform-note shorten "Conflict-Free Replicated Data Types (CRDTs) in Distributed Systems"'
+    );
+  });
+
+  it('renders dedicated Text Transformation Review for shorten with diffs and no Workspace Evidence', () => {
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+
+    const proposalData = {
+      command: '/transform-note shorten "The OSI 7-Layer Reference Model and Modern Protocol Stacks"',
+      commandName: 'Transform Note',
+      actionId: 'notes.update',
+      status: 'preview' as const,
+      data: {
+        operation: 'shorten',
+        workflow: 'transform_note',
+        title: 'The OSI 7-Layer Reference Model and Modern Protocol Stacks',
+        summary: 'Prepared a shortened version of "The OSI 7-Layer Reference Model and Modern Protocol Stacks".',
+        original_content: 'The Open Systems Interconnection (OSI) model, which was developed by ISO in 1984, provides a comprehensive framework...',
+        proposed_content: 'The OSI model (ISO, 1984) provides a standard framework for network communication...',
+        original_word_count: 556,
+        proposed_word_count: 410,
+        word_count_change_percent: -26,
+        word_count_change_str: '(-26%)',
+        what_changed: [
+          'Condensed verbose explanations and redundant details.',
+          'Reorganized content for clearer flow.',
+          'Preserved key concepts, definitions, and technical accuracy.',
+        ],
+        diff_lines: [
+          '- The Open Systems Interconnection (OSI) model, which was developed by ISO in 1984, provides a comprehensive framework...',
+          '+ The OSI model (ISO, 1984) provides a standard framework for network communication...',
+        ],
+      },
+    };
+
+    render(<InChatTransformNoteCard proposal={proposalData} onConfirm={onConfirm} onCancel={onCancel} />);
+
+    expect(screen.getByTestId('transform-note-proposal-card')).toBeInTheDocument();
+    expect(screen.getByText('Transform Note · Shorten')).toBeInTheDocument();
+    expect(
+      screen.getByText('Prepared a shortened version of "The OSI 7-Layer Reference Model and Modern Protocol Stacks".')
+    ).toBeInTheDocument();
+
+    // Stat line verification
+    expect(screen.getByText(/Original: 556 words → Proposed: 410 words \(-26%\)/)).toBeInTheDocument();
+
+    // What changed bullet points
+    expect(screen.getByText('What changed')).toBeInTheDocument();
+    expect(screen.getByText('Condensed verbose explanations and redundant details.')).toBeInTheDocument();
+    expect(screen.getByText('Reorganized content for clearer flow.')).toBeInTheDocument();
+    expect(screen.getByText('Preserved key concepts, definitions, and technical accuracy.')).toBeInTheDocument();
+
+    // Diff preview verification
+    expect(screen.getByTestId('btn-preview-changes-only')).toBeInTheDocument();
+    expect(screen.getByTestId('btn-preview-full-note')).toBeInTheDocument();
+
+    // Critical assertion: NO Workspace Evidence indicator
+    expect(screen.queryByText('Workspace Evidence')).not.toBeInTheDocument();
+    expect(screen.queryByText('Supporting Passage')).not.toBeInTheDocument();
+
+    // Toggle Preview: Full Note
+    fireEvent.click(screen.getByTestId('btn-preview-full-note'));
+    expect(
+      screen.getByText('The OSI model (ISO, 1984) provides a standard framework for network communication...')
+    ).toBeInTheDocument();
+
+    // Click Apply Changes
+    fireEvent.click(screen.getByTestId('btn-apply-changes'));
+    expect(onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'The OSI model (ISO, 1984) provides a standard framework for network communication...',
+      })
+    );
+  });
+
+  it('renders Transform Note · Enrich proposal card with citations and supporting evidence', () => {
     const onConfirm = vi.fn();
     const onCancel = vi.fn();
     const onPreviewArtifact = vi.fn();

@@ -772,10 +772,12 @@ export const InChatActionProposalCard: React.FC<InChatActionProposalCardProps> =
   };
 
   if (
-    cmd === '/transform-note' ||
-    cmd === '/enrich-note' ||
+    cmd.startsWith('/transform-note') ||
+    cmd.startsWith('/enrich-note') ||
     workflow === 'transform_note' ||
-    workflow === 'enrich_note'
+    workflow === 'enrich_note' ||
+    rawData.card_type === 'transform_proposal' ||
+    rawData.card_type === 'select_note'
   ) {
     return (
       <InChatTransformNoteCard

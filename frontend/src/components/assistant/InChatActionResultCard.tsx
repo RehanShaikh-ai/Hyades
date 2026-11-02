@@ -44,7 +44,10 @@ export const InChatActionResultCard: React.FC<InChatActionResultCardProps> = ({
     data.card_type === 'transform_options' ||
     data.card_type === 'transform_audit' ||
     data.card_type === 'transform_connections' ||
-    cmd === '/transform-note'
+    data.card_type === 'select_note' ||
+    data.card_type === 'transform_proposal' ||
+    data.workflow === 'transform_note' ||
+    cmd.startsWith('/transform-note')
   ) {
     return (
       <InChatTransformNoteCard
