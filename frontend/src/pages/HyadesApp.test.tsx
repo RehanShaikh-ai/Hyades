@@ -105,6 +105,9 @@ describe('HyadesApp Canonical UI', () => {
     expect(screen.getByRole('button', { name: /^Library$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Observatory$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Stella$/i })).toBeInTheDocument();
+    // The top-level Actions tab must NOT be rendered in navigation
+    expect(screen.queryByRole('button', { name: /^Actions$/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('nav-item-actions')).not.toBeInTheDocument();
 
     // Default destination is Overview: shows "Your Knowledge" section heading
     expect(await screen.findByText('Your Knowledge')).toBeInTheDocument();

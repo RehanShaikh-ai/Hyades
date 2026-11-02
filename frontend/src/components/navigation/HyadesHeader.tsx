@@ -249,22 +249,6 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
             <span>Stella</span>
           </button>
 
-          <button
-            ref={(el) => { tabRefs.current.actions = el; }}
-            type="button"
-            data-testid="nav-item-actions"
-            aria-label="Actions"
-            onClick={() => onNavigate('actions')}
-            className={`nav-item px-3 py-1 text-xs rounded-full transition-colors cursor-pointer flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-midnight)] ${
-              currentDestination === 'actions'
-                ? 'active font-semibold text-[var(--ink-primary)] bg-white shadow-2xs'
-                : 'text-[var(--ink-secondary)] hover:text-[var(--ink-primary)] hover:bg-white/50'
-            }`}
-            aria-current={currentDestination === 'actions' ? 'page' : undefined}
-          >
-            <span>Actions</span>
-          </button>
-
           {/* Gliding terracotta underline indicator */}
           <span
             className="nav-indicator"
@@ -582,7 +566,7 @@ export const HyadesHeader: React.FC<HyadesHeaderProps> = ({
                   Core Destinations
                 </div>
                 <div className="space-y-1">
-                  {(['overview', 'library', 'observatory', 'stella', 'actions'] as HyadesDestination[]).map((dest) => {
+                  {(['overview', 'library', 'observatory', 'stella'] as HyadesDestination[]).map((dest) => {
                     const isActive = currentDestination === dest;
                     return (
                       <button

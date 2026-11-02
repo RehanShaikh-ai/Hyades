@@ -302,12 +302,15 @@ export const HyadesApp: React.FC<HyadesAppProps> = ({
         )}
 
         {currentDestination === 'actions' && (
-          <HyadesActions
+          <HyadesStella
             workspaceId={effectiveWorkspaceId}
-            userId={selectedUser?.id || initialUserId || selectedWorkspace?.owner_id || users[0]?.id}
-            onNavigateToLibrary={() => setCurrentDestination('library')}
+            initialContext={stellaContext}
+            onNavigateToCollections={() => navigateTo('collections')}
+            onNavigateToThreads={() => navigateTo('threads')}
             onNavigateToObservatory={handleNavigateToObservatory}
-            onNavigateToStella={handleNavigateToStella}
+            onNavigateToLibrary={() => setCurrentDestination('library')}
+            onNavigateToNote={handleNavigateToNote}
+            environmentIndex={environmentIndex}
           />
         )}
 
