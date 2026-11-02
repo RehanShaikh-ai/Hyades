@@ -12,6 +12,7 @@ Generates realistic demonstration workspaces populated with:
 - Safe cleanup mechanism leaving user content completely untouched
 """
 
+import json
 import logging
 import uuid
 from typing import Any
@@ -31,6 +32,7 @@ from app.models.source import Source
 from app.models.tag import Tag
 from app.models.workspace import Workspace
 from app.services import (
+    embedding_service,
     graph_index_service,
     note_service,
     vector_service,
