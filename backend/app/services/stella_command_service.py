@@ -5842,13 +5842,13 @@ def execute_stella_action_command(
             op_name = None
             raw_note_ident = None
             if args:
-                op_name = args[0].strip().lower()
+                op_name = args[0].strip().strip('"\'').lower()
                 if len(args) > 1:
-                    raw_note_ident = " ".join(args[1:]).strip()
+                    raw_note_ident = " ".join(args[1:]).strip().strip('"\'')
             if not op_name:
-                op_name = str(payload.get("operation") or "").strip().lower()
+                op_name = str(payload.get("operation") or "").strip().strip('"\'').lower()
             if not raw_note_ident:
-                raw_note_ident = str(payload.get("note") or payload.get("note_id") or payload.get("target") or "").strip()
+                raw_note_ident = str(payload.get("note") or payload.get("note_id") or payload.get("target") or "").strip().strip('"\'')
 
             if not op_name or op_name == "options":
                 op_name = "options"

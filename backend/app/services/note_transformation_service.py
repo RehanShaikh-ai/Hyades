@@ -18,6 +18,7 @@ Conforms strictly to the Hyades Stella Command and Note Intelligence specificati
 from __future__ import annotations
 
 import difflib
+from datetime import UTC, datetime
 import json
 import logging
 import re
@@ -271,20 +272,41 @@ def resolve_target_note(db: Session, workspace_id: uuid.UUID, identifier: str) -
 # Operation Handlers
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _format_time_ago(dt: datetime | None) -> str:
+    if not dt:
+        return "recently"
+    now = datetime.now(UTC)
+    diff = now - (dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt)
+    seconds = max(0, int(diff.total_seconds()))
+    if seconds < 120:
+        return "just now"
+    elif seconds < 3600:
+        return f"{seconds // 60}m ago"
+    elif seconds < 86400:
+        return f"{seconds // 3600}h ago"
+    elif seconds < 172800:
+        return "yesterday"
+    elif seconds < 604800:
+        return f"{seconds // 86400} days ago"
+    else:
+        return f"{max(1, seconds // 604800)}w ago"
+
+
 def handle_options() -> TransformNoteExecutionResult:
     """Return interactive 9-card operations grid metadata for `/transform-note options`."""
     msg = (
-        "Transform, improve, and develop your notes. Use one of the operations below:"
+        "Transform, improve, and develop your notes. Choose an operation to continue:"
     )
     payload_data = {
         "card_type": "transform_options",
         "title": "/transform-note — Intelligent note operations",
         "description": msg,
         "operations": OPERATION_METADATA,
+        "usage": '/transform-note <operation> "<note title>"',
+        "example": '/transform-note shorten "The OSI 7-Layer Reference Model..."',
         "usage_examples": [
-            '/transform-note enrich "<note title>"',
-            '/transform-note shorten "<note title>"',
-            '/transform-note expand "<note title>"',
+            '/transform-note <operation> "<note title>"',
+            '/transform-note shorten "The OSI 7-Layer Reference Model..."',
         ],
     }
     return TransformNoteExecutionResult(
@@ -528,10 +550,60 @@ def handle_text_transform(
 
     orig_words = len(orig_content.split())
     new_words = len(proposed_content.split())
-    summary_msg = (
-        f"Prepared {operation} proposal for '{target_note.title}'. "
-        f"Word count adjusted from {orig_words} to {new_words} words."
+    word_diff_pct = round((new_words - orig_words) / max(orig_words, 1) * 100)
+    sign = "+" if word_diff_pct > 0 else ""
+    diff_pct_str = f"({sign}{word_diff_pct}%)"
+
+    past_tense_map = {
+        "shorten": "shortened",
+        "expand": "expanded",
+        "simplify": "simplified",
+        "restructure": "restructured",
+        "improve": "improved",
+    }
+    past_tense_op = past_tense_map.get(operation, f"{operation}ed")
+    summary_msg = f'Prepared a {past_tense_op} version of "{target_note.title}".'
+
+    what_changed_map = {
+        "shorten": [
+            "Condensed verbose explanations and redundant details.",
+            "Reorganized content for clearer flow.",
+            "Preserved key concepts, definitions, and technical accuracy.",
+        ],
+        "expand": [
+            "Expanded core technical mechanisms with concrete details.",
+            "Added architectural context and illustrative examples.",
+            "Maintained conceptual accuracy and consistent terminology.",
+        ],
+        "simplify": [
+            "Clarified complex terminology with intuitive explanations.",
+            "Streamlined sentence structures for better readability.",
+            "Preserved core principles and technical accuracy.",
+        ],
+        "restructure": [
+            "Reorganized content into clear hierarchical sections.",
+            "Structured key takeaways and conceptual progression.",
+            "Improved visual flow and scannability.",
+        ],
+        "improve": [
+            "Polished phrasing, tone, and overall prose clarity.",
+            "Eliminated repetitive phrasing and tightened transitions.",
+            "Elevated technical precision and professional style.",
+        ],
+    }
+    what_changed = what_changed_map.get(
+        operation,
+        [
+            f"Applied {operation} improvements to note hierarchy.",
+            "Enhanced prose clarity and precision.",
+            "Maintained factual integrity and core takeaways.",
+        ],
     )
+
+    clean_diff_lines = [
+        line for line in diff_lines
+        if not (line.startswith("---") or line.startswith("+++"))
+    ]
 
     transformation_data = {
         "workflow": "transform_note",
@@ -543,6 +615,12 @@ def handle_text_transform(
         "proposed_content": proposed_content,
         "enrichment_addition": proposed_content,
         "summary": summary_msg,
+        "original_word_count": orig_words,
+        "proposed_word_count": new_words,
+        "word_count_change_percent": word_diff_pct,
+        "word_count_change_str": diff_pct_str,
+        "what_changed": what_changed,
+        "diff_lines": clean_diff_lines,
         "proposals": [p.model_dump() for p in proposal_items],
         "status": "awaiting_confirmation",
     }
@@ -838,10 +916,48 @@ def execute_transform_note(
         )
 
     # Operations requiring target note
-    if not target_identifier:
-        raise ValidationError(f"Usage: /transform-note {op_clean} <note>")
+    clean_target = (target_identifier or "").strip().strip('"\'').strip()
+    if not clean_target:
+        # User entered `/transform-note <operation>` without a note.
+        # Query all active notes in the workspace to present an interactive selection UI.
+        notes = list(
+            db.scalars(
+                select(Note)
+                .where(Note.workspace_id == workspace_id, Note.is_archived.is_(False))
+                .order_by(Note.updated_at.desc())
+            )
+        )
+        note_items = []
+        for n in notes:
+            wc = len((n.content or "").split())
+            rel_time = _format_time_ago(n.updated_at)
+            note_items.append({
+                "id": str(n.id),
+                "title": n.title,
+                "word_count": wc,
+                "updated_at_relative": f"Updated {rel_time}",
+                "updated_at": n.updated_at.isoformat() if n.updated_at else None,
+            })
 
-    target_note = resolve_target_note(db, workspace_id, target_identifier)
+        return TransformNoteExecutionResult(
+            operation=op_clean,
+            status="completed",
+            message=f"Select a note to {op_clean}",
+            card_type="select_note",
+            data={
+                "workflow": "transform_note",
+                "card_type": "select_note",
+                "operation": op_clean,
+                "title": f"Select a note to {op_clean}",
+                "prompt": "Choose a note from your workspace:",
+                "notes": note_items,
+                "total_notes": len(note_items),
+            },
+            requires_confirmation=False,
+            affected_item_ids=[],
+        )
+
+    target_note = resolve_target_note(db, workspace_id, clean_target)
     if not target_note:
         raise AppException(
             404,

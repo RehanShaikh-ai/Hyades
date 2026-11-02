@@ -129,6 +129,45 @@ def test_transform_note_options(client: TestClient, test_setup):
     assert any(o["operation"] == "shorten" for o in ops)
 
 
+def test_transform_note_bare_command_returns_options(client: TestClient, test_setup):
+    """Entering /transform-note alone defaults to options discovery grid."""
+    ws = test_setup["ws"]
+    resp = client.post(
+        f"/api/v1/workspaces/{ws.id}/stella/commands/execute",
+        json={"command": "/transform-note"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "completed"
+    assert not data["requires_confirmation"]
+    assert data["data"]["card_type"] == "transform_options"
+    assert len(data["data"]["operations"]) == 9
+
+
+def test_transform_note_operation_without_note_prompts_interactive_selection(client: TestClient, test_setup):
+    """Entering an operation without a note returns interactive note selection card."""
+    ws = test_setup["ws"]
+    for op in ["shorten", "simplify", "expand", "enrich"]:
+        resp = client.post(
+            f"/api/v1/workspaces/{ws.id}/stella/commands/execute",
+            json={"command": f"/transform-note {op}"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "completed"
+        assert not data["requires_confirmation"]
+        assert data["data"]["card_type"] == "select_note"
+        assert data["data"]["operation"] == op
+        assert f"Select a note to {op}" in data["message"]
+        notes = data["data"]["notes"]
+        assert len(notes) == 2
+        titles = [n["title"] for n in notes]
+        assert "Vector Embeddings and Approximate Nearest Neighbor Search" in titles
+        assert "Cognitive Science of Spaced Repetition" in titles
+        assert all("word_count" in n and n["word_count"] > 0 for n in notes)
+        assert all("updated_at_relative" in n for n in notes)
+
+
 def test_transform_note_enrich_and_legacy_equivalence(client: TestClient, test_setup):
     ws = test_setup["ws"]
     note1 = test_setup["note1"]
@@ -173,6 +212,12 @@ def test_transform_note_text_transformations_lifecycle(client: TestClient, db_se
         assert data["confirmation_token"] is not None
         assert "original_content" in data["data"]
         assert "proposed_content" in data["data"]
+        assert "what_changed" in data["data"]
+        assert len(data["data"]["what_changed"]) >= 3
+        assert "diff_lines" in data["data"]
+        assert "original_word_count" in data["data"]
+        assert "proposed_word_count" in data["data"]
+        assert "word_count_change_percent" in data["data"]
         assert len(data["data"]["proposals"]) >= 1
 
         # Commit the transformation proposal
