@@ -328,6 +328,48 @@ AVAILABLE_COMMANDS: list[StellaCommandInfo] = [
         ],
     ),
     StellaCommandInfo(
+        command="/transform-note",
+        name="Transform Note",
+        description="Intelligently transform, enrich, simplify, or audit notes with AI",
+        syntax="/transform-note <operation> <note>",
+        example='/transform-note enrich "Vector Embeddings and Approximate Nearest Neighbor Search"',
+        examples=[
+            '/transform-note options',
+            '/transform-note enrich "Vector Embeddings and Approximate Nearest Neighbor Search"',
+            '/transform-note shorten "Cognitive Science of Spaced Repetition"',
+            '/transform-note expand "Offline-First Architecture"',
+            '/transform-note simplify "CRDTs in Distributed Systems"',
+            '/transform-note restructure "Operating System Process Isolation"',
+            '/transform-note improve "Property-Based Testing"',
+            '/transform-note connect "Vector Embeddings"',
+            '/transform-note study "Spaced Repetition"',
+            '/transform-note audit "Machine Learning Model Evaluation"',
+        ],
+        category="write",
+        action_id="notes.update",
+        execution_type="proposal",
+        requires_confirmation=True,
+        arguments=[
+            StellaArgumentDef(
+                name="operation",
+                label="Operation",
+                arg_type="free_text",
+                required=True,
+                placeholder="Operation: enrich, shorten, expand, simplify, restructure, improve, connect, study, audit, options",
+                description="Transformation operation to execute",
+            ),
+            StellaArgumentDef(
+                name="note",
+                label="Note",
+                arg_type="resource",
+                required=False,
+                resource_types=["note"],
+                placeholder="Select note to transform...",
+                description="Target note in the current workspace",
+            ),
+        ],
+    ),
+    StellaCommandInfo(
         command="/enrich-note",
         name="Enrich Note",
         description="Enrich a note with related workspace concepts, citations, and missing context",
@@ -1456,6 +1498,38 @@ def get_command_suggestions(
             )
     else:
         arg_def = cmd_def.arguments[arg_index]
+    if clean_cmd == "/transform-note" and arg_index == 0:
+        from app.services.note_transformation_service import OPERATION_METADATA
+        op_items = []
+        clean_q = query.strip().lower()
+        all_ops = list(OPERATION_METADATA) + [{
+            "operation": "options",
+            "title": "options",
+            "name": "Options",
+            "description": "View all available intelligent note operations in an interactive grid",
+            "icon": "sliders",
+            "example": "/transform-note options",
+        }]
+        for meta in all_ops:
+            op_name = meta["operation"]
+            if not clean_q or clean_q in op_name.lower() or clean_q in meta["description"].lower():
+                op_items.append(
+                    StellaSuggestionItem(
+                        id=f"op-{op_name}",
+                        title=op_name,
+                        item_type="operation",
+                        subtitle=meta["description"],
+                        snippet=meta["example"],
+                    )
+                )
+        return StellaSuggestionsResponse(
+            items=op_items,
+            command=command,
+            query=query,
+            arg_index=0,
+            total=len(op_items),
+        )
+
     if arg_def.arg_type != "resource":
         # Free-text arguments never trigger resource pickers
         return StellaSuggestionsResponse(
@@ -5668,7 +5742,7 @@ def execute_stella_action_command(
         # Dynamic content recomputation for enrichment with selective proposals
         if proposal_obj and proposal_obj.proposal_payload:
             wflow = proposal_obj.proposal_payload.get("workflow")
-            if wflow == "enrich_note":
+            if wflow in ("enrich_note", "transform_note"):
                 orig_c = proposal_obj.proposal_payload.get("original_content", "")
                 all_props = proposal_obj.proposal_payload.get("proposals", [])
                 sel_ids = parameters.get("selected_proposal_ids")
@@ -5753,144 +5827,74 @@ def execute_stella_action_command(
     payload: dict[str, Any] = dict(parameters)
 
     # ── Agentic Operations Handlers ─────────────────────────────────────────
-    if clean_cmd == "/enrich-note":
-        raw_note_ident = (
-            " ".join(args).strip()
-            if len(args) > 1
-            else (args[0] if args else str(payload.get("note_id", "")).strip())
-        )
-        if not raw_note_ident:
-            raise ValidationError("Usage: /enrich-note <note>")
-        target_note = _resolve_note(db, workspace_id, raw_note_ident)
-        if not target_note and args:
-            target_note = _resolve_note(db, workspace_id, args[0])
-        if not target_note or target_note.workspace_id != workspace_id:
-            raise AppException(
-                404, "NOTE_NOT_FOUND", f"Could not find note '{raw_note_ident}' in this workspace."
+    if clean_cmd in ("/transform-note", "/enrich-note"):
+        from app.services.note_transformation_service import execute_transform_note
+
+        if clean_cmd == "/enrich-note":
+            op_name = "enrich"
+            raw_note_ident = (
+                " ".join(args).strip()
+                if len(args) > 1
+                else (args[0] if args else str(payload.get("note", payload.get("note_id", ""))).strip())
             )
+        else:
+            # /transform-note [operation] [note]
+            op_name = None
+            raw_note_ident = None
+            if args:
+                op_name = args[0].strip().lower()
+                if len(args) > 1:
+                    raw_note_ident = " ".join(args[1:]).strip()
+            if not op_name:
+                op_name = str(payload.get("operation") or "").strip().lower()
+            if not raw_note_ident:
+                raw_note_ident = str(payload.get("note") or payload.get("note_id") or payload.get("target") or "").strip()
 
-        from app.services.note_enrichment_service import enrich_note_workflow
+            if not op_name or op_name == "options":
+                op_name = "options"
 
-        enrich_result = enrich_note_workflow(db, workspace_id, target_note)
-
-        enrichment_data = {
-            "proposed_action": "notes.update",
-            "workflow": "enrich_note",
-            "outcome": enrich_result.outcome,
-            "note_id": str(target_note.id),
-            "title": target_note.title,
-            "original_content": enrich_result.original_content,
-            "enrichment_addition": enrich_result.enrichment_addition,
-            "proposed_content": enrich_result.proposed_content,
-            "summary": enrich_result.summary,
-            "proposals": [p.model_dump() for p in enrich_result.proposals],
-            "unresolved_gaps": enrich_result.unresolved_gaps,
-            "research_directions": enrich_result.research_directions,
-            "rejected_evidence": enrich_result.rejected_evidence,
-            "suggested_connections": enrich_result.suggested_connections,
-            "related_items": enrich_result.related_items,
-            "status": "awaiting_confirmation" if enrich_result.proposals else "completed",
-        }
-
-        # If no changes are suggested or no reliable proposals could be constructed
-        if not enrich_result.proposals or enrich_result.outcome in ("no_changes_suggested", "insufficient_information"):
-            outcome_msg = enrich_result.summary
-            completed_res = {
-                "command": command,
-                "action_id": "notes.update",
-                "status": "completed",
-                "message": outcome_msg,
-                "data": enrichment_data,
-                "proposal_id": None,
-                "confirmation_token": None,
-                "requires_confirmation": False,
-                "affected_item_ids": [str(target_note.id)],
-            }
-            _record_conversation_exchange(
-                db, conversation_id, user_cmd_content, outcome_msg, action_result=completed_res
-            )
-            return StellaCommandExecuteResponse(
-                command=command,
-                action_id="notes.update",
-                status="completed",
-                message=outcome_msg,
-                data=enrichment_data,
-                proposal_id=None,
-                confirmation_token=None,
-                requires_confirmation=False,
-                affected_item_ids=[str(target_note.id)],
-            )
-
-        envelope = action_execution_service.execute_action(
+        transform_res = execute_transform_note(
             db=db,
             workspace_id=workspace_id,
-            action_id="notes.update",
-            request=ActionExecuteRequest(
-                mode="propose",
-                input={
-                    "note_id": str(target_note.id),
-                    "title": target_note.title,
-                    "content": enrich_result.proposed_content,
-                    "append_content": enrich_result.enrichment_addition,
-                },
-                idempotency_key=str(uuid.uuid4()),
-            ),
+            operation=op_name,
+            target_identifier=raw_note_ident,
+            command_str=command,
         )
-        prop = envelope.proposals[0] if envelope.proposals else None
-        if prop:
-            prop_row = db.get(ActionProposal, prop.proposal_id)
-            if prop_row:
-                prop_row.proposal_payload = {
-                    **(prop_row.proposal_payload or {}),
-                    **enrichment_data,
-                    "content": enrich_result.proposed_content,
-                }
-                db.commit()
 
-        outcome_msg = (
-            f"Prepared {len(enrich_result.proposals)} enrichment proposal(s) for '{target_note.title}'. "
-            f"Review additions and confirm to apply."
-        )
-        enrich_res = {
+        res_dict = {
             "command": command,
-            "action_id": "notes.update",
-            "status": "proposed",
-            "message": outcome_msg,
-            "data": enrichment_data,
-            "proposal_id": str(prop.proposal_id) if prop else None,
-            "confirmation_token": prop.confirmation_token if prop else None,
-            "requires_confirmation": True,
-            "affected_item_ids": [str(target_note.id)],
+            "action_id": "notes.update" if transform_res.requires_confirmation else "notes.get",
+            "status": transform_res.status,
+            "message": transform_res.message,
+            "card_type": transform_res.card_type,
+            "data": transform_res.data,
+            "proposal_id": transform_res.proposal_id,
+            "confirmation_token": transform_res.confirmation_token,
+            "requires_confirmation": transform_res.requires_confirmation,
+            "affected_item_ids": transform_res.affected_item_ids,
         }
+        if transform_res.card_type == "flashcards" and "flashcardDeck" in transform_res.data:
+            res_dict["flashcardDeck"] = transform_res.data["flashcardDeck"]
+
         _record_conversation_exchange(
-            db, conversation_id, user_cmd_content, outcome_msg, action_result=enrich_res
-        )
-        return StellaCommandExecuteResponse(
-            command=command,
-            action_id="notes.update",
-            status="proposed",
-            message=outcome_msg,
-            data=enrichment_data,
-            proposal_id=str(prop.proposal_id) if prop else None,
-            confirmation_token=prop.confirmation_token if prop else None,
-            requires_confirmation=True,
-            affected_item_ids=[str(target_note.id)],
-        )
-        _record_conversation_exchange(
-            db, conversation_id, user_cmd_content, outcome_msg, action_result=enrich_res
-        )
-        return StellaCommandExecuteResponse(
-            command=command,
-            action_id="notes.update",
-            status="proposed",
-            message=outcome_msg,
-            data=enrichment_data,
-            proposal_id=str(prop.proposal_id) if prop else None,
-            confirmation_token=prop.confirmation_token if prop else None,
-            requires_confirmation=True,
-            affected_item_ids=[str(target_note.id)],
+            db=db,
+            conversation_id=conversation_id,
+            user_content=user_cmd_content,
+            assistant_content=transform_res.message,
+            action_result=res_dict,
         )
 
+        return StellaCommandExecuteResponse(
+            command=command,
+            action_id="notes.update" if transform_res.requires_confirmation else "notes.get",
+            status=transform_res.status,
+            message=transform_res.message,
+            data=transform_res.data,
+            proposal_id=transform_res.proposal_id,
+            confirmation_token=transform_res.confirmation_token,
+            requires_confirmation=transform_res.requires_confirmation,
+            affected_item_ids=transform_res.affected_item_ids,
+        )
     elif clean_cmd == "/merge-notes":
         raw_note_args: list[str] = []
         if isinstance(payload.get("note_ids"), list):

@@ -42,10 +42,11 @@ def test_list_stella_commands(client: TestClient, db_session: Session):
     res = client.get(f"/api/v1/workspaces/{workspace.id}/stella/commands")
     assert res.status_code == 200, res.text
     data = res.json()
-    assert data["total"] == 19
+    assert data["total"] == 20
     cmd_names = {c["command"] for c in data["commands"]}
 
-    # Verify all 12 prioritized agentic commands
+    # Verify all prioritized agentic commands
+    assert "/transform-note" in cmd_names
     assert "/create-note" in cmd_names
     assert "/create-source" in cmd_names
     assert "/enrich-note" in cmd_names

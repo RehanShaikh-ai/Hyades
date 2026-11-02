@@ -1020,6 +1020,18 @@ def execute_commit(
         if not note or note.workspace_id != workspace_id:
             raise NoteNotFoundError("Target note no longer exists in workspace.")
 
+        # Concurrent-edit protection: verify original note content has not changed since proposal creation
+        orig_content = proposal_payload.get("original_content")
+        if orig_content is not None and (note.content or "").strip() != orig_content.strip():
+            raise AppException(
+                409,
+                "CONCURRENT_MODIFICATION_CONFLICT",
+                (
+                    f"Note '{note.title}' was modified after this transformation proposal was generated. "
+                    "Please regenerate the transformation to avoid overwriting recent changes."
+                ),
+            )
+
         before_state = {
             "id": str(note.id),
             "title": note.title,

@@ -169,6 +169,21 @@ class DeterministicTestProvider(BaseLLMProvider):
                     )
             return json.dumps({"relationships": relationships})
 
+        # Check if this is note transformation
+        if "transform note:" in all_text.lower():
+            content_part = last_msg.split("Original Content:\n")[-1].split("\n\nTransformed Markdown Note:")[0]
+            if "transform note: shorten" in all_text.lower():
+                return f"# Condensed Overview\n\n{content_part[:300].strip()}\n\n- Key Takeaway: Core mechanisms preserved concisely."
+            elif "transform note: expand" in all_text.lower():
+                return f"{content_part.strip()}\n\n## Extended Analysis & Architectural Examples\n\nIn high-throughput environments, this system exhibits robust properties under distributed stress testing. Detailed telemetry confirms predictable resource utilization."
+            elif "transform note: simplify" in all_text.lower():
+                return f"# Simple Guide\n\n{content_part.strip()}\n\nIn simple terms: this component acts as a reliable coordinator ensuring consistency across all connected nodes."
+            elif "transform note: restructure" in all_text.lower():
+                return f"# Restructured Document\n\n## 1. Fundamentals\n{content_part[:200].strip()}\n\n## 2. Implementation Mechanics\n{content_part[200:400].strip()}\n\n## 3. Summary & Takeaways\nStructured key points and conclusions."
+            elif "transform note: improve" in all_text.lower():
+                return f"# Polished Technical Specification\n\n{content_part.strip()}\n\nRefined with elevated clarity, precise definitions, and unified flow."
+            return f"# Transformed Note\n\n{content_part.strip()}"
+
         preview = last_msg[:80]
         return f"Based on your knowledge base: Verified answer regarding: {preview}"
 
