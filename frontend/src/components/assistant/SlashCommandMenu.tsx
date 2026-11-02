@@ -19,6 +19,7 @@ import {
   Scale,
   Network,
   CheckCheck,
+  Sliders,
 } from 'lucide-react';
 
 interface SlashCommandMenuProps {
@@ -101,6 +102,8 @@ export const SlashCommandMenu: React.FC<SlashCommandMenuProps> = ({
       case '/process-inbox':
         return <Inbox size={15} className="shrink-0 text-[var(--accent-terracotta)]" />;
       case '/analyze':
+      case '/transform-note':
+        return <Sliders size={15} className="shrink-0 text-[var(--accent-midnight)]" />;
       case '/enrich-note':
         return <Sparkles size={15} className="shrink-0 text-[var(--accent-brass)]" />;
       case '/generate-flashcards':

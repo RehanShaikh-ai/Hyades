@@ -13,7 +13,6 @@ import { HyadesStella } from './HyadesStella';
 import { HyadesCollections } from './HyadesCollections';
 import { HyadesThreads } from './HyadesThreads';
 import { HyadesInbox } from './HyadesInbox';
-import { HyadesActions } from './HyadesActions';
 import { WorkspaceShell } from '@/components/navigation/WorkspaceShell';
 
 import { HyadesGlobalSearchModal } from '@/components/search/HyadesGlobalSearchModal';

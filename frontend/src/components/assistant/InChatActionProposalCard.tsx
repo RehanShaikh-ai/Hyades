@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { GenericActionProposalData } from '@/types/commands';
 import { InChatEnrichmentProposalReview } from './InChatEnrichmentProposalReview';
+import { InChatTransformNoteCard } from './InChatTransformNoteCard';
 import {
   CheckCircle2,
   XCircle,
@@ -769,6 +770,24 @@ export const InChatActionProposalCard: React.FC<InChatActionProposalCardProps> =
       </div>
     );
   };
+
+  if (
+    cmd === '/transform-note' ||
+    cmd === '/enrich-note' ||
+    workflow === 'transform_note' ||
+    workflow === 'enrich_note'
+  ) {
+    return (
+      <InChatTransformNoteCard
+        proposal={proposal}
+        isCommitting={isCommitting}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+        onPreviewArtifact={onPreviewArtifact}
+        onNavigateToItem={onNavigateToItem}
+      />
+    );
+  }
 
   return (
     <div className="card-surface mt-3 p-4 rounded-xl border border-[var(--border-parchment)] bg-white/95 shadow-xs flex flex-col gap-3.5 max-w-2xl text-[var(--ink-primary)] animate-fade-in">

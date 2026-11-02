@@ -530,14 +530,15 @@ describe('Stella Slash Commands & In-Chat Actions', () => {
   });
 
   describe('Declarative Command Definitions & Schema Integrity', () => {
-    it('contains the 19 user-facing commands and excludes internal agent actions (/add-to-collection, /search)', () => {
-      expect(FALLBACK_COMMANDS.length).toBe(19);
+    it('contains the 20 user-facing commands and excludes internal agent actions (/add-to-collection, /search)', () => {
+      expect(FALLBACK_COMMANDS.length).toBe(20);
       const commandNames = FALLBACK_COMMANDS.map((c) => c.command);
       const uniqueNames = new Set(commandNames);
-      expect(uniqueNames.size).toBe(19);
+      expect(uniqueNames.size).toBe(20);
 
       // Verify all prioritized agentic commands are present
       const requiredAgenticCommands = [
+        '/transform-note',
         '/create-note',
         '/create-source',
         '/enrich-note',
@@ -731,6 +732,15 @@ describe('Stella Slash Commands & In-Chat Actions', () => {
       expect(mergeCmd?.arguments?.[0].resource_types).toEqual(['note']);
       expect(mergeCmd?.arguments?.[1].name).toBe('note_2');
       expect(mergeCmd?.arguments?.[1].resource_types).toEqual(['note']);
+    });
+
+    it('defines /transform-note as a two-phase proposal action', () => {
+      const transformCmd = FALLBACK_COMMANDS.find((c) => c.command === '/transform-note');
+      expect(transformCmd).toBeDefined();
+      expect(transformCmd?.action_id).toBe('notes.update');
+      expect(transformCmd?.execution_type).toBe('proposal');
+      expect(transformCmd?.requires_confirmation).toBe(true);
+      expect(transformCmd?.arguments?.length).toBe(2);
     });
 
     it('defines /enrich-note as a two-phase proposal action (Bug 2)', () => {

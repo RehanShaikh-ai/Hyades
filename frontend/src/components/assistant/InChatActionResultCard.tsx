@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { GenericActionResultData } from '@/types/commands';
 import { OrganizationConfigDialog } from './OrganizationConfigDialog';
+import { InChatTransformNoteCard } from './InChatTransformNoteCard';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -38,6 +39,21 @@ export const InChatActionResultCard: React.FC<InChatActionResultCardProps> = ({
   const isError = result.status === 'error';
   const data = result.data || {};
   const cmd = (result.command || '').toLowerCase();
+
+  if (
+    data.card_type === 'transform_options' ||
+    data.card_type === 'transform_audit' ||
+    data.card_type === 'transform_connections' ||
+    cmd === '/transform-note'
+  ) {
+    return (
+      <InChatTransformNoteCard
+        result={result}
+        onNavigateToItem={onNavigateToItem}
+        onRunCommand={onRunCommand}
+      />
+    );
+  }
 
   const getBadgeLabel = () => {
     if (isError) return 'Failed';
