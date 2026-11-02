@@ -25,6 +25,7 @@ interface InChatActionResultCardProps {
   onNavigateToItem?: (id: string, itemType: string) => void;
   onRunCommand?: (commandText: string) => void;
   onStageRecommendation?: (configuredPayload: Record<string, any>) => void | Promise<void>;
+  onOpenDocumentPanel?: (draftData: any) => void;
 }
 
 export const InChatActionResultCard: React.FC<InChatActionResultCardProps> = ({
@@ -32,6 +33,7 @@ export const InChatActionResultCard: React.FC<InChatActionResultCardProps> = ({
   onNavigateToItem,
   onRunCommand,
   onStageRecommendation,
+  onOpenDocumentPanel,
 }) => {
   const [activeConfigRec, setActiveConfigRec] = useState<Record<string, any> | null>(null);
   const [isStagingConfig, setIsStagingConfig] = useState(false);
@@ -54,6 +56,7 @@ export const InChatActionResultCard: React.FC<InChatActionResultCardProps> = ({
         result={result}
         onNavigateToItem={onNavigateToItem}
         onRunCommand={onRunCommand}
+        onOpenDocumentPanel={onOpenDocumentPanel}
       />
     );
   }

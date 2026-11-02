@@ -21,6 +21,7 @@ import { InChatActionProposalCard } from '@/components/assistant/InChatActionPro
 import { InChatActionResultCard } from '@/components/assistant/InChatActionResultCard';
 import { InChatFlashcardDeckCard } from '@/components/assistant/InChatFlashcardDeckCard';
 import { ArtifactPreviewDrawer, ArtifactPreviewData } from '@/components/assistant/ArtifactPreviewDrawer';
+import { TransformDocumentPanel, TransformDocumentDraft } from '@/components/assistant/TransformDocumentPanel';
 import { FileText } from 'lucide-react';
 import stellaStudiolum from '@/assets/plates/stella-studiolum.jpg';
 
@@ -123,6 +124,115 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
   );
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [activeArtifactPreview, setActiveArtifactPreview] = useState<ArtifactPreviewData | null>(null);
+
+  // Dedicated Side-Panel Document Preview for /transform-note
+  const [activeDocumentPanelDraft, setActiveDocumentPanelDraft] = useState<TransformDocumentDraft | null>(null);
+  const [isDocumentPanelMaximized, setIsDocumentPanelMaximized] = useState(false);
+  const transformDraftsRef = useRef<Record<string, string>>({});
+  const lastAutoOpenedProposalRef = useRef<string | null>(null);
+
+  // Reset document panel when switching conversations
+  useEffect(() => {
+    setActiveDocumentPanelDraft(null);
+    setIsDocumentPanelMaximized(false);
+  }, [activeConversationId]);
+
+  const openTransformDocumentDraft = useCallback((
+    proposalData: any,
+    msgId?: string,
+    proposalMeta?: any
+  ) => {
+    const d = proposalData || {};
+    const effectiveMsgId = msgId || d.messageId || d.message_id || '';
+    const propId = proposalMeta?.proposalId || d.proposalId || d.proposal_id || effectiveMsgId;
+    const token = proposalMeta?.confirmationToken || d.confirmationToken || d.confirmation_token || '';
+    const original = d.original_content || '';
+    const proposed = d.proposed_content || d.content || '';
+    const preserved = transformDraftsRef.current[propId] || transformDraftsRef.current[effectiveMsgId];
+
+    const draft: TransformDocumentDraft = {
+      proposalId: propId,
+      confirmationToken: token,
+      operation: d.operation || 'shorten',
+      noteId: d.note_id || '',
+      noteTitle: d.note_title || d.title || 'Untitled Note',
+      originalContent: original,
+      proposedContent: proposed,
+      draftContent: preserved !== undefined ? preserved : proposed,
+      originalWordCount: d.original_word_count,
+      proposedWordCount: d.proposed_word_count,
+      wordCountChangePercent: d.word_count_change_percent,
+      whatChanged: d.what_changed,
+      diffLines: d.diff_lines,
+      messageId: effectiveMsgId,
+      status: 'draft',
+    };
+
+    setActiveDocumentPanelDraft(draft);
+    if (typeof window !== 'undefined' && window.innerWidth < 1280) {
+      setIsInquiriesOpen(false);
+    }
+  }, []);
+
+  const handleApplyTransformDraft = useCallback(async (finalContent: string) => {
+    if (!activeDocumentPanelDraft) return;
+    const { messageId, proposalId } = activeDocumentPanelDraft;
+    await confirmGenericProposal(messageId, { content: finalContent });
+    delete transformDraftsRef.current[proposalId];
+    delete transformDraftsRef.current[messageId];
+    setActiveDocumentPanelDraft((prev) =>
+      prev ? { ...prev, status: 'committed', draftContent: finalContent } : null
+    );
+  }, [activeDocumentPanelDraft, confirmGenericProposal]);
+
+  const handleDiscardTransformDraft = useCallback(() => {
+    if (!activeDocumentPanelDraft) return;
+    const { messageId, proposalId } = activeDocumentPanelDraft;
+    cancelGenericProposal(messageId);
+    delete transformDraftsRef.current[proposalId];
+    delete transformDraftsRef.current[messageId];
+    setActiveDocumentPanelDraft(null);
+  }, [activeDocumentPanelDraft, cancelGenericProposal]);
+
+  const handleDraftChange = useCallback((updatedContent: string) => {
+    if (!activeDocumentPanelDraft) return;
+    const { messageId, proposalId } = activeDocumentPanelDraft;
+    transformDraftsRef.current[proposalId] = updatedContent;
+    transformDraftsRef.current[messageId] = updatedContent;
+    setActiveDocumentPanelDraft((prev) =>
+      prev ? { ...prev, draftContent: updatedContent, isDirty: true } : null
+    );
+  }, [activeDocumentPanelDraft]);
+
+  // Reactive auto-open when a text transformation proposal arrives in chat
+  useEffect(() => {
+    if (!messages.length) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg && lastMsg.genericProposal) {
+      const prop = lastMsg.genericProposal;
+      const data = prop.data || {};
+      const cmd = (prop.command || '').toLowerCase();
+      const isTransform =
+        cmd.startsWith('/transform-note') ||
+        data.workflow === 'transform_note' ||
+        data.card_type === 'transform_proposal';
+      const hasContent = Boolean(data.proposed_content);
+      const isTextOp =
+        data.operation === 'shorten' ||
+        data.operation === 'expand' ||
+        data.operation === 'simplify' ||
+        data.operation === 'restructure' ||
+        data.operation === 'improve';
+
+      if (isTransform && hasContent && isTextOp && prop.status === 'preview') {
+        const propKey = prop.proposalId || lastMsg.id;
+        if (lastAutoOpenedProposalRef.current !== propKey) {
+          lastAutoOpenedProposalRef.current = propKey;
+          openTransformDocumentDraft(data, lastMsg.id, prop);
+        }
+      }
+    }
+  }, [messages, openTransformDocumentDraft]);
 
   // Workspace metadata & Scope
   const [selectedModel, setSelectedModel] = useState('auto');
@@ -563,7 +673,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
       )}
 
       {/* Persistent Reopen Evidence Edge Tab */}
-      {!isEvidenceOpen && !activeArtifactPreview && (
+      {!isEvidenceOpen && !activeArtifactPreview && !activeDocumentPanelDraft && (
         <div className="fixed top-20 right-0 z-30 pointer-events-auto">
           <button
             type="button"
@@ -939,7 +1049,13 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
         )}
 
         {/* ================= CENTER: DIALOGUE CANVAS & ANCHORED COMPOSER ================= */}
-        <section className="flex-1 flex flex-col min-w-0 h-full min-h-0 relative">
+        <section
+          className={`flex-1 flex flex-col min-w-0 h-full min-h-0 relative ${
+            activeDocumentPanelDraft && !isDocumentPanelMaximized
+              ? 'lg:max-w-[50%]'
+              : ''
+          } ${isDocumentPanelMaximized ? 'hidden' : ''}`}
+        >
           {/* Conversation Scroll Canvas */}
           <div
             ref={dialogueContainerRef}
@@ -1174,6 +1290,9 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                                     onNavigateToLibrary();
                                   }
                                 }}
+                                onOpenDocumentPanel={(draftData) => {
+                                  openTransformDocumentDraft(draftData, msg.id, msg.genericProposal);
+                                }}
                               />
                             )}
 
@@ -1199,6 +1318,9 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                                         stageOrganizationRecommendation(msg.id, configuredPayload)
                                     : undefined
                                 }
+                                onOpenDocumentPanel={(draftData) => {
+                                  openTransformDocumentDraft(draftData, msg.id, null);
+                                }}
                               />
                             )}
 
@@ -1486,8 +1608,26 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
           </div>
         </section>
 
-        {/* ================= RIGHT COLUMN: ARTIFACT PREVIEW OR SOURCES IN CONTEXT ================= */}
-        {activeArtifactPreview ? (
+        {/* ================= RIGHT COLUMN: DOCUMENT PANEL, ARTIFACT PREVIEW OR SOURCES IN CONTEXT ================= */}
+        {activeDocumentPanelDraft ? (
+          <div
+            className={`h-full shrink-0 flex flex-col min-w-0 transition-all duration-300 ${
+              isDocumentPanelMaximized
+                ? 'fixed inset-0 z-50 w-full h-full bg-[#FAF8F2]'
+                : 'flex-1 md:w-1/2 lg:w-1/2 min-w-0'
+            }`}
+          >
+            <TransformDocumentPanel
+              draft={activeDocumentPanelDraft}
+              isMaximized={isDocumentPanelMaximized}
+              onToggleMaximize={() => setIsDocumentPanelMaximized(!isDocumentPanelMaximized)}
+              onClose={() => setActiveDocumentPanelDraft(null)}
+              onApply={handleApplyTransformDraft}
+              onDiscard={handleDiscardTransformDraft}
+              onDraftChange={handleDraftChange}
+            />
+          </div>
+        ) : activeArtifactPreview ? (
           <ArtifactPreviewDrawer
             artifact={activeArtifactPreview}
             onClose={() => setActiveArtifactPreview(null)}

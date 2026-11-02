@@ -31,6 +31,7 @@ interface InChatActionProposalCardProps {
     type: string;
     subtitle?: string;
   }) => void;
+  onOpenDocumentPanel?: (draftData: any) => void;
 }
 
 export const InChatActionProposalCard: React.FC<InChatActionProposalCardProps> = ({
@@ -40,6 +41,7 @@ export const InChatActionProposalCard: React.FC<InChatActionProposalCardProps> =
   onCancel,
   onNavigateToItem,
   onPreviewArtifact,
+  onOpenDocumentPanel,
 }) => {
   const isCommitted = proposal.status === 'committed';
   const isCancelled = proposal.status === 'cancelled';
@@ -787,6 +789,7 @@ export const InChatActionProposalCard: React.FC<InChatActionProposalCardProps> =
         onCancel={onCancel}
         onPreviewArtifact={onPreviewArtifact}
         onNavigateToItem={onNavigateToItem}
+        onOpenDocumentPanel={onOpenDocumentPanel}
       />
     );
   }
