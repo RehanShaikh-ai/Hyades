@@ -362,13 +362,17 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
       currentQuery = '';
     } else if (
       hasTrailingSpace &&
-      (tokens.length < activeCommandDef.arguments.length || isVariadicMerge)
+      (tokens.length < activeCommandDef.arguments.length || (isVariadicMerge && tokens.length < 4))
     ) {
       activeIndex = tokens.length;
       currentQuery = '';
     } else {
       activeIndex = Math.max(0, tokens.length - 1);
       currentQuery = afterCmd.slice(lastIndex).trim() || tokens[activeIndex] || '';
+    }
+
+    if (isVariadicMerge && tokens.length >= 4 && hasTrailingSpace) {
+      return null;
     }
 
     if (activeIndex >= activeCommandDef.arguments.length && !isVariadicMerge) {
@@ -472,8 +476,13 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
         .slice(0, argIndex)
         .map((t) => `"${t}"`)
         .join(' ');
-      setInputPrompt(`${command} ${priorArgs} "${title}"`);
-      setDismissedSuggestions(true);
+      if (command === '/merge-notes' && argIndex < 3) {
+        setInputPrompt(`${command} ${priorArgs} "${title}" `);
+        setDismissedSuggestions(false);
+      } else {
+        setInputPrompt(`${command} ${priorArgs} "${title}"`);
+        setDismissedSuggestions(true);
+      }
     }
   };
 

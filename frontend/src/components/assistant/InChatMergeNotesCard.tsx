@@ -23,6 +23,80 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 
+interface ProgressStep {
+  label: string;
+  status: string;
+}
+
+const PLANNING_STEPS: ProgressStep[] = [
+  { label: 'Analyze Sources', status: 'Reading selected notes and identifying their structure.' },
+  { label: 'Detect Relations', status: 'Comparing content, identifying overlaps, and checking differences.' },
+  { label: 'Build Plan', status: 'Designing an outline based on the selected notes.' },
+  { label: 'Validate Plan', status: 'Checking source coverage and verifying the proposed structure.' },
+];
+
+const GENERATION_STEPS: ProgressStep[] = [
+  { label: 'Preparing', status: 'Allocating source blocks and outline structure.' },
+  { label: 'Assembling', status: 'Extracting original content and verbatim blocks.' },
+  { label: 'Synthesizing', status: 'Synthesizing overlapping concepts and connective bridges.' },
+  { label: 'Validating', status: 'Checking numerical metrics, code tokens, and URLs.' },
+  { label: 'Reviewing', status: 'Normalizing headings and preparing final draft.' },
+];
+
+const MergeProgressStepper: React.FC<{
+  steps: ProgressStep[];
+  activeStepIndex: number;
+  testId?: string;
+}> = ({ steps, activeStepIndex, testId = 'merge-progress-stepper' }) => {
+  return (
+    <div data-testid={testId} className="w-full flex flex-col gap-3 py-2">
+      <div className="flex items-center justify-between w-full relative px-2">
+        {steps.map((step, idx) => {
+          const isDone = idx < activeStepIndex;
+          const isCurrent = idx === activeStepIndex;
+
+          return (
+            <React.Fragment key={step.label}>
+              {idx > 0 && (
+                <div
+                  className={`flex-1 h-[2px] transition-all duration-300 mx-1 sm:mx-2 ${
+                    idx <= activeStepIndex ? 'bg-[#C85A32]' : 'bg-stone-200'
+                  }`}
+                />
+              )}
+              <div className="flex flex-col items-center gap-1 shrink-0 z-10">
+                <div
+                  data-testid={`stepper-node-${idx}`}
+                  className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-mono font-bold transition-all duration-300 ${
+                    isDone
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : isCurrent
+                      ? 'bg-[#C85A32] text-white ring-4 ring-[#FBF0EA] animate-pulse shadow-2xs'
+                      : 'bg-stone-200 text-stone-500'
+                  }`}
+                >
+                  {isDone ? <Check size={13} strokeWidth={3} /> : idx + 1}
+                </div>
+                <span
+                  className={`text-[10px] sm:text-[11px] font-medium text-center max-w-[70px] sm:max-w-[95px] truncate ${
+                    isCurrent ? 'text-[#C85A32] font-bold' : isDone ? 'text-stone-700' : 'text-stone-400'
+                  }`}
+                >
+                  {step.label}
+                </span>
+              </div>
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      <div className="p-2.5 rounded-xl bg-[#FAF8F2] border border-[var(--border-parchment)] text-center text-xs text-[var(--ink-secondary)] shadow-2xs font-medium">
+        <span className="text-[var(--ink-primary)]">{steps[activeStepIndex]?.status || 'Processing...'}</span>
+      </div>
+    </div>
+  );
+};
+
 export type GenerationMode = 'verbatim' | 'rewritten' | 'connective';
 
 export interface ProposedSectionItem {
@@ -231,8 +305,12 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
   const [currentSections, setCurrentSections] = useState<ProposedSectionItem[]>(initialSections);
   const [isEditingOutline, setIsEditingOutline] = useState(false);
   const [currentStage, setCurrentStage] = useState<1 | 2 | 3 | 4>(
-    data.stage === 'review' ? 3 : data.stage === 'apply' ? 4 : 1
+    data.stage === 'generate' ? 2 : data.stage === 'review' ? 3 : data.stage === 'apply' ? 4 : 1
   );
+  const [generationStepIndex, setGenerationStepIndex] = useState(0);
+  const [isPlanning, setIsPlanning] = useState(false);
+  const [planningStepIndex, setPlanningStepIndex] = useState(0);
+  const [maxNotesWarning, setMaxNotesWarning] = useState(false);
 
   // Synchronize when data.outline changes
   useEffect(() => {
@@ -260,17 +338,33 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
     );
 
     const toggleNoteSelection = (noteId: string) => {
-      setSelectedNoteIds((prev) =>
-        prev.includes(noteId) ? prev.filter((id) => id !== noteId) : [...prev, noteId]
-      );
+      setSelectedNoteIds((prev) => {
+        if (prev.includes(noteId)) {
+          setMaxNotesWarning(false);
+          return prev.filter((id) => id !== noteId);
+        }
+        if (prev.length >= 4) {
+          setMaxNotesWarning(true);
+          return prev;
+        }
+        setMaxNotesWarning(false);
+        return [...prev, noteId];
+      });
     };
 
     const handleConfirmSelection = () => {
-      if (selectedNoteIds.length < 2 || !onRunCommand) return;
-      const selectedTitles = availableNotes
-        .filter((n: any) => selectedNoteIds.includes(n.id))
-        .map((n: any) => `"${n.title}"`);
-      onRunCommand(`/merge-notes ${selectedTitles.join(' ')}`);
+      if (selectedNoteIds.length < 2 || selectedNoteIds.length > 4 || !onRunCommand) return;
+      setIsPlanning(true);
+      setPlanningStepIndex(0);
+      setTimeout(() => setPlanningStepIndex(1), 140);
+      setTimeout(() => setPlanningStepIndex(2), 280);
+      setTimeout(() => setPlanningStepIndex(3), 420);
+      setTimeout(() => {
+        const selectedTitles = availableNotes
+          .filter((n: any) => selectedNoteIds.includes(n.id))
+          .map((n: any) => `"${n.title}"`);
+        onRunCommand(`/merge-notes ${selectedTitles.join(' ')}`);
+      }, 580);
     };
 
     return (
@@ -289,11 +383,53 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
                 Select Notes to Merge
               </span>
               <span className="text-xs text-[var(--ink-secondary)]">
-                Choose at least two notes from your workspace to synthesize.
+                Choose between 2 and 4 notes from your workspace to synthesize.
               </span>
             </div>
           </div>
         </div>
+
+        {/* Selected Notes Chips */}
+        {selectedNoteIds.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 p-2.5 rounded-xl bg-white border border-[var(--border-parchment)] shadow-2xs">
+            <span className="text-[11px] font-mono text-[var(--ink-tertiary)] mr-1">Selected:</span>
+            {selectedNoteIds.map((id) => {
+              const noteObj = availableNotes.find((n: any) => n.id === id);
+              return (
+                <span
+                  key={id}
+                  data-testid={`selected-note-chip-${id}`}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-[#FBF0EA] border border-[#F0D5C7] text-[#C85A32] font-medium animate-fade-in"
+                >
+                  <span className="truncate max-w-[130px] sm:max-w-[200px]">{noteObj?.title || id}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedNoteIds((prev) => prev.filter((x) => x !== id));
+                      setMaxNotesWarning(false);
+                    }}
+                    className="hover:text-red-700 p-0.5 rounded-full transition-colors cursor-pointer"
+                    aria-label={`Remove ${noteObj?.title || id}`}
+                  >
+                    <X size={12} strokeWidth={2.5} />
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Max 4 Notes Warning */}
+        {maxNotesWarning && (
+          <div
+            data-testid="max-notes-warning"
+            className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center gap-2 shadow-2xs animate-fade-in"
+          >
+            <AlertCircle size={15} className="text-amber-600 shrink-0" />
+            <span>Maximum of 4 notes can be merged at once. Remove a note to select a different one.</span>
+          </div>
+        )}
 
         {/* Search Bar & Counter */}
         <div className="flex items-center gap-3">
@@ -309,58 +445,74 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
             data-testid="merge-select-count-pill"
             className="px-3 py-1 rounded-full bg-white border border-[var(--border-parchment)] text-xs text-[var(--ink-secondary)] font-mono shrink-0 shadow-2xs"
           >
-            {selectedNoteIds.length} selected
+            {selectedNoteIds.length}/4 selected
           </span>
         </div>
 
-        {/* Notes List */}
-        <div className="flex flex-col gap-1.5 max-h-80 overflow-y-auto pr-1">
-          {filteredNotes.map((n: any) => {
-            const isChecked = selectedNoteIds.includes(n.id);
-            return (
-              <div
-                key={n.id}
-                data-testid={`merge-note-item-${n.id}`}
-                onClick={() => toggleNoteSelection(n.id)}
-                className={`px-3.5 py-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 select-none ${
-                  isChecked
-                    ? 'bg-[#FBF0EA] border-[#C85A32] shadow-2xs'
-                    : 'bg-white/80 border-[var(--border-parchment)]/80 hover:bg-[#FBF0EA]/50 shadow-2xs'
-                }`}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className={`w-4 h-4 rounded-[4px] border flex items-center justify-center shrink-0 transition-colors ${
-                      isChecked
-                        ? 'bg-[var(--accent-terracotta)] border-[var(--accent-terracotta)] text-white'
-                        : 'border-[var(--border-strong)] bg-white'
-                    }`}
-                  >
-                    {isChecked && <Check size={11} strokeWidth={3} />}
+        {/* Planning Progress Stepper View */}
+        {isPlanning ? (
+          <div className="p-6 rounded-xl bg-white border border-[var(--border-parchment)] flex flex-col items-center justify-center gap-4 text-center shadow-2xs animate-fade-in">
+            <span className="font-serif font-bold text-sm text-[var(--ink-primary)]">
+              Planning Merge Structure...
+            </span>
+            <MergeProgressStepper
+              steps={PLANNING_STEPS}
+              activeStepIndex={planningStepIndex}
+              testId="planning-progress-stepper"
+            />
+          </div>
+        ) : (
+          /* Notes List */
+          <div className="flex flex-col gap-1.5 max-h-80 overflow-y-auto pr-1">
+            {filteredNotes.map((n: any) => {
+              const isChecked = selectedNoteIds.includes(n.id);
+              return (
+                <div
+                  key={n.id}
+                  data-testid={`merge-note-item-${n.id}`}
+                  onClick={() => toggleNoteSelection(n.id)}
+                  className={`px-3.5 py-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 select-none ${
+                    isChecked
+                      ? 'bg-[#FBF0EA] border-[#C85A32] shadow-2xs'
+                      : 'bg-white/80 border-[var(--border-parchment)]/80 hover:bg-[#FBF0EA]/50 shadow-2xs'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`w-4 h-4 rounded-[4px] border flex items-center justify-center shrink-0 transition-colors ${
+                        isChecked
+                          ? 'bg-[var(--accent-terracotta)] border-[var(--accent-terracotta)] text-white'
+                          : 'border-[var(--border-strong)] bg-white'
+                      }`}
+                    >
+                      {isChecked && <Check size={11} strokeWidth={3} />}
+                    </div>
+                    <span className="font-serif font-bold text-xs sm:text-[13px] text-[var(--ink-primary)] truncate">
+                      {n.title}
+                    </span>
                   </div>
-                  <span className="font-serif font-bold text-xs sm:text-[13px] text-[var(--ink-primary)] truncate">
-                    {n.title}
-                  </span>
+                  <div className="text-xs text-[var(--ink-secondary)] font-mono shrink-0">
+                    {n.word_count ? `${n.word_count.toLocaleString()} words` : ''}
+                  </div>
                 </div>
-                <div className="text-xs text-[var(--ink-secondary)] font-mono shrink-0">
-                  {n.word_count ? `${n.word_count.toLocaleString()} words` : ''}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Confirmation Footer */}
         <div className="pt-3 border-t border-[var(--border-parchment)] flex items-center justify-between gap-3 flex-wrap">
           <span className="text-xs text-[var(--ink-secondary)]">
-            {selectedNoteIds.length >= 2
+            {selectedNoteIds.length >= 2 && selectedNoteIds.length <= 4
               ? `${selectedNoteIds.length} notes selected ready for merge analysis.`
+              : selectedNoteIds.length > 4
+              ? 'Please select at most 4 notes.'
               : 'Select at least 2 notes to proceed.'}
           </span>
           <button
             type="button"
             data-testid="btn-confirm-merge-notes"
-            disabled={selectedNoteIds.length < 2}
+            disabled={selectedNoteIds.length < 2 || selectedNoteIds.length > 4 || isPlanning}
             onClick={handleConfirmSelection}
             className="px-4 py-1.5 rounded-lg bg-[#C85A32] text-white hover:bg-[#B34D28] text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
@@ -546,6 +698,11 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
   // Handle generation action
   const handleGenerateDraft = () => {
     setCurrentStage(2);
+    setGenerationStepIndex(0);
+    setTimeout(() => setGenerationStepIndex(1), 140);
+    setTimeout(() => setGenerationStepIndex(2), 280);
+    setTimeout(() => setGenerationStepIndex(3), 420);
+    setTimeout(() => setGenerationStepIndex(4), 560);
     setTimeout(() => {
       setCurrentStage(3);
     }, 700);
@@ -872,35 +1029,50 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
       {currentStage === 2 && (
         <div
           data-testid="merge-generating-view"
-          className="p-8 rounded-xl bg-white border border-[var(--border-parchment)] flex flex-col items-center justify-center gap-4 text-center shadow-2xs w-full animate-fade-in"
+          className="p-6 sm:p-8 rounded-xl bg-white border border-[var(--border-parchment)] flex flex-col items-center justify-center gap-5 shadow-2xs w-full animate-fade-in"
         >
-          <Loader2 size={26} className="text-[#C85A32] animate-spin" />
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col items-center gap-1 text-center">
             <span className="font-serif font-bold text-base text-[var(--ink-primary)]">
               Generating Merged Draft: {mergedTitle}...
             </span>
             <span className="text-xs text-[var(--ink-secondary)] max-w-md">
-              Extracting verbatim blocks, rewriting overlapping sections, and validating factual consistency.
+              Synthesizing content with deterministic factual safeguards and normalized Markdown hierarchy.
             </span>
           </div>
 
-          <div className="flex flex-col gap-1.5 w-full max-w-md mt-2 text-left">
-            {currentSections.map((sec) => (
-              <div
-                key={sec.id}
-                className="px-3.5 py-2 rounded-lg bg-[#FAF8F2] border border-[var(--border-parchment)] flex items-center justify-between text-xs"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-serif font-bold text-[var(--ink-primary)] truncate">
-                    {sec.title}
+          <MergeProgressStepper
+            steps={GENERATION_STEPS}
+            activeStepIndex={generationStepIndex}
+            testId="generation-progress-stepper"
+          />
+
+          <div className="flex flex-col gap-1.5 w-full max-w-lg mt-1 text-left">
+            <span className="text-[11px] font-mono text-[var(--ink-tertiary)] uppercase tracking-wider font-semibold">
+              Section Synthesis Status
+            </span>
+            {currentSections.map((sec, sIdx) => {
+              const isSectionDone = sIdx <= generationStepIndex;
+              return (
+                <div
+                  key={sec.id}
+                  className="px-3.5 py-2 rounded-lg bg-[#FAF8F2] border border-[var(--border-parchment)] flex items-center justify-between text-xs"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-serif font-bold text-[var(--ink-primary)] truncate">
+                      {sec.title}
+                    </span>
+                    {getModeBadge(sec.mode)}
+                  </div>
+                  <span
+                    className={`font-mono text-[11px] font-medium shrink-0 ${
+                      isSectionDone ? 'text-emerald-700' : 'text-stone-400'
+                    }`}
+                  >
+                    {isSectionDone ? 'Synthesized ✓' : 'Queued'}
                   </span>
-                  {getModeBadge(sec.mode)}
                 </div>
-                <span className="font-mono text-[11px] text-emerald-700 font-medium shrink-0">
-                  Synthesized ✓
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

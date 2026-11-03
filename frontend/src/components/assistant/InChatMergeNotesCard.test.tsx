@@ -39,7 +39,7 @@ describe('InChatMergeNotesCard', () => {
     },
   };
 
-  it('renders Stage 1 note selection card when invoked with select_notes card_type', () => {
+  it('renders Stage 1 note selection card when invoked with select_notes card_type', async () => {
     const onRunCommand = vi.fn();
     const resultData = {
       command: '/merge-notes',
@@ -61,7 +61,7 @@ describe('InChatMergeNotesCard', () => {
 
     expect(screen.getByTestId('merge-notes-select-card')).toBeInTheDocument();
     expect(screen.getByText('Select Notes to Merge')).toBeInTheDocument();
-    expect(screen.getByTestId('merge-select-count-pill')).toHaveTextContent('0 selected');
+    expect(screen.getByTestId('merge-select-count-pill')).toHaveTextContent('0/4 selected');
 
     // Button disabled when < 2 selected
     const confirmBtn = screen.getByTestId('btn-confirm-merge-notes');
@@ -69,12 +69,13 @@ describe('InChatMergeNotesCard', () => {
 
     // Toggle first note
     fireEvent.click(screen.getByTestId('merge-note-item-n1'));
-    expect(screen.getByTestId('merge-select-count-pill')).toHaveTextContent('1 selected');
+    expect(screen.getByTestId('merge-select-count-pill')).toHaveTextContent('1/4 selected');
+    expect(screen.getByTestId('selected-note-chip-n1')).toBeInTheDocument();
     expect(confirmBtn).toBeDisabled();
 
     // Toggle second note
     fireEvent.click(screen.getByTestId('merge-note-item-n2'));
-    expect(screen.getByTestId('merge-select-count-pill')).toHaveTextContent('2 selected');
+    expect(screen.getByTestId('merge-select-count-pill')).toHaveTextContent('2/4 selected');
     expect(confirmBtn).not.toBeDisabled();
 
     // Search filtering
@@ -86,7 +87,9 @@ describe('InChatMergeNotesCard', () => {
     // Clear search and run command
     fireEvent.change(searchInput, { target: { value: '' } });
     fireEvent.click(confirmBtn);
-    expect(onRunCommand).toHaveBeenCalledWith('/merge-notes "Neural Networks" "Backpropagation"');
+    await waitFor(() => {
+      expect(onRunCommand).toHaveBeenCalledWith('/merge-notes "Neural Networks" "Backpropagation"');
+    });
   });
 
   it('renders Mockup A 2-column Merge Plan with full available width, title banner, analysis badges, source notes, and outline badges', () => {
@@ -357,5 +360,82 @@ describe('InChatMergeNotesCard', () => {
 
     expect(screen.getByTestId('merge-cancelled-card')).toBeInTheDocument();
     expect(screen.getByText('Merge operation was cancelled.')).toBeInTheDocument();
+  });
+
+  it('supports selecting up to 4 notes, enforces max 4 limit with warning, and allows removing via chip', async () => {
+    const onRunCommand = vi.fn();
+    const resultData = {
+      data: {
+        stage: 'select',
+        card_type: 'select_notes',
+        notes: [
+          { id: 'n1', title: 'Note 1', word_count: 500 },
+          { id: 'n2', title: 'Note 2', word_count: 600 },
+          { id: 'n3', title: 'Note 3', word_count: 700 },
+          { id: 'n4', title: 'Note 4', word_count: 800 },
+          { id: 'n5', title: 'Note 5', word_count: 900 },
+        ],
+      },
+    };
+
+    render(<InChatMergeNotesCard result={resultData} onRunCommand={onRunCommand} />);
+
+    // Select 4 notes
+    fireEvent.click(screen.getByTestId('merge-note-item-n1'));
+    fireEvent.click(screen.getByTestId('merge-note-item-n2'));
+    fireEvent.click(screen.getByTestId('merge-note-item-n3'));
+    fireEvent.click(screen.getByTestId('merge-note-item-n4'));
+
+    expect(screen.getByTestId('merge-select-count-pill')).toHaveTextContent('4/4 selected');
+    expect(screen.getByTestId('selected-note-chip-n1')).toBeInTheDocument();
+    expect(screen.getByTestId('selected-note-chip-n4')).toBeInTheDocument();
+
+    // Attempting to select 5th note triggers warning and does not add it
+    fireEvent.click(screen.getByTestId('merge-note-item-n5'));
+    expect(screen.getByTestId('max-notes-warning')).toBeInTheDocument();
+    expect(screen.getByTestId('merge-select-count-pill')).toHaveTextContent('4/4 selected');
+
+    // Remove Note 1 via chip
+    const removeBtn = screen.getByLabelText('Remove Note 1');
+    fireEvent.click(removeBtn);
+    expect(screen.queryByTestId('selected-note-chip-n1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('merge-select-count-pill')).toHaveTextContent('3/4 selected');
+    expect(screen.queryByTestId('max-notes-warning')).not.toBeInTheDocument();
+
+    // Submit with 3 notes
+    const confirmBtn = screen.getByTestId('btn-confirm-merge-notes');
+    fireEvent.click(confirmBtn);
+    await waitFor(() => {
+      expect(onRunCommand).toHaveBeenCalledWith('/merge-notes "Note 2" "Note 3" "Note 4"');
+    });
+  });
+
+  it('renders visible progress stepper during generation stage with step labels and section breakdown', () => {
+    const proposal = {
+      proposalId: 'prop-prog',
+      actionId: 'notes.create',
+      command: '/merge-notes',
+      data: {
+        workflow: 'merge_notes',
+        stage: 'generate',
+        card_type: 'merge_plan',
+        plan: {
+          title: 'Integrated Vector Systems',
+          outline: [
+            { id: 's1', title: 'Foundations', mode: 'verbatim' },
+            { id: 's2', title: 'Algorithms', mode: 'rewritten' },
+          ],
+        },
+      },
+    };
+
+    render(<InChatMergeNotesCard proposal={proposal} />);
+
+    // Progress stepper is visible
+    expect(screen.getByTestId('generation-progress-stepper')).toBeInTheDocument();
+    expect(screen.getByText('Preparing')).toBeInTheDocument();
+    expect(screen.getByText('Synthesizing')).toBeInTheDocument();
+    expect(screen.getByText('Validating')).toBeInTheDocument();
+    expect(screen.getByText('Section Synthesis Status')).toBeInTheDocument();
   });
 });
