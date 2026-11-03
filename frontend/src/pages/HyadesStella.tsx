@@ -153,7 +153,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
     const draft: TransformDocumentDraft = {
       proposalId: propId,
       confirmationToken: token,
-      operation: d.operation || 'shorten',
+      operation: d.operation || (d.workflow === 'merge_notes' ? 'merge' : 'shorten'),
       noteId: d.note_id || '',
       noteTitle: d.note_title || d.title || 'Untitled Note',
       originalContent: original,
@@ -1278,6 +1278,7 @@ export const HyadesStella: React.FC<HyadesStellaProps> = ({
                                 isCommitting={msg.genericProposal.status === 'committing'}
                                 onConfirm={(overrides) => confirmGenericProposal(msg.id, overrides)}
                                 onCancel={() => cancelGenericProposal(msg.id)}
+                                onRunCommand={(cmdText) => handleSendMessage(cmdText)}
                                 onPreviewArtifact={setActiveArtifactPreview}
                                 onNavigateToItem={(id, itemType) => {
                                   if (itemType === 'note' && onNavigateToNote) {

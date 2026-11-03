@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { GenericActionResultData } from '@/types/commands';
 import { OrganizationConfigDialog } from './OrganizationConfigDialog';
 import { InChatTransformNoteCard } from './InChatTransformNoteCard';
+import { InChatMergeNotesCard } from './InChatMergeNotesCard';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -53,6 +54,23 @@ export const InChatActionResultCard: React.FC<InChatActionResultCardProps> = ({
   ) {
     return (
       <InChatTransformNoteCard
+        result={result}
+        onNavigateToItem={onNavigateToItem}
+        onRunCommand={onRunCommand}
+        onOpenDocumentPanel={onOpenDocumentPanel}
+      />
+    );
+  }
+
+  if (
+    data.card_type === 'select_notes' ||
+    data.card_type === 'merge_plan' ||
+    data.card_type === 'merge_review' ||
+    data.workflow === 'merge_notes' ||
+    cmd.startsWith('/merge-notes')
+  ) {
+    return (
+      <InChatMergeNotesCard
         result={result}
         onNavigateToItem={onNavigateToItem}
         onRunCommand={onRunCommand}

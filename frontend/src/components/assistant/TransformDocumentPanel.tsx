@@ -14,6 +14,7 @@ import {
   Info,
   Loader2,
   AlertCircle,
+  GitMerge,
 } from 'lucide-react';
 import { renderMarkdown } from '@/lib/markdown';
 
@@ -81,6 +82,7 @@ export function countWords(text: string): number {
 }
 
 const OPERATION_ICONS: Record<string, React.ReactNode> = {
+  merge: <GitMerge size={18} className="text-[var(--accent-terracotta)]" />,
   enrich: <Sparkles size={18} className="text-[var(--accent-terracotta)]" />,
   shorten: <Minimize2 size={18} className="text-[var(--accent-terracotta)]" />,
   expand: <Maximize2 size={18} className="text-[var(--accent-terracotta)]" />,
@@ -215,9 +217,9 @@ export const TransformDocumentPanel: React.FC<TransformDocumentPanelProps> = ({
           <div className="flex flex-col min-w-0">
             <span
               className="font-serif font-bold text-sm sm:text-base text-[var(--ink-primary)] tracking-tight truncate"
-              title={`Transform Note · ${opLabel}`}
+              title={operation === 'merge' ? 'Merge Notes' : `Transform Note · ${opLabel}`}
             >
-              Transform Note · {opLabel}
+              {operation === 'merge' ? 'Merge Notes' : `Transform Note · ${opLabel}`}
             </span>
             <div className="flex items-center gap-1.5 text-xs text-[var(--ink-secondary)]">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />

@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { GenericActionProposalData } from '@/types/commands';
 import { InChatEnrichmentProposalReview } from './InChatEnrichmentProposalReview';
 import { InChatTransformNoteCard } from './InChatTransformNoteCard';
+import { InChatMergeNotesCard } from './InChatMergeNotesCard';
 import {
   CheckCircle2,
   XCircle,
@@ -32,6 +33,7 @@ interface InChatActionProposalCardProps {
     subtitle?: string;
   }) => void;
   onOpenDocumentPanel?: (draftData: any) => void;
+  onRunCommand?: (commandText: string) => void;
 }
 
 export const InChatActionProposalCard: React.FC<InChatActionProposalCardProps> = ({
@@ -42,6 +44,7 @@ export const InChatActionProposalCard: React.FC<InChatActionProposalCardProps> =
   onNavigateToItem,
   onPreviewArtifact,
   onOpenDocumentPanel,
+  onRunCommand,
 }) => {
   const isCommitted = proposal.status === 'committed';
   const isCancelled = proposal.status === 'cancelled';
@@ -789,6 +792,26 @@ export const InChatActionProposalCard: React.FC<InChatActionProposalCardProps> =
         onCancel={onCancel}
         onPreviewArtifact={onPreviewArtifact}
         onNavigateToItem={onNavigateToItem}
+        onOpenDocumentPanel={onOpenDocumentPanel}
+      />
+    );
+  }
+
+  if (
+    cmd.startsWith('/merge-notes') ||
+    workflow === 'merge_notes' ||
+    rawData.card_type === 'merge_plan' ||
+    rawData.card_type === 'select_notes' ||
+    rawData.card_type === 'merge_review'
+  ) {
+    return (
+      <InChatMergeNotesCard
+        proposal={proposal}
+        isCommitting={isCommitting}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+        onNavigateToItem={onNavigateToItem}
+        onRunCommand={onRunCommand}
         onOpenDocumentPanel={onOpenDocumentPanel}
       />
     );
