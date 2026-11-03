@@ -4,7 +4,7 @@ import { Note } from '@/types/note';
 import { Tag } from '@/types/tag';
 import { createNote, updateNote, deleteNote, getNote } from '@/api/notes';
 import { addTag, removeTag } from '@/api/tags';
-import { Pin, Archive, Trash2, Save, X, Eye, Edit3, Tag as TagIcon, Loader2, Clock, RotateCcw, FileCode2 } from 'lucide-react';
+import { Pin, Archive, Trash2, Save, X, Eye, Edit3, Tag as TagIcon, Loader2, Clock, RotateCcw, FileCode2, GitMerge } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { VersionHistoryPanel } from './versioning/VersionHistoryPanel';
 import { DiffViewer } from './versioning/DiffViewer';
@@ -317,6 +317,27 @@ export const NoteEditor: React.FC<NoteEditorProps> = ({
       )}
 
       <main className="flex-1 overflow-y-auto p-6 lg:p-8 flex flex-col">
+        {Boolean(currentNote?.metadata?.is_merged || currentNote?.metadata?.origin === 'merge') && (
+          <div className="mb-3 flex items-center gap-2 select-none">
+            <span
+              data-testid="merged-note-indicator"
+              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium bg-[#FBF0EA] text-[#C85A32] border border-[#F0D5C7]"
+              title={
+                currentNote?.metadata?.source_count
+                  ? `Created by merging ${currentNote.metadata.source_count} notes`
+                  : 'Created by merging notes'
+              }
+            >
+              <GitMerge size={12} className="text-[#C85A32]" />
+              <span>Merged</span>
+            </span>
+            {currentNote?.metadata?.merged_source_titles?.length ? (
+              <span className="text-[11px] text-slate-400 font-mono truncate max-w-md">
+                from {currentNote.metadata.merged_source_titles.join(', ')}
+              </span>
+            ) : null}
+          </div>
+        )}
         <input
             type="text"
             value={title}

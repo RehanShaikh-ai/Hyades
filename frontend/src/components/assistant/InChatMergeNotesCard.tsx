@@ -203,6 +203,20 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
   const rawSourceNotes = Array.isArray(planData.source_notes) ? planData.source_notes : [];
   const [showAllSources, setShowAllSources] = useState(false);
 
+  // Intelligent Merged Note Title state
+  const defaultInitialTitle =
+    data.title ||
+    planData.title ||
+    (rawSourceNotes.length > 0 ? `Synthesis: ${rawSourceNotes[0].title}` : 'Merged Research Note');
+  const [mergedTitle, setMergedTitle] = useState<string>(defaultInitialTitle);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+
+  useEffect(() => {
+    if (data.title || planData.title) {
+      setMergedTitle(data.title || planData.title);
+    }
+  }, [data.title, planData.title]);
+
   const initialSections: ProposedSectionItem[] = useMemo(() => {
     return Array.isArray(planData.outline)
       ? planData.outline
@@ -262,7 +276,7 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
     return (
       <div
         data-testid="merge-notes-select-card"
-        className="card-surface mt-3 p-4 sm:p-5 rounded-2xl border border-[var(--border-parchment)] bg-[#FAF8F2] shadow-xs flex flex-col gap-4 max-w-3xl text-[var(--ink-primary)] animate-fade-in"
+        className="card-surface mt-3 p-4 sm:p-5 rounded-2xl border border-[var(--border-parchment)] bg-[#FAF8F2] shadow-xs flex flex-col gap-4 w-full text-[var(--ink-primary)] animate-fade-in"
       >
         {/* Header */}
         <div className="flex items-center justify-between gap-3 border-b border-[var(--border-parchment)] pb-3">
@@ -366,7 +380,7 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
     return (
       <div
         data-testid="merge-committed-card"
-        className="card-surface mt-3 p-4 sm:p-5 rounded-2xl border border-emerald-200 bg-emerald-50/50 shadow-xs flex flex-col gap-3.5 max-w-2xl text-[var(--ink-primary)] animate-fade-in"
+        className="card-surface mt-3 p-4 sm:p-5 rounded-2xl border border-emerald-200 bg-emerald-50/50 shadow-xs flex flex-col gap-3.5 w-full text-[var(--ink-primary)] animate-fade-in"
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -374,9 +388,15 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
               <CheckCircle2 size={18} />
             </div>
             <div className="flex flex-col min-w-0">
-              <span className="font-serif font-bold text-sm sm:text-base text-[var(--ink-primary)] truncate">
-                {destination === 'replace_source' ? 'Source Note Overwritten' : 'Merged Note Created'}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-serif font-bold text-sm sm:text-base text-[var(--ink-primary)] truncate">
+                  {destination === 'replace_source' ? 'Source Note Overwritten' : 'Merged Note Created'}
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-[#FBF0EA] text-[#C85A32] border border-[#F0D5C7]">
+                  <GitMerge size={10} className="text-[#C85A32]" />
+                  Merged
+                </span>
+              </div>
               <span className="text-xs text-emerald-800">
                 {destination === 'replace_source'
                   ? 'The selected source note was updated and linked to sibling sources.'
@@ -394,7 +414,7 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
             <div className="flex items-center gap-2 min-w-0">
               <FileText size={14} className="text-emerald-700 shrink-0" />
               <span className="text-xs font-serif font-bold text-[var(--ink-primary)] truncate">
-                {data.title}
+                {mergedTitle || data.title}
               </span>
             </div>
             {onNavigateToItem && committedNoteId && (
@@ -421,7 +441,7 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
     return (
       <div
         data-testid="merge-cancelled-card"
-        className="card-surface mt-3 p-4 rounded-xl border border-stone-200 bg-stone-50/70 shadow-xs flex items-center justify-between gap-3 max-w-xl text-stone-600 animate-fade-in"
+        className="card-surface mt-3 p-4 rounded-xl border border-stone-200 bg-stone-50/70 shadow-xs flex items-center justify-between gap-3 w-full text-stone-600 animate-fade-in"
       >
         <div className="flex items-center gap-2.5">
           <X size={16} className="text-stone-400" />
@@ -435,7 +455,7 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // STAGE 2: Merge Plan Card (Mockup A)
+  // STAGE 2: Merge Plan Card (Mockup A Layout, Full Available Width)
   // ───────────────────────────────────────────────────────────────────────────
   const relationshipLevel = analysis.relationship_level || 'Strong';
   const visibleSources = showAllSources ? rawSourceNotes : rawSourceNotes.slice(0, 3);
@@ -537,7 +557,7 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
         ...data,
         workflow: 'merge_notes',
         operation: 'merge',
-        title: data.title || planData.title || 'Merged Note',
+        title: mergedTitle || data.title || planData.title || 'Merged Note',
         proposed_content: data.content || '',
         original_content: rawSourceNotes.map((s: any) => `## ${s.title}\n\n`).join('\n'),
       });
@@ -547,7 +567,7 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
   return (
     <div
       data-testid="merge-plan-card"
-      className="card-surface mt-3 p-4 sm:p-6 rounded-2xl border border-[var(--border-parchment)] bg-[#FAF8F2] shadow-xs flex flex-col gap-4 max-w-4xl text-[var(--ink-primary)] animate-fade-in"
+      className="card-surface mt-3 p-4 sm:p-6 rounded-2xl border border-[var(--border-parchment)] bg-[#FAF8F2] shadow-xs flex flex-col gap-5 w-full text-[var(--ink-primary)] animate-fade-in"
     >
       {/* ────────────────── Header ────────────────── */}
       <div className="flex items-start justify-between gap-3 border-b border-[var(--border-parchment)] pb-3.5">
@@ -580,11 +600,50 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
         <MergeWorkflowProgress stage={currentStage} />
       </div>
 
-      {/* ────────────────── Stage 1: Mockup A Two-Column Body ────────────────── */}
+      {/* ────────────────── Proposed Merged Note Title (Prominently in Plan Stage) ────────────────── */}
       {currentStage === 1 && (
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 min-h-0">
-          {/* ────── Left Column: Merge Analysis & Source Notes (5/12 cols) ────── */}
-          <div className="md:col-span-5 flex flex-col gap-4">
+        <div className="p-3.5 sm:p-4 rounded-xl bg-white border border-[var(--border-parchment)] shadow-2xs flex flex-col gap-1.5 w-full">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-mono uppercase tracking-wider text-[var(--accent-midnight)] font-bold flex items-center gap-1.5">
+              <Sparkles size={13} className="text-[#C85A32]" />
+              <span>Proposed merged note title</span>
+            </span>
+            <button
+              type="button"
+              data-testid="btn-edit-merged-title"
+              onClick={() => setIsEditingTitle(!isEditingTitle)}
+              className="text-xs text-[#C85A32] hover:underline flex items-center gap-1 font-medium cursor-pointer"
+            >
+              <Pencil size={11} />
+              <span>{isEditingTitle ? 'Done' : 'Edit Title'}</span>
+            </button>
+          </div>
+
+          {isEditingTitle ? (
+            <input
+              type="text"
+              data-testid="input-merged-title"
+              value={mergedTitle}
+              onChange={(e) => setMergedTitle(e.target.value)}
+              placeholder="Enter title for merged note..."
+              className="w-full px-3 py-1.5 text-sm sm:text-base font-serif font-bold text-[var(--ink-primary)] rounded-lg border border-[#C85A32] bg-[#FAF8F2] outline-none shadow-2xs"
+            />
+          ) : (
+            <h3
+              data-testid="text-merged-title"
+              className="font-serif font-bold text-sm sm:text-base text-[var(--ink-primary)] leading-snug tracking-tight"
+            >
+              {mergedTitle || 'Untitled Merged Note'}
+            </h3>
+          )}
+        </div>
+      )}
+
+      {/* ────────────────── Stage 1: Mockup A Two-Column Body (Full Available Width) ────────────────── */}
+      {currentStage === 1 && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 min-h-0 w-full">
+          {/* ────── Left Column: Merge Analysis & Source Notes (4/12 or 5/12 cols) ────── */}
+          <div className="lg:col-span-5 xl:col-span-4 flex flex-col gap-4">
             {/* Merge Analysis Box */}
             <div className="flex flex-col gap-2.5">
               <span className="font-bold text-xs text-[var(--ink-primary)]">
@@ -698,8 +757,8 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
             </div>
           </div>
 
-          {/* ────── Right Column: Proposed Outline (7/12 cols) ────── */}
-          <div className="md:col-span-7 flex flex-col gap-3">
+          {/* ────── Right Column: Proposed Outline (7/12 or 8/12 cols, ample horizontal space) ────── */}
+          <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-3">
             <div className="flex items-center justify-between border-b border-[var(--border-parchment)] pb-2">
               <span className="font-bold text-xs text-[var(--ink-primary)]">
                 Proposed Outline
@@ -813,12 +872,12 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
       {currentStage === 2 && (
         <div
           data-testid="merge-generating-view"
-          className="p-8 rounded-xl bg-white border border-[var(--border-parchment)] flex flex-col items-center justify-center gap-4 text-center shadow-2xs animate-fade-in"
+          className="p-8 rounded-xl bg-white border border-[var(--border-parchment)] flex flex-col items-center justify-center gap-4 text-center shadow-2xs w-full animate-fade-in"
         >
           <Loader2 size={26} className="text-[#C85A32] animate-spin" />
           <div className="flex flex-col gap-1">
             <span className="font-serif font-bold text-base text-[var(--ink-primary)]">
-              Generating Merged Draft...
+              Generating Merged Draft: {mergedTitle}...
             </span>
             <span className="text-xs text-[var(--ink-secondary)] max-w-md">
               Extracting verbatim blocks, rewriting overlapping sections, and validating factual consistency.
@@ -848,7 +907,48 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
 
       {/* ────────────────── Stage 3: Review Draft ────────────────── */}
       {currentStage === 3 && (
-        <div data-testid="merge-review-view" className="flex flex-col gap-4 animate-fade-in">
+        <div data-testid="merge-review-view" className="flex flex-col gap-4 w-full animate-fade-in">
+          {/* Document Title Banner (Review Stage) */}
+          <div className="p-3.5 sm:p-4 rounded-xl bg-white border border-[var(--border-parchment)] shadow-2xs flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-[var(--ink-tertiary)] font-bold">
+                  Proposed merged note title
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-[#FBF0EA] text-[#C85A32] border border-[#F0D5C7]">
+                  <GitMerge size={10} className="text-[#C85A32]" />
+                  Merged
+                </span>
+              </div>
+              <button
+                type="button"
+                data-testid="btn-edit-review-title"
+                onClick={() => setIsEditingTitle(!isEditingTitle)}
+                className="text-xs text-[#C85A32] hover:underline flex items-center gap-1 font-medium cursor-pointer"
+              >
+                <Pencil size={11} />
+                <span>{isEditingTitle ? 'Done' : 'Edit Title'}</span>
+              </button>
+            </div>
+
+            {isEditingTitle ? (
+              <input
+                type="text"
+                data-testid="input-review-title"
+                value={mergedTitle}
+                onChange={(e) => setMergedTitle(e.target.value)}
+                className="w-full px-3 py-1.5 text-sm sm:text-base font-serif font-bold text-[var(--ink-primary)] rounded-lg border border-[#C85A32] bg-[#FAF8F2] outline-none shadow-2xs"
+              />
+            ) : (
+              <h2
+                data-testid="text-review-title"
+                className="font-serif font-bold text-base sm:text-lg text-[var(--ink-primary)] leading-snug tracking-tight"
+              >
+                {mergedTitle || 'Untitled Merged Note'}
+              </h2>
+            )}
+          </div>
+
           <div className="p-3.5 rounded-xl bg-white border border-[var(--border-parchment)] flex items-center justify-between gap-3 shadow-2xs flex-wrap">
             <div className="flex flex-col min-w-0">
               <span className="font-serif font-bold text-sm text-[var(--ink-primary)]">
@@ -909,11 +1009,17 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
 
       {/* ────────────────── Stage 4: Choose Destination & Apply ────────────────── */}
       {currentStage === 4 && (
-        <div data-testid="merge-destination-view" className="flex flex-col gap-4 animate-fade-in">
+        <div data-testid="merge-destination-view" className="flex flex-col gap-4 w-full animate-fade-in">
           <div className="p-4 rounded-xl bg-white border border-[var(--border-parchment)] flex flex-col gap-3.5 shadow-2xs">
-            <span className="font-serif font-bold text-sm text-[var(--ink-primary)]">
-              Choose Destination for Merged Note:
-            </span>
+            <div className="flex items-center justify-between gap-2 border-b border-[var(--border-parchment)] pb-2.5">
+              <span className="font-serif font-bold text-sm text-[var(--ink-primary)]">
+                Choose Destination for "{mergedTitle}":
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-[#FBF0EA] text-[#C85A32] border border-[#F0D5C7]">
+                <GitMerge size={10} className="text-[#C85A32]" />
+                Merged
+              </span>
+            </div>
 
             <div className="flex flex-col sm:flex-row gap-4">
               <label
@@ -1071,6 +1177,7 @@ export const InChatMergeNotesCard: React.FC<InChatMergeNotesCardProps> = ({
               disabled={isCommitting || (destination === 'replace_source' && !confirmOverwriteChecked)}
               onClick={() =>
                 onConfirm?.({
+                  title: mergedTitle,
                   content: data.content,
                   destination,
                   replace_note_id: destination === 'replace_source' ? targetReplaceNoteId : undefined,

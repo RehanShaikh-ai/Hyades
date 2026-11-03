@@ -17,6 +17,7 @@ import { GraphNodeResponse } from '@/types/graph';
 import libraryScriptorium from '@/assets/plates/library-scriptorium.jpg';
 import libraryCatalogFolio from '@/assets/plates/library-catalog-folio.jpg';
 import { ObservatoryTarget, StellaContext } from '@/types/navigation';
+import { GitMerge } from 'lucide-react';
 
 interface HyadesLibraryProps {
   workspaceId: string;
@@ -49,6 +50,8 @@ interface UnifiedItem {
   dateStr: string;
   rawNote?: Note;
   rawSource?: Source;
+  isMerged?: boolean;
+  sourceCount?: number;
   extract_knowledge?: boolean;
   extraction_status?: 'extracted' | 'pending' | 'failed' | 'ineligible';
   extraction_error?: string | null;
@@ -367,6 +370,8 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
         format: 'Note',
         title: n.title || 'Untitled Note',
         authorOrMeta: tagLabels ? `Tags: ${tagLabels}` : (clusterInfo ? `Topic: ${clusterInfo.label}` : 'Research Note'),
+        isMerged: Boolean(n.metadata?.is_merged || n.metadata?.origin === 'merge'),
+        sourceCount: n.metadata?.source_count || n.metadata?.merged_source_ids?.length || 0,
         excerpt: n.content ? n.content.slice(0, 220).replace(/[#*`_]/g, '') : 'No content recorded.',
         topic: topicLabel,
         topicColor: 'var(--accent-midnight)',
@@ -1583,6 +1588,20 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                               <span className="text-[13px] font-semibold text-[var(--ink-primary)] leading-tight truncate">
                                 {item.title}
                               </span>
+                              {(item.isMerged || (item as any).rawNote?.metadata?.is_merged) && (
+                                <span
+                                  data-testid="library-merged-badge"
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-mono font-medium shrink-0 bg-[#FBF0EA] text-[#C85A32] border border-[#F0D5C7]"
+                                  title={
+                                    (item as any).sourceCount || (item as any).rawNote?.metadata?.source_count
+                                      ? `Created by merging ${(item as any).sourceCount || (item as any).rawNote?.metadata?.source_count} notes`
+                                      : 'Created by merging notes'
+                                  }
+                                >
+                                  <GitMerge size={10} className="text-[#C85A32]" />
+                                  <span>Merged</span>
+                                </span>
+                              )}
                               <span
                                 className={`px-1.5 py-0.2 rounded text-[10px] font-medium shrink-0 border ${
                                   item.format === 'Note'
@@ -1718,6 +1737,20 @@ export const HyadesLibrary: React.FC<HyadesLibraryProps> = ({
                       <span className="px-2 py-0.5 rounded bg-blue-50 text-[10px] text-[var(--accent-midnight)] font-semibold border border-blue-200 uppercase tracking-wider">
                         {selectedItem.type === 'note' ? 'Note' : `Source · ${selectedItem.format}`}
                       </span>
+                      {(selectedItem.isMerged || (selectedItem as any).rawNote?.metadata?.is_merged) && (
+                        <span
+                          data-testid="dossier-merged-badge"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-[#FBF0EA] text-[#C85A32] border border-[#F0D5C7]"
+                          title={
+                            (selectedItem as any).sourceCount || (selectedItem as any).rawNote?.metadata?.source_count
+                              ? `Created by merging ${(selectedItem as any).sourceCount || (selectedItem as any).rawNote?.metadata?.source_count} notes`
+                              : 'Created by merging notes'
+                          }
+                        >
+                          <GitMerge size={11} className="text-[#C85A32]" />
+                          <span>Merged</span>
+                        </span>
+                      )}
                     </div>
 
                     <h2 className="serif text-xl sm:text-2xl font-semibold text-[var(--ink-primary)] leading-snug">

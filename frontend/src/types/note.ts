@@ -16,6 +16,15 @@ export interface Note {
     source_type: string;
     original_path: string;
   } | null;
+  metadata?: {
+    origin?: string;
+    is_merged?: boolean;
+    merged_at?: string;
+    merged_source_ids?: string[];
+    merged_source_titles?: string[];
+    source_count?: number;
+    [key: string]: any;
+  } | null;
 }
 
 export interface NoteCreate {

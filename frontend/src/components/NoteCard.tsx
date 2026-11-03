@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Note } from '@/types/note';
-import { Pin, Archive } from 'lucide-react';
+import { Pin, Archive, GitMerge } from 'lucide-react';
 import { RadialMenu } from './RadialMenu';
 
 interface NoteCardProps {
@@ -55,8 +55,21 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         }}
       >
         {/* Status icons */}
-        {(note.is_pinned || note.is_archived) && (
+        {(note.is_pinned || note.is_archived || note.metadata?.is_merged) && (
           <div className="note-card-icons">
+            {note.metadata?.is_merged && (
+              <span
+                data-testid="note-card-merged-indicator"
+                className="note-icon-merged"
+                title={
+                  note.metadata.source_count
+                    ? `Created by merging ${note.metadata.source_count} notes`
+                    : 'Created by merging notes'
+                }
+              >
+                <GitMerge size={11} className="text-[#C85A32]" aria-label="Merged Note" />
+              </span>
+            )}
             {note.is_pinned && (
               <span className="note-icon-pin" title="Pinned">
                 <Pin size={11} className="fill-current" aria-label="Pinned" />
