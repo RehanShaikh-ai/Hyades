@@ -573,12 +573,104 @@ def build_proposed_outline(
     return sections
 
 
+def _deterministic_fallback_title(notes: list[Note], analysis: MergeAnalysis) -> str:
+    """Deterministic fallback for title generation when LLM is unavailable."""
+    if not notes:
+        return "Synthesized Research Document"
+
+    # If Strong relationship, formulate an integrated topic title rather than concatenation
+    if analysis.relationship_level == "Strong":
+        sorted_by_content = sorted(notes, key=lambda n: len(n.content or ""), reverse=True)
+        primary = sorted_by_content[0].title
+        if any(term in primary.lower() for term in ["system", "network", "theory", "guide", "foundations", "architecture", "model"]):
+            return f"{primary}: Integrated Synthesis"
+        return f"Foundations of {primary} and Related Systems"
+
+    if analysis.relationship_level == "Weak":
+        first_title = notes[0].title
+        second_title = notes[1].title if len(notes) > 1 else "Related Topics"
+        return f"Comparative Perspectives on {first_title} and {second_title}"
+
+    # For unrelated notes, return a neutral compendium title without artificial relationships
+    first_title = notes[0].title
+    second_title = notes[1].title if len(notes) > 1 else "Related Topics"
+    return f"Studies in {first_title} and {second_title}"
+
+
+def generate_merged_note_title(
+    notes: list[Note],
+    analysis: MergeAnalysis,
+    outline: list[ProposedSection],
+) -> str:
+    """Generate an intelligent, concise document title for the merged note using Stella's LLM.
+
+    The title:
+    - Is concise and descriptive (typically 3 to 8 words).
+    - Reflects the actual content and thematic core of the resulting document.
+    - Avoids mechanically concatenating source titles (e.g. no 'Note A & Note B' or 'Note A + Note B').
+    - Avoids inventing artificial relationships between unrelated topics. If the notes
+      cover distinct fields, generates a neutral collection title (e.g. 'Studies in Distributed CRDTs and Gothic Architecture').
+    - Preserves key technical terms and proper nouns.
+    - Falls back to a clean deterministic title if LLM generation fails.
+    """
+    provider = llm_service.get_llm_provider()
+
+    note_titles = [n.title for n in notes]
+    outline_titles = [s.title for s in outline if s.title not in ("Introduction", "Key Takeaways")]
+    relationship = analysis.relationship_level
+    relationship_desc = analysis.relationship_description
+
+    note_excerpts = [
+        f"- {n.title}: {(n.content or '')[:250].strip()}"
+        for n in notes[:5]
+    ]
+
+    sys_prompt = (
+        "You are an expert academic editor formulating a concise, professional title for a synthesized research document.\n"
+        "RULES FOR TITLE GENERATION:\n"
+        "1. Output ONLY the final title text on a single line. Do not include quotes, markdown `#`, or conversational filler.\n"
+        "2. The title must be concise (3 to 8 words) and sound like a natural reference article or whitepaper.\n"
+        "3. DO NOT mechanically join titles with '&', '+', or 'and' unless presenting a neutral dual-topic compendium.\n"
+        "4. DO NOT invent an artificial relationship between unrelated topics. If the notes cover different fields (e.g., distributed systems and medieval architecture), formulate a neutral collection title such as 'Studies in Distributed Systems and Gothic Architecture'.\n"
+        "5. Preserve key technical terms, acronyms, and proper nouns (e.g., 'CRDTs', 'Backpropagation', 'HNSW', 'OSI Model')."
+    )
+
+    user_prompt = (
+        f"Source Note Titles: {', '.join(note_titles)}\n"
+        f"Detected Conceptual Relationship: {relationship} ({relationship_desc})\n"
+        f"Planned Outline Sections: {', '.join(outline_titles)}\n"
+        f"Source Excerpts:\n" + "\n".join(note_excerpts) + "\n\n"
+        "Generate a single, natural document title for the merged synthesis:"
+    )
+
+    try:
+        response = provider.generate(
+            [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.3,
+        )
+        candidate = (response or "").strip().strip('"\'`').replace("#", "").strip()
+        if "\n" in candidate:
+            candidate = candidate.split("\n")[0].strip()
+        if candidate.lower().startswith("title:"):
+            candidate = candidate[6:].strip()
+
+        if 4 <= len(candidate) <= 120:
+            return candidate
+    except Exception as exc:
+        logger.warning(f"LLM title generation failed: {exc}")
+
+    return _deterministic_fallback_title(notes, analysis)
+
+
 def create_merge_plan(notes: list[Note]) -> MergePlanResponse:
     """Entry point for Stage 2: Create Merge Plan matching Mockup A."""
     analysis, source_notes_meta, all_blocks = analyze_source_notes(notes)
     outline = build_proposed_outline(notes, all_blocks, analysis)
 
-    merged_title = " & ".join(n.title for n in notes)[:150]
+    merged_title = generate_merged_note_title(notes, analysis, outline)
 
     return MergePlanResponse(
         title=merged_title,
@@ -678,6 +770,7 @@ def _generate_connective_section_with_llm(
 def execute_merge_generation(
     notes: list[Note],
     custom_outline: list[dict[str, Any]] | None = None,
+    custom_title: str | None = None,
 ) -> tuple[str, list[ProposedSection], list[ProvenanceEntry]]:
     """Execute section-by-section generation with validation, retries, and fallback to verbatim.
 
@@ -815,7 +908,7 @@ def execute_merge_generation(
         completed_sections.append(sec)
 
     # Assemble final markdown document
-    merged_title = " & ".join(n.title for n in notes)[:150]
+    merged_title = (custom_title or "").strip() or (notes[0].title if notes else "Merged Note")
     doc_parts = [f"# {merged_title}\n"]
     for s in completed_sections:
         doc_parts.append(f"## {s.title}\n\n{(s.content or '').strip()}\n")

@@ -5968,19 +5968,22 @@ def execute_stella_action_command(
         # Stage 2: Merge Plan & Generation
         plan = note_merge_service.create_merge_plan(resolved_notes)
         custom_outline = payload.get("outline")
+        custom_title = payload.get("title")
         destination = payload.get("destination", "new_note")
         replace_note_id = payload.get("replace_note_id")
         orig_hashes = payload.get("version_hashes")
 
+        effective_title = (custom_title or "").strip() or plan.title
+
         merged_content, completed_sections, provenance_ledger = note_merge_service.execute_merge_generation(
-            resolved_notes, custom_outline=custom_outline
+            resolved_notes, custom_outline=custom_outline, custom_title=effective_title
         )
 
         proposal_info = note_merge_service.stage_merge_proposal(
             db=db,
             workspace_id=workspace_id,
             notes=resolved_notes,
-            merged_title=plan.title,
+            merged_title=effective_title,
             merged_content=merged_content,
             sections=completed_sections,
             provenance_ledger=provenance_ledger,

@@ -294,7 +294,100 @@ def test_merge_destination_replace_source(client: TestClient, db_session: Sessio
     )
     assert res_commit.status_code == 200, res_commit.text
 
-    # Verify Note 1 was updated in place
+    # Verify Note 1 was updated in place and metadata was persisted
     db_session.refresh(note1)
     assert "Alpha text" in note1.content or "Source Note Alpha" in note1.content
     assert note1.id == uuid.UUID(prop_data["affected_item_ids"][0])
+    assert note1.metadata_ is not None
+    assert note1.metadata_.get("is_merged") is True
+    assert note1.metadata_.get("origin") == "merge"
+    assert str(note2.id) in note1.metadata_.get("merged_source_ids", [])
+    assert note1.metadata_.get("source_count") == 2
+
+
+def test_merged_note_title_generation_and_custom_title_preservation(client: TestClient, db_session: Session):
+    """Test natural document title generation for related and unrelated notes, plus custom title preservation."""
+    user = User(display_name="Title Tester")
+    db_session.add(user)
+    db_session.commit()
+
+    ws = Workspace(name="Title WS", owner_id=user.id)
+    db_session.add(ws)
+    db_session.commit()
+
+    # 1. Related notes
+    note1 = Note(
+        workspace_id=ws.id,
+        title="Conflict-Free Replicated Data Types",
+        content="# CRDTs\n\nState-based and operation-based CRDTs guarantee strong eventual consistency.",
+        created_by=user.id,
+    )
+    note2 = Note(
+        workspace_id=ws.id,
+        title="Distributed Systems Foundations",
+        content="# Distributed Systems\n\nNetwork partitions and consistency models in modern distributed architecture.",
+        created_by=user.id,
+    )
+    db_session.add_all([note1, note2])
+    db_session.commit()
+
+    plan_related = note_merge_service.create_merge_plan([note1, note2])
+    # Must NOT be a mechanical concatenation using '&' or '+'
+    assert " & " not in plan_related.title
+    assert " + " not in plan_related.title
+    assert len(plan_related.title) >= 5
+
+    # 2. Unrelated notes
+    note_arch = Note(
+        workspace_id=ws.id,
+        title="Structural Engineering of Gothic Cathedrals",
+        content="# Gothic Architecture\n\nFlying buttresses and ribbed vaults distributed masonry thrust.",
+        created_by=user.id,
+    )
+    db_session.add(note_arch)
+    db_session.commit()
+
+    plan_unrelated = note_merge_service.create_merge_plan([note1, note_arch])
+    assert " & " not in plan_unrelated.title
+    assert " + " not in plan_unrelated.title
+    assert "Studies in" in plan_unrelated.title or "Comparative" in plan_unrelated.title or "Compendium" in plan_unrelated.title
+
+    # 3. Custom title preservation through Stella command
+    custom_title = "Architectural Synchronization and Distributed Memory"
+    res = client.post(
+        f"/api/v1/workspaces/{ws.id}/stella/commands/execute",
+        json={
+            "command": "/merge-notes",
+            "parameters": {
+                "query": f'"{note1.title}" "{note2.title}"',
+                "title": custom_title,
+                "destination": "new_note",
+            },
+        },
+    )
+    assert res.status_code == 200, res.text
+    prop_data = res.json()
+    assert prop_data["data"]["title"] == custom_title
+    assert f"# {custom_title}" in prop_data["data"]["content"]
+
+    # Confirm and verify created note has custom title and metadata
+    res_commit = client.post(
+        f"/api/v1/workspaces/{ws.id}/stella/commands/execute",
+        json={
+            "command": "/merge-notes",
+            "proposal_id": prop_data["proposal_id"],
+            "confirmation_token": prop_data["confirmation_token"],
+        },
+    )
+    assert res_commit.status_code == 200, res_commit.text
+    created_id = res_commit.json()["affected_item_ids"][0]
+    created_note = db_session.get(Note, uuid.UUID(created_id))
+    assert created_note is not None
+    assert created_note.title == custom_title
+    assert created_note.metadata_ is not None
+    assert created_note.metadata_.get("is_merged") is True
+    assert created_note.metadata_.get("origin") == "merge"
+    assert created_note.metadata_.get("source_count") == 2
+    assert str(note1.id) in created_note.metadata_.get("merged_source_ids", [])
+    assert str(note2.id) in created_note.metadata_.get("merged_source_ids", [])
+

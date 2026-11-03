@@ -948,12 +948,34 @@ def execute_commit(
 
         title = proposal_payload["title"]
         content = proposal_payload.get("content", "")
+        source_notes = proposal_payload.get("source_notes", [])
+
+        meta_dict = None
+        if workflow == "merge_notes":
+            source_ids = [
+                str(src_meta.get("note_id")) if isinstance(src_meta, dict) else str(src_meta)
+                for src_meta in source_notes
+            ]
+            source_titles = [
+                str(src_meta.get("title"))
+                for src_meta in source_notes
+                if isinstance(src_meta, dict) and src_meta.get("title")
+            ]
+            meta_dict = {
+                "origin": "merge",
+                "is_merged": True,
+                "merged_at": datetime.now(UTC).isoformat(),
+                "merged_source_ids": source_ids,
+                "merged_source_titles": source_titles,
+                "source_count": len(source_ids),
+            }
 
         note = Note(
             workspace_id=workspace_id,
             title=title,
             content=content,
             created_by=ws.owner_id,
+            metadata_=meta_dict,
         )
         db.add(note)
         db.flush()
@@ -999,11 +1021,13 @@ def execute_commit(
             "title": note.title,
             "content": note.content,
             "tags": tags,
+            "metadata": note.metadata_,
         }
         result_dict: dict[str, Any] = {
             "note_id": str(note.id),
             "title": note.title,
             "status": "created",
+            "metadata": note.metadata_,
         }
         if source_notes:
             result_dict["source_notes"] = source_notes
@@ -1042,10 +1066,30 @@ def execute_commit(
         note.content = proposal_payload.get("content", note.content)
         note.updated_at = datetime.now(UTC)
 
-        # Link to other source notes if this is a merge_notes overwrite workflow
+        # Link to other source notes and persist merge origin metadata if this is a merge_notes overwrite workflow
         workflow = proposal_payload.get("workflow")
         source_notes = proposal_payload.get("source_notes", [])
-        if workflow == "merge_notes" and source_notes:
+        if workflow == "merge_notes":
+            source_ids = [
+                str(src_meta.get("note_id")) if isinstance(src_meta, dict) else str(src_meta)
+                for src_meta in source_notes
+            ]
+            source_titles = [
+                str(src_meta.get("title"))
+                for src_meta in source_notes
+                if isinstance(src_meta, dict) and src_meta.get("title")
+            ]
+            merged_meta = dict(note.metadata_ or {})
+            merged_meta.update({
+                "origin": "merge",
+                "is_merged": True,
+                "merged_at": datetime.now(UTC).isoformat(),
+                "merged_source_ids": source_ids,
+                "merged_source_titles": source_titles,
+                "source_count": len(source_ids),
+            })
+            note.metadata_ = merged_meta
+
             for src_meta in source_notes:
                 src_id_str = src_meta.get("note_id") if isinstance(src_meta, dict) else str(src_meta)
                 try:
@@ -1071,9 +1115,15 @@ def execute_commit(
             "id": str(note.id),
             "title": note.title,
             "content": note.content,
+            "metadata": note.metadata_,
         }
         return (
-            {"note_id": str(note.id), "updated_fields": ["title", "content"], "status": "updated"},
+            {
+                "note_id": str(note.id),
+                "updated_fields": ["title", "content"],
+                "status": "updated",
+                "metadata": note.metadata_,
+            },
             [str(note.id)],
             before_state,
             after_state,
