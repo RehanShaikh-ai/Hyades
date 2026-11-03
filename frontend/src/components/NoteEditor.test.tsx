@@ -207,4 +207,28 @@ describe('NoteEditor', () => {
       expect(onDeleted).toHaveBeenCalledWith('note-del-2');
     });
   });
+  it('renders merged note indicator when note metadata has is_merged', () => {
+    const mergedNote = {
+      id: 'note-merged-1',
+      workspace_id: 'ws-1',
+      title: 'Merged Note',
+      content: 'Consolidated content',
+      tags: [],
+      created_by: 'user-1',
+      is_pinned: false,
+      is_archived: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      metadata: {
+        is_merged: true,
+        origin: 'merge',
+        source_count: 2,
+        merged_source_titles: ['Source Alpha', 'Source Beta'],
+      },
+    };
+    render(<NoteEditor workspaceId="ws-1" onClose={vi.fn()} onSaved={vi.fn()} onDeleted={vi.fn()} initialNote={mergedNote} />);
+    expect(screen.getByTestId('merged-note-indicator')).toBeInTheDocument();
+    expect(screen.getByText('Merged')).toBeInTheDocument();
+    expect(screen.getByText('from Source Alpha, Source Beta')).toBeInTheDocument();
+  });
 });

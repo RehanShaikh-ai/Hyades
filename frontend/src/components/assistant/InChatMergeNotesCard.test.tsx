@@ -13,11 +13,12 @@ describe('InChatMergeNotesCard', () => {
   const mockPlanData = {
     card_type: 'merge_plan',
     stage: 'plan',
-    title: 'Merged: Neural Networks, Backpropagation, Gradient Descent',
-    content: '# Merged Overview\n\nComprehensive synthesis of neural network training.',
+    title: 'Foundations of Neural Networks and Gradient Optimization',
+    content: '# Foundations of Neural Networks and Gradient Optimization\n\nComprehensive synthesis of neural network training.',
     source_notes: mockSourceNotes,
     plan: {
       source_notes: mockSourceNotes,
+      title: 'Foundations of Neural Networks and Gradient Optimization',
       analysis: {
         relationship_level: 'Strong',
         relationship_description: 'The notes cover closely related concepts in neural network training.',
@@ -88,7 +89,7 @@ describe('InChatMergeNotesCard', () => {
     expect(onRunCommand).toHaveBeenCalledWith('/merge-notes "Neural Networks" "Backpropagation"');
   });
 
-  it('renders Mockup A 2-column Merge Plan with analysis badges, source notes, and outline badges', () => {
+  it('renders Mockup A 2-column Merge Plan with full available width, title banner, analysis badges, source notes, and outline badges', () => {
     const proposal = {
       proposalId: 'prop-123',
       actionId: 'notes.create',
@@ -99,9 +100,21 @@ describe('InChatMergeNotesCard', () => {
 
     render(<InChatMergeNotesCard proposal={proposal} />);
 
-    expect(screen.getByTestId('merge-plan-card')).toBeInTheDocument();
+    const card = screen.getByTestId('merge-plan-card');
+    expect(card).toBeInTheDocument();
+    // Verify width class uses available conversation width
+    expect(card.className).toContain('w-full');
+    expect(card.className).not.toContain('max-w-4xl');
+
     expect(screen.getByText('Merge Plan')).toBeInTheDocument();
     expect(screen.getByTestId('merge-workflow-progress')).toBeInTheDocument();
+
+    // Prominent Proposed Merged Note Title
+    expect(screen.getByText('Proposed merged note title')).toBeInTheDocument();
+    expect(screen.getByTestId('text-merged-title')).toHaveTextContent(
+      'Foundations of Neural Networks and Gradient Optimization'
+    );
+    expect(screen.getByTestId('btn-edit-merged-title')).toBeInTheDocument();
 
     // Merge Analysis
     expect(screen.getByText('Merge Analysis')).toBeInTheDocument();
@@ -139,6 +152,54 @@ describe('InChatMergeNotesCard', () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId('btn-generate-draft')).toBeInTheDocument();
     expect(screen.getByTestId('btn-cancel-merge')).toBeInTheDocument();
+  });
+
+  it('supports editing the proposed title in Plan stage and persists it into Review', async () => {
+    const proposal = {
+      proposalId: 'prop-123',
+      actionId: 'notes.create',
+      command: '/merge-notes',
+      status: 'preview' as const,
+      data: mockPlanData,
+    };
+
+    render(<InChatMergeNotesCard proposal={proposal} />);
+
+    // Edit title in Plan stage
+    fireEvent.click(screen.getByTestId('btn-edit-merged-title'));
+    const titleInput = screen.getByTestId('input-merged-title');
+    fireEvent.change(titleInput, { target: { value: 'Advanced Neural Architecture Synthesis' } });
+    fireEvent.click(screen.getByTestId('btn-edit-merged-title'));
+
+    expect(screen.getByTestId('text-merged-title')).toHaveTextContent(
+      'Advanced Neural Architecture Synthesis'
+    );
+
+    // Generate Draft
+    fireEvent.click(screen.getByTestId('btn-generate-draft'));
+
+    // Progress to Review
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('merge-review-view')).toBeInTheDocument();
+      },
+      { timeout: 1500 }
+    );
+
+    // Verify edited title persists in Review
+    expect(screen.getByTestId('text-review-title')).toHaveTextContent(
+      'Advanced Neural Architecture Synthesis'
+    );
+
+    // Edit title in Review stage
+    fireEvent.click(screen.getByTestId('btn-edit-review-title'));
+    const reviewTitleInput = screen.getByTestId('input-review-title');
+    fireEvent.change(reviewTitleInput, { target: { value: 'Final Comprehensive Neural Guide' } });
+    fireEvent.click(screen.getByTestId('btn-edit-review-title'));
+
+    expect(screen.getByTestId('text-review-title')).toHaveTextContent(
+      'Final Comprehensive Neural Guide'
+    );
   });
 
   it('supports interactive outline editing: title modification, mode change, add/remove section, reordering', () => {
@@ -216,7 +277,7 @@ describe('InChatMergeNotesCard', () => {
     );
   });
 
-  it('supports destination selection with overwrite confirmation safeguard on apply', async () => {
+  it('supports destination selection with overwrite confirmation safeguard on apply and passes confirmed title', async () => {
     const onConfirm = vi.fn();
     const proposal = {
       proposalId: 'prop-123',
@@ -254,11 +315,12 @@ describe('InChatMergeNotesCard', () => {
       expect.objectContaining({
         destination: 'replace_source',
         replace_note_id: 'note-1',
+        title: expect.stringContaining('Foundations of Neural Networks'),
       })
     );
   });
 
-  it('renders committed outcome with library navigation', () => {
+  it('renders committed outcome with library navigation and merged badge', () => {
     const onNavigateToItem = vi.fn();
     const proposal = {
       proposalId: 'prop-123',
@@ -275,6 +337,7 @@ describe('InChatMergeNotesCard', () => {
 
     expect(screen.getByTestId('merge-committed-card')).toBeInTheDocument();
     expect(screen.getByText('Synthesized Neural Networks & Optimization')).toBeInTheDocument();
+    expect(screen.getAllByText('Merged').length).toBeGreaterThanOrEqual(1);
 
     const viewBtn = screen.getByTestId('btn-open-committed-note');
     fireEvent.click(viewBtn);

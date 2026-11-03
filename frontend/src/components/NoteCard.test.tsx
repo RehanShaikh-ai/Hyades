@@ -46,6 +46,21 @@ describe('NoteCard', () => {
     expect(screen.getByTitle('Archived')).toBeInTheDocument();
   });
 
+  it('shows merged indicator when note is created via merge', () => {
+    const mergedNote: Note = {
+      ...mockNote,
+      metadata: {
+        is_merged: true,
+        origin: 'merge',
+        source_count: 3,
+        merged_source_titles: ['Note A', 'Note B', 'Note C'],
+      },
+    };
+    render(<NoteCard note={mergedNote} />);
+    expect(screen.getByTestId('note-card-merged-indicator')).toBeInTheDocument();
+    expect(screen.getByTitle('Created by merging 3 notes')).toBeInTheDocument();
+  });
+
   it('handles click events', async () => {
     const handleClick = vi.fn();
     render(<NoteCard note={mockNote} onClick={handleClick} />);
