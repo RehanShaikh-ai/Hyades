@@ -5896,6 +5896,8 @@ def execute_stella_action_command(
             affected_item_ids=transform_res.affected_item_ids,
         )
     elif clean_cmd == "/merge-notes":
+        from app.services import note_merge_service
+
         raw_note_args: list[str] = []
         if isinstance(payload.get("note_ids"), list):
             raw_note_args = [str(x).strip() for x in payload["note_ids"] if str(x).strip()]
@@ -5905,6 +5907,41 @@ def execute_stella_action_command(
             raw_note_args = [part.strip() for part in args[0].split(",") if part.strip()]
         else:
             raw_note_args = [a.strip() for a in args if a and a.strip()]
+
+        # If no arguments provided, return Stage 1 interactive note selector
+        if len(raw_note_args) == 0:
+            all_workspace_notes = list(
+                db.scalars(
+                    select(Note).where(Note.workspace_id == workspace_id).order_by(Note.updated_at.desc()).limit(30)
+                )
+            )
+            outcome_msg = "Select at least two notes to merge from your workspace."
+            select_data = {
+                "workflow": "merge_notes",
+                "card_type": "select_notes",
+                "stage": "select",
+                "title": "Select notes to merge",
+                "prompt": "Choose at least two notes from your workspace:",
+                "notes": [
+                    {
+                        "id": str(n.id),
+                        "title": n.title,
+                        "word_count": _count_words(n.content or ""),
+                        "updated_at_relative": _format_time_ago(n.updated_at),
+                        "version_hash": note_merge_service.compute_content_hash(n.content or ""),
+                    }
+                    for n in all_workspace_notes
+                ],
+                "total_notes": len(all_workspace_notes),
+            }
+            return StellaCommandExecuteResponse(
+                command=command,
+                action_id="notes.get",
+                status="completed",
+                message=outcome_msg,
+                data=select_data,
+                requires_confirmation=False,
+            )
 
         if len(raw_note_args) < 2:
             raise ValidationError(
@@ -5928,50 +5965,42 @@ def execute_stella_action_command(
             seen_note_ids.add(n.id)
             resolved_notes.append(n)
 
-        merged_title = " & ".join(n.title for n in resolved_notes)[:200]
-        sections = [
-            f"## Section {idx}: {n.title}\n\n{(n.content or '').strip()}"
-            for idx, n in enumerate(resolved_notes, start=1)
-        ]
-        merged_content = f"# {merged_title}\n\n" + "\n\n---\n\n".join(sections)
-        merged_tags = sorted({t.name for n in resolved_notes for t in (n.tags or [])})
-        source_notes_meta = [
-            {
-                "note_id": str(n.id),
-                "title": n.title,
-                "excerpt": (n.content or "")[:160],
-                "word_count": _count_words(n.content or ""),
-            }
-            for n in resolved_notes
-        ]
+        # Stage 2: Merge Plan & Generation
+        plan = note_merge_service.create_merge_plan(resolved_notes)
+        custom_outline = payload.get("outline")
+        destination = payload.get("destination", "new_note")
+        replace_note_id = payload.get("replace_note_id")
+        orig_hashes = payload.get("version_hashes")
 
-        envelope = action_execution_service.execute_action(
+        merged_content, completed_sections, provenance_ledger = note_merge_service.execute_merge_generation(
+            resolved_notes, custom_outline=custom_outline
+        )
+
+        proposal_info = note_merge_service.stage_merge_proposal(
             db=db,
             workspace_id=workspace_id,
-            action_id="notes.create",
-            request=ActionExecuteRequest(
-                mode="propose",
-                input={
-                    "title": merged_title,
-                    "content": merged_content,
-                    "tags": merged_tags,
-                },
-                idempotency_key=str(uuid.uuid4()),
-            ),
+            notes=resolved_notes,
+            merged_title=plan.title,
+            merged_content=merged_content,
+            sections=completed_sections,
+            provenance_ledger=provenance_ledger,
+            destination=destination,
+            replace_note_id=replace_note_id,
+            original_version_hashes=orig_hashes,
         )
-        prop = envelope.proposals[0] if envelope.proposals else None
+
+        outcome_msg = (
+            "I'll analyze the selected notes, identify their relationships, and prepare a merge proposal."
+        )
         merge_data = {
-            "proposed_action": "notes.create",
-            "workflow": "merge_notes",
-            "title": merged_title,
-            "content": merged_content,
-            "tags": merged_tags,
-            "source_notes": source_notes_meta,
-            "source_count": len(source_notes_meta),
-            "status": "awaiting_confirmation",
+            **proposal_info["data"],
+            "plan": plan.model_dump(),
+            "card_type": "merge_plan",
         }
-        if prop:
-            prop_row = db.get(ActionProposal, prop.proposal_id)
+
+        # Update proposal payload with full plan and draft
+        if proposal_info.get("proposal_id"):
+            prop_row = db.get(ActionProposal, uuid.UUID(proposal_info["proposal_id"]))
             if prop_row:
                 prop_row.proposal_payload = {
                     **(prop_row.proposal_payload or {}),
@@ -5979,17 +6008,14 @@ def execute_stella_action_command(
                 }
                 db.commit()
 
-        outcome_msg = (
-            f"Prepared merge proposal combining {len(resolved_notes)} notes into '{merged_title}'."
-        )
         merge_res = {
             "command": command,
-            "action_id": "notes.create",
+            "action_id": proposal_info["action_id"],
             "status": "proposed",
             "message": outcome_msg,
             "data": merge_data,
-            "proposal_id": str(prop.proposal_id) if prop else None,
-            "confirmation_token": prop.confirmation_token if prop else None,
+            "proposal_id": proposal_info["proposal_id"],
+            "confirmation_token": proposal_info["confirmation_token"],
             "requires_confirmation": True,
             "affected_item_ids": [str(n.id) for n in resolved_notes],
         }
@@ -5998,12 +6024,12 @@ def execute_stella_action_command(
         )
         return StellaCommandExecuteResponse(
             command=command,
-            action_id="notes.create",
+            action_id=proposal_info["action_id"],
             status="proposed",
             message=outcome_msg,
             data=merge_data,
-            proposal_id=str(prop.proposal_id) if prop else None,
-            confirmation_token=prop.confirmation_token if prop else None,
+            proposal_id=proposal_info["proposal_id"],
+            confirmation_token=proposal_info["confirmation_token"],
             requires_confirmation=True,
             affected_item_ids=[str(n.id) for n in resolved_notes],
         )

@@ -1041,6 +1041,28 @@ def execute_commit(
         note.title = proposal_payload.get("title", note.title)
         note.content = proposal_payload.get("content", note.content)
         note.updated_at = datetime.now(UTC)
+
+        # Link to other source notes if this is a merge_notes overwrite workflow
+        workflow = proposal_payload.get("workflow")
+        source_notes = proposal_payload.get("source_notes", [])
+        if workflow == "merge_notes" and source_notes:
+            for src_meta in source_notes:
+                src_id_str = src_meta.get("note_id") if isinstance(src_meta, dict) else str(src_meta)
+                try:
+                    src_uuid = uuid.UUID(str(src_id_str))
+                    src_note = db.get(Note, src_uuid)
+                    if src_note and src_note.workspace_id == workspace_id and src_note.id != note.id:
+                        existing_link = db.scalars(
+                            select(NoteLink).where(
+                                NoteLink.source_note_id == note.id,
+                                NoteLink.target_note_id == src_note.id,
+                            )
+                        ).first()
+                        if not existing_link:
+                            db.add(NoteLink(source_note_id=note.id, target_note_id=src_note.id))
+                except ValueError:
+                    pass
+
         db.commit()
         db.refresh(note)
         _index_note_content(db, note)
