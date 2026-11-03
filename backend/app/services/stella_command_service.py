@@ -398,12 +398,12 @@ AVAILABLE_COMMANDS: list[StellaCommandInfo] = [
     StellaCommandInfo(
         command="/merge-notes",
         name="Merge Notes",
-        description="Synthesize and merge two or more related notes into a unified note",
-        syntax="/merge-notes <note_1> <note_2>",
+        description="Synthesize and merge 2 to 4 related notes into a unified note",
+        syntax="/merge-notes <note_1> <note_2> [note_3] [note_4]",
         example='/merge-notes "Early Steam Engines" "Steam Turbine Innovations"',
         examples=[
             '/merge-notes "Early Steam Engines" "Steam Turbine Innovations"',
-            '/merge-notes "Quantum Entanglement" "Bell Inequalities"',
+            '/merge-notes "Vector Embeddings" "Approximate Nearest Neighbor Search" "Retrieval-Augmented Generation"',
         ],
         category="write",
         action_id="notes.create",
@@ -427,6 +427,24 @@ AVAILABLE_COMMANDS: list[StellaCommandInfo] = [
                 resource_types=["note"],
                 placeholder="Select second note to merge...",
                 description="Second source note to merge",
+            ),
+            StellaArgumentDef(
+                name="note_3",
+                label="Third Note",
+                arg_type="resource",
+                required=False,
+                resource_types=["note"],
+                placeholder="Select third note (optional)...",
+                description="Third source note to merge (optional)",
+            ),
+            StellaArgumentDef(
+                name="note_4",
+                label="Fourth Note",
+                arg_type="resource",
+                required=False,
+                resource_types=["note"],
+                placeholder="Select fourth note (optional)...",
+                description="Fourth source note to merge (optional)",
             ),
         ],
     ),
@@ -5945,7 +5963,11 @@ def execute_stella_action_command(
 
         if len(raw_note_args) < 2:
             raise ValidationError(
-                "Merging requires at least two source notes. Usage: /merge-notes <note_1> <note_2>"
+                "Merging requires at least two source notes. Usage: /merge-notes <note_1> <note_2> [note_3] [note_4]"
+            )
+        if len(raw_note_args) > 4:
+            raise ValidationError(
+                "Merging supports a maximum of 4 source notes. Please select between 2 and 4 notes."
             )
 
         resolved_notes: list[Note] = []
@@ -5960,7 +5982,7 @@ def execute_stella_action_command(
                 )
             if n.id in seen_note_ids:
                 raise ValidationError(
-                    f"Duplicate note selected ('{n.title}'). Please select at least two distinct notes to merge."
+                    f"Duplicate note selected ('{n.title}'). Please select between 2 and 4 distinct notes to merge."
                 )
             seen_note_ids.add(n.id)
             resolved_notes.append(n)

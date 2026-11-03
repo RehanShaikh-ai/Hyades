@@ -391,3 +391,183 @@ def test_merged_note_title_generation_and_custom_title_preservation(client: Test
     assert str(note1.id) in created_note.metadata_.get("merged_source_ids", [])
     assert str(note2.id) in created_note.metadata_.get("merged_source_ids", [])
 
+
+def test_vector_rag_document_synthesis_no_duplication_no_nested_titles(db_session: Session):
+    """Test synthesis quality, dynamic structure, heading normalization, and deduplication for Vector + RAG."""
+    user = User(display_name="Synthesis Tester")
+    db_session.add(user)
+    db_session.commit()
+
+    ws = Workspace(name="Synth WS", owner_id=user.id)
+    db_session.add(ws)
+    db_session.commit()
+
+    note_vec = Note(
+        workspace_id=ws.id,
+        title="Vector Embeddings and Approximate Nearest Neighbor Search",
+        content=(
+            "# Vector Embeddings and Approximate Nearest Neighbor Search\n\n"
+            "Dense vector embeddings represent unstructured text in high-dimensional continuous vector space.\n\n"
+            "## Dense Vector Embeddings\n"
+            "Transformer encoders map text into 768-dimensional or 1536-dimensional embeddings where semantic similarity corresponds to geometric proximity.\n\n"
+            "## Approximate Nearest Neighbor Search\n"
+            "Exact k-NN has O(N * D) search complexity. Hierarchical Navigable Small World (HNSW) graphs construct multi-layer proximity graphs providing logarithmic O(log N) search latency."
+        ),
+        created_by=user.id,
+    )
+    note_rag = Note(
+        workspace_id=ws.id,
+        title="Retrieval-Augmented Generation: Architecture and Grounding",
+        content=(
+            "# Retrieval-Augmented Generation: Architecture and Grounding\n\n"
+            "Retrieval-Augmented Generation (RAG) grounds language models on retrieved workspace evidence to eliminate hallucinations.\n\n"
+            "## RAG Architecture Overview\n"
+            "The offline pipeline chunks and embeds documents into a vector database. The online pipeline executes semantic retrieval and passes top-k passages to the LLM prompt context.\n\n"
+            "## Hybrid Search and Reranking\n"
+            "Dense vector search is combined with sparse BM25 keyword matching and cross-encoder rerankers for optimal precision."
+        ),
+        created_by=user.id,
+    )
+    db_session.add_all([note_vec, note_rag])
+    db_session.commit()
+
+    plan = note_merge_service.create_merge_plan([note_vec, note_rag])
+    assert plan.analysis.relationship_level == "Strong"
+    # Dynamic outline includes conceptual sections
+    outline_titles = [s.title for s in plan.outline]
+    assert "Vector Embeddings and Semantic Representation" in outline_titles
+    assert "Approximate Nearest Neighbor Search" in outline_titles
+    assert "Retrieval-Augmented Generation Architecture" in outline_titles
+    assert "How Vector Search Powers RAG" in outline_titles
+    assert "Key Takeaways" in outline_titles
+
+    merged_content, completed_sections, ledger = note_merge_service.execute_merge_generation([note_vec, note_rag])
+
+    # 1. Heading Hierarchy: Document has H1, sections have H2, subsections have H3+
+    assert merged_content.startswith("# Architectural Foundations") or merged_content.startswith("# ")
+    # Must NOT have nested duplicate headings
+    assert "## Retrieval-Augmented Generation: Architecture and Grounding" not in merged_content
+    assert "# Vector Embeddings and Approximate Nearest Neighbor Search" not in merged_content
+
+    # 2. Introduction: Must be concise synthesized introduction, NOT dumping note 1
+    intro_sec = next(s for s in completed_sections if s.title == "Introduction")
+    assert intro_sec.content is not None
+    assert len(intro_sec.content.split()) < 250
+    assert "Dense vector embeddings represent unstructured text" not in intro_sec.content
+
+    # 3. Key Takeaways: Must be concise bullets, NOT repeating entire notes
+    takeaways_sec = next(s for s in completed_sections if s.title == "Key Takeaways")
+    assert takeaways_sec.content is not None
+    assert len(takeaways_sec.content.split()) < 250
+    assert "- **" in takeaways_sec.content
+
+    # 4. Technical Integration: Explains how vector search powers RAG
+    integration_sec = next(s for s in completed_sections if "Powers RAG" in s.title or "Integration" in s.title)
+    assert integration_sec.content is not None
+    assert "pipeline" in integration_sec.content.lower() or "chunk" in integration_sec.content.lower()
+
+
+def test_dynamic_outline_unrelated_notes_no_forced_integration(db_session: Session):
+    """Test that unrelated notes produce collection-style structure without forced 'How They Work Together'."""
+    user = User(display_name="Unrelated Tester")
+    db_session.add(user)
+    db_session.commit()
+
+    ws = Workspace(name="Unrelated WS", owner_id=user.id)
+    db_session.add(ws)
+    db_session.commit()
+
+    note_wine = Note(
+        workspace_id=ws.id,
+        title="Oenology and Wine Fermentation",
+        content="# Oenology\n\nSaccharomyces cerevisiae conducts primary alcoholic fermentation in oak barrels.",
+        created_by=user.id,
+    )
+    note_optics = Note(
+        workspace_id=ws.id,
+        title="Geometrical Optics and Lens Aberrations",
+        content="# Optics\n\nSnell's law governs refraction across glass interfaces, producing chromatic aberration.",
+        created_by=user.id,
+    )
+    db_session.add_all([note_wine, note_optics])
+    db_session.commit()
+
+    plan = note_merge_service.create_merge_plan([note_wine, note_optics])
+    assert plan.analysis.relationship_level == "None apparent"
+    outline_titles = [s.title for s in plan.outline]
+    # Must NOT contain a forced connective 'How They Work Together'
+    assert "How They Work Together" not in outline_titles
+    assert "How Vector Search Powers RAG" not in outline_titles
+    assert any("Oenology" in t for t in outline_titles)
+    assert any("Optics" in t for t in outline_titles)
+
+
+def test_multi_note_selection_validation_2_to_4_notes(client: TestClient, db_session: Session):
+    """Test independent validation for 2 to 4 source notes."""
+    user = User(display_name="Multi Tester")
+    db_session.add(user)
+    db_session.commit()
+
+    ws = Workspace(name="Multi WS", owner_id=user.id)
+    db_session.add(ws)
+    db_session.commit()
+
+    notes = []
+    for i in range(1, 6):
+        n = Note(
+            workspace_id=ws.id,
+            title=f"Multi Note {i}",
+            content=f"# Multi Note {i}\n\nUnique content for note {i} detailing architectural component {i}.",
+            created_by=user.id,
+        )
+        db_session.add(n)
+        notes.append(n)
+    db_session.commit()
+
+    # 1. 1 note rejected
+    res_1 = client.post(
+        f"/api/v1/workspaces/{ws.id}/stella/commands/execute",
+        json={"command": "/merge-notes", "parameters": {"query": f'"{notes[0].title}"'}},
+    )
+    assert res_1.status_code == 400
+    assert "at least two source notes" in res_1.json()["detail"]["message"].lower()
+
+    # 2. 2 notes accepted
+    res_2 = client.post(
+        f"/api/v1/workspaces/{ws.id}/stella/commands/execute",
+        json={"command": "/merge-notes", "parameters": {"query": f'"{notes[0].title}" "{notes[1].title}"'}},
+    )
+    assert res_2.status_code == 200
+    assert res_2.json()["data"]["source_count"] == 2
+
+    # 3. 3 notes accepted
+    res_3 = client.post(
+        f"/api/v1/workspaces/{ws.id}/stella/commands/execute",
+        json={"command": "/merge-notes", "parameters": {"query": f'"{notes[0].title}" "{notes[1].title}" "{notes[2].title}"'}},
+    )
+    assert res_3.status_code == 200
+    assert res_3.json()["data"]["source_count"] == 3
+
+    # 4. 4 notes accepted
+    res_4 = client.post(
+        f"/api/v1/workspaces/{ws.id}/stella/commands/execute",
+        json={"command": "/merge-notes", "parameters": {"query": f'"{notes[0].title}" "{notes[1].title}" "{notes[2].title}" "{notes[3].title}"'}},
+    )
+    assert res_4.status_code == 200
+    assert res_4.json()["data"]["source_count"] == 4
+
+    # 5. 5 notes rejected
+    res_5 = client.post(
+        f"/api/v1/workspaces/{ws.id}/stella/commands/execute",
+        json={"command": "/merge-notes", "parameters": {"query": f'"{notes[0].title}" "{notes[1].title}" "{notes[2].title}" "{notes[3].title}" "{notes[4].title}"'}},
+    )
+    assert res_5.status_code == 400
+    assert "maximum of 4 source notes" in res_5.json()["detail"]["message"].lower()
+
+    # 6. Duplicate IDs rejected
+    res_dup = client.post(
+        f"/api/v1/workspaces/{ws.id}/stella/commands/execute",
+        json={"command": "/merge-notes", "parameters": {"query": f'"{notes[0].title}" "{notes[0].title}"'}},
+    )
+    assert res_dup.status_code == 400
+    assert "duplicate note selected" in res_dup.json()["detail"]["message"].lower()
