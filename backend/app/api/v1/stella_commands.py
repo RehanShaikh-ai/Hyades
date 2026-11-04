@@ -30,6 +30,8 @@ from app.schemas.stella_commands import (
     StellaRecordMessageRequest,
     StellaSearchRequest,
     StellaSearchResponse,
+    StellaSplitNoteDecomposeRequest,
+    StellaSplitNoteDecomposeResponse,
     StellaSuggestionsResponse,
     StellaSummarizeRequest,
     StellaSummarizeResponse,
@@ -329,5 +331,28 @@ def record_stella_message(
         content=body.content,
     )
     return {"id": str(msg.id), "status": "persisted"}
+
+
+@router.post(
+    "/workspaces/{workspace_id}/stella/commands/split-note/decompose",
+    response_model=StellaSplitNoteDecomposeResponse,
+    status_code=status.HTTP_200_OK,
+)
+def decompose_split_note(
+    workspace_id: uuid.UUID,
+    body: StellaSplitNoteDecomposeRequest,
+    db: Annotated[Session, Depends(get_db)],
+) -> StellaSplitNoteDecomposeResponse:
+    """Perform semantic decomposition of a note with options."""
+    res = stella_command_service.decompose_split_note_request(
+        db=db,
+        workspace_id=workspace_id,
+        note_id=body.note_id,
+        content_mode=body.content_mode,
+        count_mode=body.count_mode,
+        target_count=body.target_count,
+        proposal_id=body.proposal_id,
+    )
+    return StellaSplitNoteDecomposeResponse(**res)
 
 

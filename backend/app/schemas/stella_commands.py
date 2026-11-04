@@ -405,6 +405,32 @@ class StellaCommandExecuteResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+class StellaSplitNoteDecomposeRequest(BaseModel):
+    """Request to decompose a note semantically with options."""
+
+    note_id: uuid.UUID
+    content_mode: Literal["preserve", "adapt"] = "preserve"
+    count_mode: Literal["auto", "custom"] = "auto"
+    target_count: int | None = 4
+    proposal_id: uuid.UUID | None = None
+    model_config = ConfigDict(extra="ignore")
+
+
+class StellaSplitNoteDecomposeResponse(BaseModel):
+    """Result of semantic decomposition."""
+
+    source_note: dict[str, Any]
+    content_mode: str
+    count_mode: str
+    target_count: int
+    proposed_parts: list[dict[str, Any]]
+    decomposition_advice: str
+    coverage_percentage: int = 100
+    proposal_id: str | None = None
+    confirmation_token: str | None = None
+    model_config = ConfigDict(extra="ignore")
+
+
 class StellaRecordMessageRequest(BaseModel):
     """Persist a message directly into conversation history."""
 

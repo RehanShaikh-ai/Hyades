@@ -467,7 +467,7 @@ AVAILABLE_COMMANDS: list[StellaCommandInfo] = [
                 name="note",
                 label="Note",
                 arg_type="resource",
-                required=True,
+                required=False,
                 resource_types=["note"],
                 placeholder="Select note to split...",
                 description="Extensive note to break into modular topics",
@@ -1469,6 +1469,25 @@ ALL_OPERATIONS: list[StellaCommandInfo] = AVAILABLE_COMMANDS + DETERMINISTIC_OPE
 def list_commands() -> list[StellaCommandInfo]:
     """Return user-facing slash commands for the interactive command menu."""
     return [c for c in AVAILABLE_COMMANDS if c.availability != "internal"]
+
+
+def _format_time_ago(dt: datetime | None) -> str:
+    if not dt:
+        return "recently"
+    now = datetime.now(UTC)
+    diff = now - (dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt)
+    seconds = max(0, int(diff.total_seconds()))
+    if seconds < 120:
+        return "just now"
+    elif seconds < 3600:
+        return f"{seconds // 60}m ago"
+    elif seconds < 86400:
+        return f"{seconds // 3600}h ago"
+    elif seconds < 172800:
+        return "yesterday"
+    elif seconds < 604800:
+        return f"{seconds // 86400} days ago"
+    return dt.strftime("%b %d")
 
 
 def get_command_suggestions(
@@ -5776,6 +5795,15 @@ def execute_stella_action_command(
                     from app.services.note_enrichment_service import apply_proposals_to_content
                     new_content = apply_proposals_to_content(orig_c, updated_props, selected_ids=sel_set)
                     parameters["content"] = new_content
+            elif wflow == "split_note":
+                if parameters.get("proposed_parts"):
+                    updated_parts = parameters["proposed_parts"]
+                    proposal_obj.proposal_payload["proposed_parts"] = updated_parts
+                    proposal_obj.proposal_payload["part_count"] = len(updated_parts)
+                    if updated_parts:
+                        proposal_obj.proposal_payload["title"] = str(updated_parts[0].get("title", ""))[:200]
+                        proposal_obj.proposal_payload["content"] = str(updated_parts[0].get("content", ""))
+                    db.commit()
         res_envelope = action_execution_service.execute_action(
             db=db,
             workspace_id=workspace_id,
@@ -6060,64 +6088,117 @@ def execute_stella_action_command(
         )
 
     elif clean_cmd == "/split-note":
+        from app.services import note_split_service
+
+        content_mode = str(payload.get("content_mode", "preserve")).strip().lower()
+        if content_mode not in ("preserve", "adapt"):
+            content_mode = "preserve"
+
+        count_mode = str(payload.get("count_mode", "auto")).strip().lower()
+        if count_mode not in ("auto", "custom"):
+            count_mode = "auto"
+
+        raw_target_count = payload.get("target_count")
+        target_count: int | None = None
+        if raw_target_count is not None:
+            try:
+                target_count = int(raw_target_count)
+            except (ValueError, TypeError):
+                target_count = 4
+
+        # Parse potential CLI flags from args: --mode <preserve|adapt>, --count <auto|N>
+        clean_args: list[str] = []
+        i = 0
+        while i < len(args):
+            tok = args[i].strip()
+            if tok in ("--mode", "-m") and i + 1 < len(args):
+                val = args[i + 1].strip().lower()
+                if val in ("preserve", "adapt"):
+                    content_mode = val
+                i += 2
+            elif tok in ("--count", "-c") and i + 1 < len(args):
+                val = args[i + 1].strip().lower()
+                if val == "auto":
+                    count_mode = "auto"
+                else:
+                    try:
+                        target_count = int(val)
+                        count_mode = "custom"
+                    except ValueError:
+                        pass
+                i += 2
+            else:
+                clean_args.append(tok)
+                i += 1
+
         raw_note_ident = (
-            " ".join(args).strip()
-            if len(args) > 1
-            else (args[0] if args else str(payload.get("note_id", "")).strip())
+            " ".join(clean_args).strip()
+            if len(clean_args) > 1
+            else (clean_args[0] if clean_args else str(payload.get("note_id", payload.get("note", ""))).strip())
         )
+
+        # If no note argument provided, return Stage 1 interactive note selector
         if not raw_note_ident:
-            raise ValidationError("Usage: /split-note <note>")
+            all_workspace_notes = list(
+                db.scalars(
+                    select(Note).where(Note.workspace_id == workspace_id).order_by(Note.updated_at.desc()).limit(30)
+                )
+            )
+            outcome_msg = "Select a note to split from your workspace."
+            select_data = {
+                "workflow": "split_note",
+                "card_type": "select_note",
+                "stage": "select",
+                "title": "Select a note to split",
+                "prompt": "Choose a note from your workspace:",
+                "notes": [
+                    {
+                        "id": str(n.id),
+                        "title": n.title,
+                        "word_count": _count_words(n.content or ""),
+                        "updated_at_relative": _format_time_ago(n.updated_at),
+                        "topic": (n.tags[0].name.title() if n.tags else "General") if hasattr(n, "tags") and n.tags else "General",
+                    }
+                    for n in all_workspace_notes
+                ],
+                "total_notes": len(all_workspace_notes),
+            }
+            return StellaCommandExecuteResponse(
+                command=command,
+                action_id="notes.get",
+                status="completed",
+                message=outcome_msg,
+                data=select_data,
+                requires_confirmation=False,
+            )
+
         target_note = _resolve_note(db, workspace_id, raw_note_ident)
-        if not target_note and args:
-            target_note = _resolve_note(db, workspace_id, args[0])
+        if not target_note and clean_args:
+            target_note = _resolve_note(db, workspace_id, clean_args[0])
         if not target_note or target_note.workspace_id != workspace_id:
             raise AppException(
                 404, "NOTE_NOT_FOUND", f"Could not find note '{raw_note_ident}' in this workspace."
             )
 
-        proposed_parts = _build_split_note_parts(target_note)
-        note_tags = [t.name for t in (target_note.tags or [])]
+        # Perform semantic decomposition and stage proposal
+        decomposition = note_split_service.decompose_note_semantically(
+            target_note,
+            content_mode=content_mode,  # type: ignore[arg-type]
+            count_mode=count_mode,  # type: ignore[arg-type]
+            target_count=target_count,
+        )
 
-        envelope = action_execution_service.execute_action(
+        proposal_info = note_split_service.stage_split_proposal(
             db=db,
             workspace_id=workspace_id,
-            action_id="notes.create",
-            request=ActionExecuteRequest(
-                mode="propose",
-                input={
-                    "title": proposed_parts[0]["title"][:200],
-                    "content": proposed_parts[0]["content"],
-                    "tags": note_tags,
-                },
-                idempotency_key=str(uuid.uuid4()),
-            ),
+            note=target_note,
+            decomposition=decomposition,
         )
-        prop = envelope.proposals[0] if envelope.proposals else None
-        split_data = {
-            "proposed_action": "notes.create",
-            "workflow": "split_note",
-            "original_note_id": str(target_note.id),
-            "original_title": target_note.title,
-            "title": target_note.title,
-            "proposed_parts": proposed_parts,
-            "part_count": len(proposed_parts),
-            "tags": note_tags,
-            "status": "awaiting_confirmation",
-        }
-        if prop:
-            prop_row = db.get(ActionProposal, prop.proposal_id)
-            if prop_row:
-                prop_row.proposal_payload = {
-                    **(prop_row.proposal_payload or {}),
-                    **split_data,
-                    "title": proposed_parts[0]["title"][:200],
-                    "content": proposed_parts[0]["content"],
-                }
-                db.commit()
 
+        split_data = proposal_info["data"]
         outcome_msg = (
-            f"Prepared modular split proposal for '{target_note.title}' ({len(proposed_parts)} parts). "
-            "Confirm to create the new notes in your Library."
+            f"Prepared modular split proposal for '{target_note.title}' ({len(decomposition.proposed_parts)} proposed notes). "
+            "Review and approve to create the notes in your Library."
         )
         split_res = {
             "command": command,
@@ -6125,8 +6206,8 @@ def execute_stella_action_command(
             "status": "proposed",
             "message": outcome_msg,
             "data": split_data,
-            "proposal_id": str(prop.proposal_id) if prop else None,
-            "confirmation_token": prop.confirmation_token if prop else None,
+            "proposal_id": proposal_info["proposal_id"],
+            "confirmation_token": proposal_info["confirmation_token"],
             "requires_confirmation": True,
             "affected_item_ids": [str(target_note.id)],
         }
@@ -6139,8 +6220,8 @@ def execute_stella_action_command(
             status="proposed",
             message=outcome_msg,
             data=split_data,
-            proposal_id=str(prop.proposal_id) if prop else None,
-            confirmation_token=prop.confirmation_token if prop else None,
+            proposal_id=proposal_info["proposal_id"],
+            confirmation_token=proposal_info["confirmation_token"],
             requires_confirmation=True,
             affected_item_ids=[str(target_note.id)],
         )
@@ -7527,4 +7608,60 @@ def execute_stella_action_command(
         requires_confirmation=True,
         affected_item_ids=prop.affected_item_ids if prop else [],
     )
+
+
+def decompose_split_note_request(
+    db: Session,
+    workspace_id: uuid.UUID,
+    note_id: uuid.UUID,
+    content_mode: str = "preserve",
+    count_mode: str = "auto",
+    target_count: int | None = 4,
+    proposal_id: uuid.UUID | None = None,
+) -> dict[str, Any]:
+    """Decompose note semantically with options and update staged proposal if provided."""
+    from app.services import note_split_service
+
+    note = db.get(Note, note_id)
+    if not note or note.workspace_id != workspace_id:
+        raise AppException(404, "NOTE_NOT_FOUND", "Source note not found in workspace.")
+
+    decomposition = note_split_service.decompose_note_semantically(
+        note,
+        content_mode=content_mode,  # type: ignore[arg-type]
+        count_mode=count_mode,  # type: ignore[arg-type]
+        target_count=target_count,
+    )
+
+    parts_payload = [p.model_dump() for p in decomposition.proposed_parts]
+    confirmation_token: str | None = None
+
+    if proposal_id:
+        prop_row = db.get(ActionProposal, proposal_id)
+        if prop_row and prop_row.workspace_id == workspace_id:
+            prop_row.proposal_payload = {
+                **(prop_row.proposal_payload or {}),
+                "content_mode": decomposition.content_mode,
+                "count_mode": decomposition.count_mode,
+                "target_count": decomposition.target_count,
+                "proposed_parts": parts_payload,
+                "part_count": len(parts_payload),
+                "decomposition_advice": decomposition.decomposition_advice,
+                "coverage_percentage": decomposition.coverage_percentage,
+                "title": parts_payload[0]["title"][:200] if parts_payload else prop_row.proposal_payload.get("title", ""),
+                "content": parts_payload[0]["content"] if parts_payload else prop_row.proposal_payload.get("content", ""),
+            }
+            db.commit()
+
+    return {
+        "source_note": decomposition.source_note.model_dump(),
+        "content_mode": decomposition.content_mode,
+        "count_mode": decomposition.count_mode,
+        "target_count": decomposition.target_count,
+        "proposed_parts": parts_payload,
+        "decomposition_advice": decomposition.decomposition_advice,
+        "coverage_percentage": decomposition.coverage_percentage,
+        "proposal_id": str(proposal_id) if proposal_id else None,
+        "confirmation_token": confirmation_token,
+    }
 
