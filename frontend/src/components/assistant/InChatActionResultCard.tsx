@@ -3,6 +3,7 @@ import { GenericActionResultData } from '@/types/commands';
 import { OrganizationConfigDialog } from './OrganizationConfigDialog';
 import { InChatTransformNoteCard } from './InChatTransformNoteCard';
 import { InChatMergeNotesCard } from './InChatMergeNotesCard';
+import { InChatSplitNoteCard } from './InChatSplitNoteCard';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -44,10 +45,27 @@ export const InChatActionResultCard: React.FC<InChatActionResultCardProps> = ({
   const cmd = (result.command || '').toLowerCase();
 
   if (
+    data.workflow === 'split_note' ||
+    cmd.startsWith('/split-note') ||
+    data.card_type === 'split_note_plan' ||
+    data.card_type === 'split_note_config' ||
+    data.card_type === 'split_note_review' ||
+    (data.card_type === 'select_note' && data.workflow === 'split_note')
+  ) {
+    return (
+      <InChatSplitNoteCard
+        result={result}
+        onNavigateToItem={onNavigateToItem}
+        onRunCommand={onRunCommand}
+      />
+    );
+  }
+
+  if (
     data.card_type === 'transform_options' ||
     data.card_type === 'transform_audit' ||
     data.card_type === 'transform_connections' ||
-    data.card_type === 'select_note' ||
+    (data.card_type === 'select_note' && data.workflow !== 'split_note') ||
     data.card_type === 'transform_proposal' ||
     data.workflow === 'transform_note' ||
     cmd.startsWith('/transform-note')

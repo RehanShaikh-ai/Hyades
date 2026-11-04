@@ -3,6 +3,7 @@ import { GenericActionProposalData } from '@/types/commands';
 import { InChatEnrichmentProposalReview } from './InChatEnrichmentProposalReview';
 import { InChatTransformNoteCard } from './InChatTransformNoteCard';
 import { InChatMergeNotesCard } from './InChatMergeNotesCard';
+import { InChatSplitNoteCard } from './InChatSplitNoteCard';
 import {
   CheckCircle2,
   XCircle,
@@ -813,6 +814,26 @@ export const InChatActionProposalCard: React.FC<InChatActionProposalCardProps> =
         onNavigateToItem={onNavigateToItem}
         onRunCommand={onRunCommand}
         onOpenDocumentPanel={onOpenDocumentPanel}
+      />
+    );
+  }
+
+  if (
+    cmd.startsWith('/split-note') ||
+    workflow === 'split_note' ||
+    rawData.card_type === 'split_note_plan' ||
+    rawData.card_type === 'split_note_config' ||
+    rawData.card_type === 'split_note_review' ||
+    rawData.workflow === 'split_note'
+  ) {
+    return (
+      <InChatSplitNoteCard
+        proposal={proposal}
+        isCommitting={isCommitting}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+        onNavigateToItem={onNavigateToItem}
+        onRunCommand={onRunCommand}
       />
     );
   }
